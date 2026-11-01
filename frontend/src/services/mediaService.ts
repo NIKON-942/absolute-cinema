@@ -32,6 +32,12 @@ export interface MovieUpsertPayload {
   file?: File | null;    // poster image
 }
 
+export interface VideoUploadProgress {
+  loaded: number;
+  total: number | null;
+  rate: number | null;
+}
+
 function toForm(payload: MovieUpsertPayload): FormData {
   const form = new FormData();
   if (payload.file) form.append('file', payload.file);
@@ -186,11 +192,18 @@ export const mediaService = {
    * Master video upload: the server stores it in storage/masters and runs
    * background transcoding into 480p/720p/1080p.
    */
-  uploadMasterVideo(id: number, file: File): Promise<MovieDto> {
+  uploadMasterVideo(id: number, file: File, onProgress?: (percent: number | null, details: VideoUploadProgress) => void, signal?: AbortSignal): Promise<MovieDto> {
     const form = new FormData();
     form.append('file', file);
     return api
-      .post(`/media/${id}/master-video`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      .post(`/media/${id}/master-video`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        signal,
+        onUploadProgress: ({ loaded, total, rate }) => onProgress?.(
+          total ? Math.min(100, Math.floor(loaded / total * 100)) : null,
+          { loaded, total: total ?? null, rate: rate && Number.isFinite(rate) ? rate : null },
+        ),
+      })
       .then((r) => r.data);
   },
 

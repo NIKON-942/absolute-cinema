@@ -1,6 +1,8 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminRoute } from '@/components/AdminRoute';
+import { LoadingBlock } from '@/components/Spinner';
 import Home from '@/pages/Home';
 import Catalog from '@/pages/Catalog';
 import MovieDetails from '@/pages/MovieDetails';
@@ -13,8 +15,9 @@ import OAuthSuccess from '@/pages/OAuthSuccess';
 import SubscriptionPlans from '@/pages/SubscriptionPlans';
 import MockCheckout from '@/pages/MockCheckout';
 import Profile from '@/pages/Profile';
-import AdminPanel from '@/pages/AdminPanel';
 import NotFound from '@/pages/NotFound';
+
+const AdminPanel = lazy(() => import('@/pages/AdminPanel'));
 
 export default function AppRoutes() {
   return (
@@ -71,7 +74,9 @@ export default function AppRoutes() {
         path="/admin"
         element={
           <AdminRoute>
-            <AdminPanel />
+            <Suspense fallback={<LoadingBlock />}>
+              <AdminPanel />
+            </Suspense>
           </AdminRoute>
         }
       />

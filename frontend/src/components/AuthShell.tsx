@@ -17,14 +17,14 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
       <div className="w-full max-w-md animate-fadeIn rounded-2xl border border-cinema-border bg-cinema-panel/80 p-6 shadow-card sm:p-8">
         <div className="mb-6 text-center">
           <Link to="/" className="mb-4 inline-flex items-center gap-2" aria-label="AbsoluteCinema">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cinema-amber to-cinema-red text-xl font-black text-cinema-black">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cinema-amber to-cinema-red text-xl font-black text-cinema-ink">
               A
             </span>
-            <span className="text-xl font-extrabold tracking-tight text-slate-100">
-              Absolute<span className="text-cinema-amber">Cinema</span>
+            <span className="text-xl font-extrabold tracking-tight text-cinema-text">
+              Absolute<span className="text-cinema-accent">Cinema</span>
             </span>
           </Link>
-          <h1 className="text-2xl font-extrabold text-slate-50">{title}</h1>
+          <h1 className="text-2xl font-extrabold text-cinema-strong">{title}</h1>
           {subtitle && <p className="mt-1.5 text-sm text-cinema-muted">{subtitle}</p>}
         </div>
         {children}
@@ -43,7 +43,7 @@ export function GoogleButton() {
       onClick={() => {
         window.location.href = googleAuthUrl();
       }}
-      className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-cinema-border bg-cinema-black/60 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-slate-400/60 hover:bg-cinema-black"
+      className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-cinema-border bg-cinema-black/60 px-4 py-3 text-sm font-semibold text-cinema-text transition hover:border-cinema-muted/60 hover:bg-cinema-black"
     >
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.6-.2-2.3H12v4.5h6.5c-.1 1-.8 2.6-2.2 3.6l3.6 2.8c2.1-1.9 3.6-4.8 3.6-8.6z" />
@@ -63,9 +63,9 @@ export function FieldError({ message }: { message?: string }) {
 }
 
 export const authInputClass =
-  'w-full rounded-xl border border-cinema-border bg-cinema-black/60 px-4 py-3 text-sm text-slate-100 placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none focus:ring-1 focus:ring-cinema-amber/40';
+  'w-full rounded-xl border border-cinema-border bg-cinema-black/60 px-4 py-3 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none focus:ring-1 focus:ring-cinema-amber/40';
 
 export const authLabelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-cinema-muted';
 
 export const authButtonClass =
-  'w-full cursor-pointer rounded-xl bg-cinema-amber px-4 py-3 text-sm font-bold text-cinema-black transition hover:shadow-glow disabled:cursor-default disabled:opacity-60';
+  'w-full cursor-pointer rounded-xl bg-cinema-amber px-4 py-3 text-sm font-bold text-cinema-ink transition hover:shadow-glow disabled:cursor-default disabled:opacity-60';

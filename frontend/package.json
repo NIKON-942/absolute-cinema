@@ -6,19 +6,21 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "test:upload": "node --experimental-strip-types --test scripts/upload-metrics.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "axios": "^1.7.7",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
-    "@types/react": "^18.3.8",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
-    "autoprefixer": "^10.4.20",
+    "autoprefixer": "^10.6.2",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.4.5",

@@ -47,8 +47,8 @@ export default function OAuthSuccess() {
       {failed ? (
         <div className="rounded-xl border border-cinema-red/50 bg-cinema-red/10 px-4 py-6 text-center" role="alert">
           <span className="mb-2 block text-3xl">😞</span>
-          <p className="mb-4 text-sm text-red-200">{t('auth.oauth.errorText')}</p>
-          <Link to="/login" className="inline-block rounded-xl bg-cinema-amber px-5 py-2.5 font-bold text-cinema-black transition hover:shadow-glow">
+          <p className="mb-4 text-sm text-cinema-error">{t('auth.oauth.errorText')}</p>
+          <Link to="/login" className="inline-block rounded-xl bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink transition hover:shadow-glow">
             {t('auth.oauth.toLogin')}
           </Link>
         </div>

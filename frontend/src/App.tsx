@@ -1,15 +1,24 @@
 import { LanguageProvider, useLanguage } from '@/context/LanguageContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
+import { ThemeProvider } from '@/context/ThemeContext';
+import { UploadProvider, useUploads } from '@/context/UploadContext';
+import { lazy, Suspense } from 'react';
 import { Navbar } from '@/components/Navbar';
 import AppRoutes from '@/routes/AppRoutes';
+
+const UploadPanel = lazy(() => import('@/components/UploadPanel').then(module => ({ default: module.UploadPanel })));
+function BackgroundUploads() {
+  const { tasks } = useUploads();
+  return tasks.length ? <Suspense fallback={null}><UploadPanel /></Suspense> : null;
+}
 
 function SiteFooter() {
   const { t } = useLanguage();
   return (
     <footer className="border-t border-cinema-border bg-cinema-black py-8">
       <div className="mx-auto flex max-w-7xl flex-col items-center gap-2 px-4 text-center">
-        <p className="text-sm font-semibold text-slate-300">{t('footer.tagline')}</p>
+        <p className="text-sm font-semibold text-cinema-soft">{t('footer.tagline')}</p>
         <p className="text-xs text-cinema-muted">{t('footer.copyright', { year: new Date().getFullYear() })}</p>
       </div>
     </footer>
@@ -18,18 +27,23 @@ function SiteFooter() {
 
 export default function App() {
   return (
-    <LanguageProvider>
-      <AuthProvider>
-        <ToastProvider>
-          <div className="flex min-h-screen flex-col bg-cinema-black font-sans text-slate-100">
-            <Navbar />
-            <main className="flex-1">
-              <AppRoutes />
-            </main>
-            <SiteFooter />
-          </div>
-        </ToastProvider>
-      </AuthProvider>
-    </LanguageProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <UploadProvider>
+              <div className="flex min-h-screen flex-col bg-cinema-black font-sans text-cinema-text">
+                <Navbar />
+                <main className="flex-1">
+                  <AppRoutes />
+                </main>
+                <SiteFooter />
+                <BackgroundUploads />
+              </div>
+            </UploadProvider>
+          </ToastProvider>
+        </AuthProvider>
+      </LanguageProvider>
+    </ThemeProvider>
   );
 }

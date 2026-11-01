@@ -49,7 +49,7 @@ services:
       timeout: 5s
       retries: 12
     stop_grace_period: 45s
-    cpus: 1.5
+    cpus: ${BACKEND_CPUS:-1.5}
     mem_limit: 4g
     security_opt:
       - no-new-privileges:true

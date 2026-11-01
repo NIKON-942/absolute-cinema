@@ -27,8 +27,8 @@ export function QualitySelector({ qualities, value, onChange, maxQuality = '1080
 
   const buttonClass = (q: Quality) => {
     const locked = qualityRank(q) > qualityRank(maxQuality);
-    if (q === value) return 'bg-cinema-amber text-cinema-black';
-    return locked ? 'text-slate-400 hover:bg-white/10' : 'text-slate-300 hover:bg-white/10';
+    if (q === value) return 'bg-cinema-amber text-cinema-ink';
+    return locked ? 'text-cinema-muted hover:bg-white/10' : 'text-cinema-soft hover:bg-white/10';
   };
 
   if (compact) {

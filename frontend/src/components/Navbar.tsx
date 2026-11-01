@@ -4,6 +4,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useDebounce } from '@/hooks/useDebounce';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { resolveMediaUrl } from '@/utils/url';
 
 export function Navbar() {
@@ -44,7 +45,7 @@ export function Navbar() {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     `rounded-md px-3 py-2 text-sm font-semibold transition ${
-      isActive ? 'bg-cinema-card text-cinema-amber' : 'text-slate-300 hover:bg-cinema-card/60 hover:text-slate-100'
+      isActive ? 'bg-cinema-card text-cinema-accent' : 'text-cinema-soft hover:bg-cinema-card/60 hover:text-cinema-text'
     }`;
 
   const submitSearch = (e: React.FormEvent) => {
@@ -58,16 +59,16 @@ export function Navbar() {
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:gap-5">
         {/* logo */}
         <Link to="/" className="flex shrink-0 items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cinema-amber to-cinema-red font-black text-cinema-black">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cinema-amber to-cinema-red font-black text-cinema-ink">
             A
           </span>
-          <span className="hidden text-lg font-extrabold tracking-tight text-slate-100 sm:block">
-            Absolute<span className="text-cinema-amber">Cinema</span>
+          <span className="hidden text-lg font-extrabold tracking-tight text-cinema-text sm:block">
+            Absolute<span className="text-cinema-accent">Cinema</span>
           </span>
         </Link>
 
         {/* desktop nav */}
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 lg:flex">
           <NavLink to="/" end className={navLinkClass}>
             {t('nav.home')}
           </NavLink>
@@ -100,13 +101,14 @@ export function Navbar() {
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('nav.searchPlaceholder')}
               aria-label={t('nav.search')}
-              className="w-full rounded-lg border border-cinema-border bg-cinema-panel py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none"
+              className="w-full rounded-lg border border-cinema-border bg-cinema-panel py-2 pl-9 pr-3 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none"
             />
           </div>
         </form>
 
-        <div className="ml-auto flex items-center gap-2 lg:ml-0">
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2 lg:ml-0">
           <LanguageSwitcher />
+          <ThemeSwitcher />
 
           {user ? (
             <div className="relative" ref={userMenuRef}>
@@ -120,32 +122,32 @@ export function Navbar() {
                 {user.avatarUrl ? (
                   <img src={resolveMediaUrl(user.avatarUrl)} alt={user.name} className="h-7 w-7 rounded-full object-cover" />
                 ) : (
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber to-cinema-red text-sm font-bold text-cinema-black">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber to-cinema-red text-sm font-bold text-cinema-ink">
                     {user.name.charAt(0).toUpperCase()}
                   </span>
                 )}
-                <span className="hidden max-w-[110px] truncate text-sm font-semibold text-slate-100 sm:block">
+                <span className="hidden max-w-[110px] truncate text-sm font-semibold text-cinema-text sm:block">
                   {user.name}
                 </span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b8fa3" strokeWidth="2.4" className={`transition ${userOpen ? 'rotate-180' : ''}`}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className={`hidden text-cinema-muted transition sm:block ${userOpen ? 'rotate-180' : ''}`}>
                   <path d="m6 9 6 6 6-6" strokeLinecap="round" />
                 </svg>
               </button>
               {userOpen && (
                 <div className="absolute right-0 top-full mt-2 w-52 animate-fadeIn overflow-hidden rounded-xl border border-cinema-border bg-cinema-panel shadow-card" role="menu">
                   <div className="border-b border-cinema-border px-4 py-3">
-                    <p className="truncate text-sm font-semibold text-slate-100">{user.name}</p>
+                    <p className="truncate text-sm font-semibold text-cinema-text">{user.name}</p>
                     <p className="truncate text-xs text-cinema-muted">{user.email}</p>
                     <span className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                      user.hasActiveSubscription ? 'bg-emerald-900/60 text-emerald-300' : 'bg-cinema-card text-cinema-muted'
+                      user.hasActiveSubscription ? 'bg-cinema-success-surface/60 text-cinema-success' : 'bg-cinema-card text-cinema-muted'
                     }`}>
                       {user.hasActiveSubscription ? t('subscription.active') : t('subscription.none')}
                     </span>
                   </div>
-                  <Link to="/profile" className="block px-4 py-2.5 text-sm text-slate-200 transition hover:bg-cinema-card">{t('nav.profile')}</Link>
-                  <Link to="/plans" className="block px-4 py-2.5 text-sm text-slate-200 transition hover:bg-cinema-card">{t('nav.plans')}</Link>
+                  <Link to="/profile" className="block px-4 py-2.5 text-sm text-cinema-soft transition hover:bg-cinema-card">{t('nav.profile')}</Link>
+                  <Link to="/plans" className="block px-4 py-2.5 text-sm text-cinema-soft transition hover:bg-cinema-card">{t('nav.plans')}</Link>
                   {isAdmin && (
-                    <Link to="/admin" className="block px-4 py-2.5 text-sm text-slate-200 transition hover:bg-cinema-card">{t('nav.admin')}</Link>
+                    <Link to="/admin" className="block px-4 py-2.5 text-sm text-cinema-soft transition hover:bg-cinema-card">{t('nav.admin')}</Link>
                   )}
                   <button
                     type="button"
@@ -159,10 +161,10 @@ export function Navbar() {
             </div>
           ) : (
             <div className="hidden items-center gap-2 sm:flex">
-              <Link to="/login" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-200 transition hover:text-cinema-amber">
+              <Link to="/login" className="rounded-lg px-3 py-2 text-sm font-semibold text-cinema-soft transition hover:text-cinema-accent">
                 {t('nav.login')}
               </Link>
-              <Link to="/register" className="rounded-lg bg-cinema-amber px-3 py-2 text-sm font-bold text-cinema-black transition hover:shadow-glow">
+              <Link to="/register" className="rounded-lg bg-cinema-amber px-3 py-2 text-sm font-bold text-cinema-ink transition hover:shadow-glow">
                 {t('nav.register')}
               </Link>
             </div>
@@ -171,7 +173,7 @@ export function Navbar() {
           {/* mobile hamburger */}
           <button
             type="button"
-            className="cursor-pointer rounded-lg border border-cinema-border bg-cinema-panel p-2 text-slate-200 md:hidden"
+            className="cursor-pointer rounded-lg border border-cinema-border bg-cinema-panel p-2 text-cinema-soft lg:hidden"
             onClick={() => setMenuOpen((v) => !v)}
             aria-label={t('nav.menu')}
             aria-expanded={menuOpen}
@@ -185,7 +187,7 @@ export function Navbar() {
 
       {/* mobile menu */}
       {menuOpen && (
-        <div className="animate-fadeIn border-t border-cinema-border bg-cinema-black px-4 pb-4 pt-2 md:hidden">
+        <div className="animate-fadeIn border-t border-cinema-border bg-cinema-black px-4 pb-4 pt-2 lg:hidden">
           <form onSubmit={submitSearch} className="relative mb-3" role="search">
             <input
               type="search"
@@ -193,7 +195,7 @@ export function Navbar() {
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('nav.searchPlaceholder')}
               aria-label={t('nav.search')}
-              className="w-full rounded-lg border border-cinema-border bg-cinema-panel py-2 px-3 text-sm text-slate-100 placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none"
+              className="w-full rounded-lg border border-cinema-border bg-cinema-panel py-2 px-3 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none"
             />
           </form>
           <nav className="flex flex-col gap-1">
@@ -204,10 +206,10 @@ export function Navbar() {
             {user && <NavLink to="/profile" className={navLinkClass}>{t('nav.profile')}</NavLink>}
             {!user && (
               <div className="mt-2 flex gap-2">
-                <Link to="/login" className="flex-1 rounded-lg border border-cinema-border px-3 py-2 text-center text-sm font-semibold text-slate-200">
+                <Link to="/login" className="flex-1 rounded-lg border border-cinema-border px-3 py-2 text-center text-sm font-semibold text-cinema-soft">
                   {t('nav.login')}
                 </Link>
-                <Link to="/register" className="flex-1 rounded-lg bg-cinema-amber px-3 py-2 text-center text-sm font-bold text-cinema-black">
+                <Link to="/register" className="flex-1 rounded-lg bg-cinema-amber px-3 py-2 text-center text-sm font-bold text-cinema-ink">
                   {t('nav.register')}
                 </Link>
               </div>

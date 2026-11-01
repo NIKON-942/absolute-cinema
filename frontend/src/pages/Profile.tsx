@@ -22,7 +22,7 @@ import { isValidPassword } from '@/utils/validation';
 import type { DeviceSessionDto, MovieDto, WatchProgressDto } from '@/types';
 
 const inputClass =
-  'w-full rounded-lg border border-cinema-border bg-cinema-black/60 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none';
+  'w-full rounded-lg border border-cinema-border bg-cinema-black/60 px-3.5 py-2.5 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none';
 const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-cinema-muted';
 
 export default function Profile() {
@@ -146,15 +146,15 @@ export default function Profile() {
         {user.avatarUrl ? (
           <img src={resolveMediaUrl(user.avatarUrl)} alt={user.name} className="h-16 w-16 rounded-2xl border border-cinema-border object-cover" />
         ) : (
-          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-cinema-amber to-cinema-red text-2xl font-black text-cinema-black">
+          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-cinema-amber to-cinema-red text-2xl font-black text-cinema-ink">
             {user.name.charAt(0).toUpperCase()}
           </span>
         )}
         <div className="flex-1">
-          <h1 className="text-2xl font-extrabold text-slate-50 sm:text-3xl">{t('profile.title')}</h1>
+          <h1 className="text-2xl font-extrabold text-cinema-strong sm:text-3xl">{t('profile.title')}</h1>
           <p className="text-sm text-cinema-muted">{t('profile.subtitle')}</p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-bold ${user.hasActiveSubscription ? 'bg-emerald-900/60 text-emerald-300' : 'bg-cinema-card text-cinema-muted'}`}>
+        <span className={`rounded-full px-3 py-1 text-xs font-bold ${user.hasActiveSubscription ? 'bg-cinema-success-surface/60 text-cinema-success' : 'bg-cinema-card text-cinema-muted'}`}>
           {user.hasActiveSubscription ? t('subscription.active') : t('subscription.none')}
         </span>
       </header>
@@ -162,7 +162,7 @@ export default function Profile() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* account form */}
         <section className="rounded-2xl border border-cinema-border bg-cinema-panel/60 p-6">
-          <h2 className="mb-5 text-lg font-bold text-slate-100">{t('profile.account.title')}</h2>
+          <h2 className="mb-5 text-lg font-bold text-cinema-text">{t('profile.account.title')}</h2>
           <form onSubmit={onSubmit} noValidate className="space-y-4">
             <div>
               <label htmlFor="profile-name" className={labelClass}>
@@ -236,7 +236,7 @@ export default function Profile() {
             <button
               type="submit"
               disabled={saving}
-              className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-cinema-amber px-5 py-2.5 text-sm font-bold text-cinema-black transition hover:shadow-glow disabled:cursor-default disabled:opacity-60"
+              className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-cinema-amber px-5 py-2.5 text-sm font-bold text-cinema-ink transition hover:shadow-glow disabled:cursor-default disabled:opacity-60"
             >
               {saving && <Spinner size={4} />}
               {t('profile.account.save')}
@@ -246,17 +246,17 @@ export default function Profile() {
 
         {/* subscription card */}
         <section className="rounded-2xl border border-cinema-border bg-cinema-panel/60 p-6">
-          <h2 className="mb-5 text-lg font-bold text-slate-100">{t('profile.subscription.title')}</h2>
+          <h2 className="mb-5 text-lg font-bold text-cinema-text">{t('profile.subscription.title')}</h2>
           {user.hasActiveSubscription && sub ? (
             <div>
               <div className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-cinema-amber/40 bg-gradient-to-r from-cinema-amber/15 to-transparent px-4 py-3">
                 <div>
-                  <p className="text-lg font-extrabold text-cinema-amber">{t('tier.' + sub.tier)}</p>
+                  <p className="text-lg font-extrabold text-cinema-accent">{t('tier.' + sub.tier)}</p>
                   <p className="text-xs text-cinema-muted">{t('sub.period.' + sub.period)}</p>
                 </div>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-bold ${
-                    sub.status === 'active' ? 'bg-emerald-900/60 text-emerald-300' : 'bg-cinema-card text-cinema-muted'
+                    sub.status === 'active' ? 'bg-cinema-success-surface/60 text-cinema-success' : 'bg-cinema-card text-cinema-muted'
                   }`}
                 >
                   {t('sub.status.' + sub.status)}
@@ -264,18 +264,18 @@ export default function Profile() {
               </div>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                 <dt className="text-cinema-muted">{t('profile.subscription.startsAt')}</dt>
-                <dd className="text-right font-semibold text-slate-200">{formatDate(sub.startsAt)}</dd>
+                <dd className="text-right font-semibold text-cinema-soft">{formatDate(sub.startsAt)}</dd>
                 <dt className="text-cinema-muted">{t('profile.subscription.endsAt')}</dt>
-                <dd className="text-right font-semibold text-slate-200">{formatDate(sub.endsAt)}</dd>
+                <dd className="text-right font-semibold text-cinema-soft">{formatDate(sub.endsAt)}</dd>
                 <dt className="text-cinema-muted">{t('profile.subscription.autoRenew')}</dt>
-                <dd className="text-right font-semibold text-slate-200">
+                <dd className="text-right font-semibold text-cinema-soft">
                   {sub.status === 'active' ? '✓' : '—'}
                 </dd>
               </dl>
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link
                   to="/plans"
-                  className="inline-block rounded-xl border border-cinema-border px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-cinema-amber/60 hover:text-cinema-amber"
+                  className="inline-block rounded-xl border border-cinema-border px-5 py-2.5 text-sm font-semibold text-cinema-soft transition hover:border-cinema-amber/60 hover:text-cinema-accent"
                 >
                   {t('plans.title')}
                 </Link>
@@ -293,9 +293,9 @@ export default function Profile() {
           ) : (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
               <span className="text-4xl">🔓</span>
-              <p className="font-semibold text-slate-100">{t('profile.subscription.none')}</p>
+              <p className="font-semibold text-cinema-text">{t('profile.subscription.none')}</p>
               <p className="max-w-xs text-sm text-cinema-muted">{t('profile.subscription.noneHint')}</p>
-              <Link to="/plans" className="mt-2 rounded-xl bg-cinema-amber px-5 py-2.5 font-bold text-cinema-black transition hover:shadow-glow">
+              <Link to="/plans" className="mt-2 rounded-xl bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink transition hover:shadow-glow">
                 {t('profile.subscription.viewPlans')}
               </Link>
             </div>
@@ -307,7 +307,7 @@ export default function Profile() {
           <section className="rounded-2xl border border-cinema-border bg-cinema-panel/60 p-6 lg:col-span-2">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="text-lg font-bold text-slate-100">{t('profile.devices.title')}</h2>
+                <h2 className="text-lg font-bold text-cinema-text">{t('profile.devices.title')}</h2>
                 <p className="text-xs text-cinema-muted">{t('profile.devices.subtitle')}</p>
               </div>
               {devices != null && maxDevices > 0 && (
@@ -315,7 +315,7 @@ export default function Profile() {
                   className={`rounded-full px-3 py-1 text-xs font-bold ${
                     devices.length >= maxDevices
                       ? 'bg-cinema-red/15 text-cinema-red'
-                      : 'bg-emerald-900/60 text-emerald-300'
+                      : 'bg-cinema-success-surface/60 text-cinema-success'
                   }`}
                 >
                   {t('profile.devices.count', { active: devices.length, max: maxDevices })}
@@ -338,10 +338,10 @@ export default function Profile() {
                         {isCurrent ? '💻' : '📺'}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-slate-100">
+                        <p className="truncate text-sm font-semibold text-cinema-text">
                           {d.name || t('profile.devices.unknown')}
                           {isCurrent && (
-                            <span className="ml-2 rounded-full bg-cinema-amber/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cinema-amber">
+                            <span className="ml-2 rounded-full bg-cinema-amber/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cinema-accent">
                               {t('profile.devices.current')}
                             </span>
                           )}
@@ -356,7 +356,7 @@ export default function Profile() {
                         type="button"
                         onClick={() => void onDisconnectDevice(d.deviceId)}
                         disabled={busyDevice !== null}
-                        className="cursor-pointer rounded-lg border border-cinema-border px-3.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-cinema-red/60 hover:text-cinema-red disabled:cursor-default disabled:opacity-60"
+                        className="cursor-pointer rounded-lg border border-cinema-border px-3.5 py-1.5 text-xs font-semibold text-cinema-soft transition hover:border-cinema-red/60 hover:text-cinema-red disabled:cursor-default disabled:opacity-60"
                       >
                         {busyDevice === d.deviceId ? <Spinner size={3.5} /> : t('profile.devices.disconnect')}
                       </button>
@@ -366,7 +366,7 @@ export default function Profile() {
               </ul>
             )}
             {devices != null && maxDevices > 0 && devices.length >= maxDevices && (
-              <p className="mt-3 rounded-lg border border-cinema-amber/30 bg-cinema-amber/10 px-3.5 py-2.5 text-xs text-cinema-amber">
+              <p className="mt-3 rounded-lg border border-cinema-amber/30 bg-cinema-amber/10 px-3.5 py-2.5 text-xs text-cinema-accent">
                 {t('profile.devices.full')}{' '}
                 <Link to="/plans" className="font-bold underline underline-offset-2">
                   {t('watch.upgradeCta')}
@@ -379,7 +379,7 @@ export default function Profile() {
 
       {/* continue watching */}
       <section className="mt-10">
-        <h2 className="mb-4 text-lg font-bold text-slate-100">{t('profile.continue.title')}</h2>
+        <h2 className="mb-4 text-lg font-bold text-cinema-text">{t('profile.continue.title')}</h2>
         {progress === null ? (
           <div className="flex justify-center py-8">
             <Spinner size={8} />
@@ -405,7 +405,7 @@ export default function Profile() {
                       )}
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col">
-                      <h3 className="truncate font-semibold text-slate-100 transition group-hover:text-cinema-amber" title={p.movieTitle}>
+                      <h3 className="truncate font-semibold text-cinema-text transition group-hover:text-cinema-accent" title={p.movieTitle}>
                         {p.movieTitle}
                       </h3>
                       <p className="mt-0.5 text-xs text-cinema-muted">
@@ -419,7 +419,7 @@ export default function Profile() {
                         </div>
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-cinema-muted">{t('profile.continue.left', { time: formatDuration(left) })}</span>
-                          <span className="font-bold text-cinema-amber">{t('profile.continue.resume')} ▸</span>
+                          <span className="font-bold text-cinema-accent">{t('profile.continue.resume')} ▸</span>
                         </div>
                       </div>
                     </div>
@@ -433,7 +433,7 @@ export default function Profile() {
 
       {/* favorites */}
       <section className="mt-10 pb-6">
-        <h2 className="mb-4 text-lg font-bold text-slate-100">{t('profile.favorites.title')}</h2>
+        <h2 className="mb-4 text-lg font-bold text-cinema-text">{t('profile.favorites.title')}</h2>
         {favorites === null ? (
           <div className="flex justify-center py-8">
             <Spinner size={8} />
@@ -461,7 +461,7 @@ export default function Profile() {
             <button
               type="button"
               onClick={() => setCancelOpen(false)}
-              className="cursor-pointer rounded-lg border border-cinema-border px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cinema-amber/60 disabled:opacity-60"
+              className="cursor-pointer rounded-lg border border-cinema-border px-4 py-2 text-sm font-semibold text-cinema-soft transition hover:border-cinema-amber/60 disabled:opacity-60"
               disabled={cancelling}
             >
               {t('common.cancel')}
@@ -477,7 +477,7 @@ export default function Profile() {
           </>
         }
       >
-        <p className="text-sm leading-relaxed text-slate-200">{t('profile.subscription.cancelConfirm')}</p>
+        <p className="text-sm leading-relaxed text-cinema-soft">{t('profile.subscription.cancelConfirm')}</p>
       </Modal>
     </div>
   );

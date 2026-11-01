@@ -599,27 +599,30 @@ export class MediaService {
    */
   async attachMasterVideo(id: number, masterFilename: string): Promise<MovieDto> {
     const movie = await this.getMovieEntity(id);
-    movie.masterVideo = masterFilename;
-    await this.moviesRepo.update(id, { masterVideo: masterFilename });
-    this.transcodeService.enqueue(id, masterFilename);
+    await this.transcodeService.enqueue(movie.id, masterFilename);
     return this.getMovie(id);
   }
 
   /** Same pipeline, but the master is a remote URL (ffmpeg reads it directly). */
   async setMasterVideoUrl(id: number, url: string): Promise<MovieDto> {
-    await this.moviesRepo.update(id, { masterVideo: url });
-    this.transcodeService.enqueue(id, url);
+    await this.getMovieEntity(id);
+    await this.transcodeService.enqueue(id, url);
     return this.getMovie(id);
   }
 
-  transcodeJob(movieId: number) {
-    return (
-      this.transcodeService.jobInfo(movieId) ?? {
-        movieId,
-        status: 'none' as const,
-        qualities: [],
-      }
-    );
+  async transcodeJob(movieId: number) {
+    const movie = await this.getMovieEntity(movieId);
+    const job = this.transcodeService.jobInfo(movieId);
+    if (job) return job;
+    return {
+      movieId,
+      status: movie.transcodeStatus,
+      qualities: ['480p', '720p', '1080p'].filter(q => movie[QUALITY_COLUMNS[q as VideoQuality]]),
+      progress: movie.transcodeStatus === 'ready' ? 100 : null,
+      phase: movie.transcodeStatus === 'processing' ? 'unavailable' : movie.transcodeStatus,
+      currentQuality: null,
+      targetQualities: [],
+    };
   }
 
   async updateMovie(

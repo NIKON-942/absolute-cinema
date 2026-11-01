@@ -3,27 +3,69 @@
 @tailwind utilities;
 
 @layer base {
+  :root,
+  .media-surface {
+    --cinema-background: 11 12 16;
+    --cinema-panel: 18 20 29;
+    --cinema-card: 23 26 38;
+    --cinema-border: 35 39 57;
+    --cinema-muted: 139 143 163;
+    --cinema-text: 241 245 249;
+    --cinema-strong: 248 250 252;
+    --cinema-soft: 203 213 225;
+    --cinema-accent: 245 185 66;
+    --cinema-red: 230 57 70;
+    --cinema-success: 110 231 183;
+    --cinema-error: 252 165 165;
+    --cinema-notice: 253 230 138;
+    --cinema-success-surface: 6 50 38;
+    --cinema-error-surface: 69 10 10;
+    --cinema-glow: 0 0 24px rgb(245 185 66 / 0.25);
+    --cinema-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+    color-scheme: dark;
+  }
+
+  :root[data-theme='light'] {
+    --cinema-background: 247 248 252;
+    --cinema-panel: 255 255 255;
+    --cinema-card: 237 240 247;
+    --cinema-border: 203 210 224;
+    --cinema-muted: 87 99 120;
+    --cinema-text: 30 41 59;
+    --cinema-strong: 15 23 42;
+    --cinema-soft: 51 65 85;
+    --cinema-accent: 146 77 8;
+    --cinema-red: 190 28 47;
+    --cinema-success: 4 120 87;
+    --cinema-error: 185 28 28;
+    --cinema-notice: 146 64 14;
+    --cinema-success-surface: 220 252 231;
+    --cinema-error-surface: 254 226 226;
+    --cinema-glow: 0 0 24px rgb(245 185 66 / 0.18);
+    --cinema-shadow: 0 8px 28px rgb(30 41 59 / 0.09);
+    color-scheme: light;
+  }
+
   html {
     @apply bg-cinema-black;
-    color-scheme: dark;
   }
 
   body {
-    @apply bg-cinema-black text-slate-100 antialiased;
+    @apply bg-cinema-black text-cinema-text antialiased;
   }
 
-  /* dark form controls (selects, date pickers) */
+  /* Native controls follow the selected theme. */
   select,
   option {
-    color-scheme: dark;
+    color-scheme: inherit;
   }
 
   option {
-    @apply bg-cinema-panel text-slate-100;
+    @apply bg-cinema-panel text-cinema-text;
   }
 
   ::selection {
-    @apply bg-cinema-amber/70 text-cinema-black;
+    @apply bg-cinema-amber/70 text-cinema-ink;
   }
 }
 
@@ -41,7 +83,7 @@
 /* custom slim scrollbar for the whole app */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #232739 #0b0c10;
+  scrollbar-color: rgb(var(--cinema-border)) rgb(var(--cinema-background));
 }
 
 ::-webkit-scrollbar {
@@ -50,15 +92,15 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0b0c10;
+  background: rgb(var(--cinema-background));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #232739;
+  background: rgb(var(--cinema-border));
   border-radius: 6px;
-  border: 2px solid #0b0c10;
+  border: 2px solid rgb(var(--cinema-background));
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2f3450;
+  background: rgb(var(--cinema-muted));
 }

@@ -61,10 +61,10 @@ export function AdminTable<T>({ columns, rows, rowKey, actions, emptyMessage }: 
                   <button
                     type="button"
                     onClick={() => toggleSort(col.key)}
-                    className="inline-flex cursor-pointer items-center gap-1 transition hover:text-slate-100"
+                    className="inline-flex cursor-pointer items-center gap-1 transition hover:text-cinema-text"
                   >
                     {col.label}
-                    <span className={`text-[10px] ${sortKey === col.key ? 'text-cinema-amber' : 'opacity-40'}`}>
+                    <span className={`text-[10px] ${sortKey === col.key ? 'text-cinema-accent' : 'opacity-40'}`}>
                       {sortKey === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '▲▼'}
                     </span>
                   </button>
@@ -87,7 +87,7 @@ export function AdminTable<T>({ columns, rows, rowKey, actions, emptyMessage }: 
           {sortedRows.map((row) => (
             <tr key={rowKey(row)} className="border-b border-cinema-border/60 transition last:border-0 hover:bg-cinema-card/50">
               {columns.map((col) => (
-                <td key={col.key} className={`px-4 py-3 text-slate-200 ${col.className ?? ''}`}>
+                <td key={col.key} className={`px-4 py-3 text-cinema-soft ${col.className ?? ''}`}>
                   {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '')}
                 </td>
               ))}

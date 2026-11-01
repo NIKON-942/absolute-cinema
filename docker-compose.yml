@@ -1,9 +1,6 @@
-version: "3.9"
-
 services:
   postgres:
-    image: postgres:14-alpine
-    container_name: absolutecinema-postgres
+    image: postgres:17-alpine
     environment:
       POSTGRES_USER: cinema
       POSTGRES_PASSWORD: cinema
@@ -11,7 +8,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata17:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cinema -d absolutecinema"]
       interval: 5s
@@ -19,21 +16,17 @@ services:
       retries: 10
 
   jaeger:
-    image: jaegertracing/all-in-one:1.57
-    container_name: absolutecinema-jaeger
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0
     ports:
       - "16686:16686" # Jaeger UI
       - "4317:4317" # OTLP gRPC
       - "4318:4318" # OTLP HTTP
 
   mailpit:
-    image: axllent/mailpit:latest
-    container_name: absolutecinema-mailpit
+    image: axllent/mailpit:v1.33.0
     ports:
       - "8025:8025" # Mailpit UI
       - "1025:1025" # SMTP
 
 volumes:
-  pgdata:
+  pgdata17:

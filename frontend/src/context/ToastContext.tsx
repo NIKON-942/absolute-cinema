@@ -20,9 +20,9 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 const STYLES: Record<ToastType, string> = {
-  success: 'border-emerald-500/50 bg-emerald-950/90 text-emerald-100',
-  error: 'border-red-500/50 bg-red-950/90 text-red-100',
-  info: 'border-cinema-border bg-cinema-panel/95 text-slate-100',
+  success: 'border-cinema-success/50 bg-cinema-success-surface/90 text-cinema-success',
+  error: 'border-red-500/50 bg-cinema-error-surface/90 text-cinema-error',
+  info: 'border-cinema-border bg-cinema-panel/95 text-cinema-text',
 };
 
 const ICONS: Record<ToastType, string> = { success: '✓', error: '✕', info: 'ℹ' };

@@ -13,6 +13,8 @@ import { AdminMediaController } from './admin-media.controller';
 import { MediaController } from './media.controller';
 import { MediaService } from './media.service';
 import { TranscodeService } from './transcode.service';
+import { UploadsController } from './uploads.controller';
+import { UploadsService } from './uploads.service';
 
 @Module({
   imports: [
@@ -28,8 +30,8 @@ import { TranscodeService } from './transcode.service';
       WatchProgressEntity,
     ]),
   ],
-  controllers: [MediaController, AdminMediaController],
-  providers: [MediaService, TranscodeService],
+  controllers: [UploadsController, MediaController, AdminMediaController],
+  providers: [MediaService, TranscodeService, UploadsService],
   exports: [MediaService],
 })
 export class MediaModule {}

@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import type { FormEvent } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
+import { useUploads } from '@/context/UploadContext';
 import { useDebounce } from '@/hooks/useDebounce';
+import { AGE_RATINGS } from '@/utils/ageRatings';
 import { mediaService } from '@/services/mediaService';
 import type { MovieUpsertPayload } from '@/services/mediaService';
 import { usersService } from '@/services/usersService';
@@ -13,6 +16,7 @@ import { AdminTable } from '@/components/AdminTable';
 import type { Column } from '@/components/AdminTable';
 import { Modal } from '@/components/Modal';
 import { AutoTextarea } from '@/components/AutoTextarea';
+import { ProgressBar, TranscodeProgress } from '@/components/TranscodeProgress';
 import { LoadingBlock } from '@/components/Spinner';
 import { EmptyState } from '@/components/EmptyState';
 import { formatPrice } from '@/utils/format';
@@ -25,23 +29,21 @@ import type {
   GenreDto,
   MovieDto,
   Paginated,
-  Quality,
   Role,
+  TranscodeJobDto,
   UserDto,
 } from '@/types';
 
 const PAGE_SIZE = 10;
-const AGE_RATINGS = ['0+', '6+', '12+', '16+', '18+'];
-const QUALITIES: Quality[] = ['480p', '720p', '1080p'];
 const ANALYTICS_INTERVALS = [7, 30, 90, 365];
 
 const inputClass =
-  'w-full rounded-lg border border-cinema-border bg-cinema-black/60 px-3 py-2 text-sm text-slate-100 placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none';
+  'w-full rounded-lg border border-cinema-border bg-cinema-black/60 px-3 py-2 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none';
 const labelClass = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-cinema-muted';
 const primaryBtn =
-  'cursor-pointer rounded-lg bg-cinema-amber px-4 py-2 text-sm font-bold text-cinema-black transition hover:shadow-glow disabled:cursor-default disabled:opacity-60';
+  'cursor-pointer rounded-lg bg-cinema-amber px-4 py-2 text-sm font-bold text-cinema-ink transition hover:shadow-glow disabled:cursor-default disabled:opacity-60';
 const ghostBtn =
-  'cursor-pointer rounded-lg border border-cinema-border px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-60';
+  'cursor-pointer rounded-lg border border-cinema-border px-4 py-2 text-sm font-semibold text-cinema-soft transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-60';
 const dangerBtn =
   'cursor-pointer rounded-lg bg-cinema-red px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-red/85 disabled:cursor-default disabled:opacity-60';
 
@@ -51,11 +53,14 @@ const TABS: Tab[] = ['movies', 'genres', 'actors', 'countries', 'directors', 'us
 export default function AdminPanel() {
   const { t } = useLanguage();
   const [tab, setTab] = useState<Tab>('movies');
+  const location = useLocation();
+  const requestedMovie = new URLSearchParams(location.search).get('editMovie');
+  useEffect(() => { if (requestedMovie) setTab('movies'); }, [location.key, requestedMovie]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-extrabold text-slate-50 sm:text-3xl">{t('admin.title')}</h1>
+        <h1 className="text-2xl font-extrabold text-cinema-strong sm:text-3xl">{t('admin.title')}</h1>
       </header>
 
       <nav className="mb-6 flex gap-1 overflow-x-auto rounded-xl border border-cinema-border bg-cinema-panel/60 p-1" role="tablist">
@@ -67,7 +72,7 @@ export default function AdminPanel() {
             aria-selected={tab === key}
             onClick={() => setTab(key)}
             className={`shrink-0 cursor-pointer rounded-lg px-4 py-2 text-sm font-bold transition ${
-              tab === key ? 'bg-cinema-amber text-cinema-black shadow-glow' : 'text-slate-300 hover:bg-cinema-card hover:text-slate-100'
+              tab === key ? 'bg-cinema-amber text-cinema-ink shadow-glow' : 'text-cinema-soft hover:bg-cinema-card hover:text-cinema-text'
             }`}
           >
             {t(`admin.tab.${key}`)}
@@ -129,7 +134,7 @@ function ConfirmDialog({ state, onClose, busy }: { state: ConfirmState | null; o
         </>
       }
     >
-      <p className="text-sm leading-relaxed text-slate-200">{state?.message}</p>
+      <p className="text-sm leading-relaxed text-cinema-soft">{state?.message}</p>
     </Modal>
   );
 }
@@ -175,6 +180,10 @@ const emptyMovieForm: MovieFormState = {
 
 function MoviesTab() {
   const { t } = useLanguage();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const requestedMovie = searchParams.get('editMovie');
+  const { manager: uploadManager, tasks: uploadTasks } = useUploads();
   const { success, error: errorToast } = useToast();
 
   const [search, setSearch] = useState('');
@@ -197,7 +206,9 @@ function MoviesTab() {
 
   const [masterFile, setMasterFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [jobs, setJobs] = useState<Record<number, TranscodeJobDto>>({});
+  const activeUpload = editing ? uploadTasks.find(task => task.movieId === editing.id && !['ready', 'failed'].includes(task.phase)) : undefined;
+  const conversionBusy = Boolean(activeUpload) || editing?.transcodeStatus === 'processing' && jobs[editing.id]?.phase !== 'unavailable';
 
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -229,7 +240,7 @@ function MoviesTab() {
     setFormOpen(true);
   };
 
-  const openEdit = (movie: MovieDto) => {
+  const openEdit = useCallback((movie: MovieDto) => {
     setEditing(movie);
     setForm({
       title: movie.title,
@@ -246,11 +257,44 @@ function MoviesTab() {
       genreIds: movie.genres.map((g) => g.id),
       actorIds: movie.actors.map((a) => a.id),
       file: null,
-      masterVideoUrl: movie.masterVideoUrl ?? '',
+      masterVideoUrl: /^https?:\/\//i.test(movie.masterVideoUrl ?? '') ? movie.masterVideoUrl! : '',
     });
     setFormError(null);
     setMasterFile(null);
     setFormOpen(true);
+  }, []);
+
+  useEffect(() => {
+    const id = Number(requestedMovie);
+    if (!requestedMovie || !/^[1-9]\d*$/.test(requestedMovie) || !Number.isSafeInteger(id)) return;
+    let cancelled = false;
+    // Load by ID: the uploaded movie may be outside the current table page/filter.
+    mediaService.getById(id).then(movie => {
+      if (!cancelled) openEdit(movie);
+    }).catch(error => {
+      if (!cancelled) errorToast(extractServerMessage(error) ?? t(errorStatusKey(error)));
+    }).finally(() => {
+      if (!cancelled) setSearchParams(params => {
+        const next = new URLSearchParams(params);
+        next.delete('editMovie');
+        return next;
+      }, { replace: true });
+    });
+    return () => { cancelled = true; };
+  }, [requestedMovie, location.key, openEdit, setSearchParams, errorToast, t]);
+
+  const selectMaster = (file: File | null) => {
+    if (file && !/^video\//.test(file.type) && !/\.(mp4|webm|mkv|mov|m4v|avi)$/i.test(file.name)) {
+      errorToast(t('admin.movies.videoUnsupported'));
+      return;
+    }
+    if (file && file.size > 8 * 1024 ** 3) {
+      errorToast(t('admin.movies.videoTooLarge'));
+      return;
+    }
+    setMasterFile(file);
+    setFormError(null);
+    if (file) setForm(prev => ({ ...prev, masterVideoUrl: '' }));
   };
 
   const submitForm = async (e: FormEvent) => {
@@ -262,6 +306,7 @@ function MoviesTab() {
     }
     setFormError(null);
     setSaving(true);
+    let savedMovie: MovieDto | null = null;
     try {
       const payload: MovieUpsertPayload = {
         title: form.title.trim(),
@@ -278,18 +323,38 @@ function MoviesTab() {
         genreIds: form.genreIds,
         actorIds: form.actorIds,
         file: form.file,
-        masterVideoUrl: form.masterVideoUrl.trim(),
+        masterVideoUrl: !masterFile && form.masterVideoUrl.trim() !== editing?.masterVideoUrl
+          ? form.masterVideoUrl.trim() : undefined,
       };
-      if (editing) {
-        await mediaService.updateMovie(editing.id, payload);
-        success(t('admin.movies.updated'));
-      } else {
-        await mediaService.createMovie(payload);
-        success(t('admin.movies.created'));
+      savedMovie = editing
+        ? await mediaService.updateMovie(editing.id, payload)
+        : await mediaService.createMovie(payload);
+      const saved = savedMovie;
+      setEditing(saved);
+      setForm(prev => ({ ...prev, file: null }));
+      if (masterFile || payload.masterVideoUrl) {
+        setJobs(prev => { const next = { ...prev }; delete next[saved.id]; return next; });
       }
-      setFormOpen(false);
-      reload();
+      // Keep the saved movie visible without a list response racing the upload response.
+      setData(prev => prev ? {
+        ...prev,
+        total: prev.total + (editing ? 0 : 1),
+        items: prev.items.some(movie => movie.id === saved.id)
+          ? prev.items.map(movie => movie.id === saved.id ? saved : movie)
+          : [saved, ...prev.items].slice(0, PAGE_SIZE),
+      } : prev);
+      if (masterFile) {
+        uploadManager.start(saved, masterFile);
+        setMasterFile(null);
+        setFormOpen(false);
+        success(t('uploads.started'));
+      } else {
+        reload();
+        success(t(editing ? 'admin.movies.updated' : 'admin.movies.created'));
+        if (savedMovie.transcodeStatus !== 'processing') setFormOpen(false);
+      }
     } catch (err) {
+      if (savedMovie && masterFile) setFormError(t('admin.movies.uploadFailedSaved'));
       errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
     } finally {
       setSaving(false);
@@ -316,41 +381,42 @@ function MoviesTab() {
     });
   };
 
-  /** Uploads the single master video; variants are transcoded server-side. */
-  const uploadMaster = async (file: File) => {
-    if (!editing) return;
-    setUploading(true);
-    try {
-      const updated = await mediaService.uploadMasterVideo(editing.id, file);
-      setEditing(updated);
-      setMasterFile(null);
-      setData((prev) => (prev ? { ...prev, items: prev.items.map((m) => (m.id === updated.id ? updated : m)) } : prev));
-      success(t('admin.movies.masterUploaded'));
-    } catch (err) {
-      errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  // Poll the background transcode job while it runs
+  // Poll visible jobs even after the movie form is closed.
+  const processingIds = [...new Set([
+    ...(data?.items ?? []).filter(m => m.transcodeStatus === 'processing').map(m => m.id),
+    ...uploadTasks.filter(task => task.phase === 'processing').map(task => task.movieId),
+    ...(formOpen && editing?.transcodeStatus === 'processing' ? [editing.id] : []),
+  ])].sort((a, b) => a - b).join(',');
   useEffect(() => {
-    if (!editing || editing.transcodeStatus !== 'processing') return;
-    const timer = setInterval(async () => {
-      try {
-        const job = await mediaService.transcodeStatus(editing.id);
-        if (job.status !== 'processing') {
-          const updated = await mediaService.getById(editing.id);
-          setEditing(updated);
-          setData((prev) => (prev ? { ...prev, items: prev.items.map((m) => (m.id === updated.id ? updated : m)) } : prev));
-          success(job.status === 'ready' ? t('admin.movies.transcodeReady') : t('admin.movies.transcodeFailed'));
+    if (!processingIds) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const synced = new Map<number, string>();
+    const poll = async () => {
+      await Promise.allSettled(processingIds.split(',').map(async id => {
+        const job = await mediaService.transcodeStatus(Number(id));
+        if (cancelled) return;
+        setJobs(prev => ({ ...prev, [job.movieId]: job }));
+        const terminal = job.status === 'ready' || job.status === 'failed';
+        const signature = `${job.status}:${job.qualities.join(',')}`;
+        if ((terminal || job.qualities.length > 0) && synced.get(job.movieId) !== signature) {
+          const updated = await mediaService.getById(job.movieId);
+          if (cancelled) return;
+          synced.set(job.movieId, signature);
+          setEditing(prev => prev?.id === updated.id ? updated : prev);
+          setData(prev => prev ? { ...prev, items: prev.items.map(m => m.id === updated.id ? updated : m) } : prev);
+          if (job.status === 'ready') success(t('admin.movies.transcodeReady'));
+          else if (job.status === 'failed') errorToast(t('admin.movies.transcodeFailed'));
         }
-      } catch {
-        /* keep polling; next tick may succeed */
-      }
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [editing, t, success]);
+      }));
+      if (!cancelled) timer = setTimeout(poll, 1500);
+    };
+    void poll();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [processingIds, t, success, errorToast]);
+
+  const finishedUploads = uploadTasks.filter(task => task.phase === 'ready' || task.phase === 'failed').map(task => task.key + task.phase).join(',');
+  useEffect(() => { if (finishedUploads) reload(); }, [finishedUploads]);
 
   const toggleId = (list: number[], id: number): number[] =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -368,7 +434,7 @@ function MoviesTab() {
             ) : null}
           </div>
           <div className="min-w-0">
-            <p className="truncate font-semibold text-slate-100">{m.title}</p>
+            <p className="truncate font-semibold text-cinema-text">{m.title}</p>
             <p className="truncate text-xs text-cinema-muted">#{m.id}</p>
           </div>
         </div>
@@ -396,6 +462,15 @@ function MoviesTab() {
       className: 'hidden sm:table-cell',
     },
     {
+      key: 'transcodeStatus',
+      label: t('admin.movies.masterVideo'),
+      render: (m) => {
+        const task = uploadTasks.find(task => task.movieId === m.id && !['ready', 'failed'].includes(task.phase));
+        return task ? <ProgressBar label={t(`uploads.phase.${task.phase}`)} progress={task.phase === 'hashing' ? task.hashProgress : task.phase === 'processing' ? task.job?.progress ?? null : Math.floor(task.loaded / task.size * 100)} />
+          : <TranscodeProgress movie={m} job={jobs[m.id]} compact />;
+      },
+    },
+    {
       key: 'availableQualities',
       label: t('player.quality'),
       render: (m) => <span className="text-xs text-cinema-muted">{m.availableQualities.join(' / ') || '—'}</span>,
@@ -420,7 +495,7 @@ function MoviesTab() {
           aria-label={t('common.search')}
         />
         <span className="flex-1 text-sm text-cinema-muted">{data ? t('catalog.foundCount', { count: data.total }) : ''}</span>
-        <button type="button" onClick={openCreate} className={primaryBtn}>
+        <button type="button" onClick={openCreate} className={primaryBtn} disabled={saving}>
           + {t('admin.movies.add')}
         </button>
       </div>
@@ -449,8 +524,9 @@ function MoviesTab() {
                 <button
                   type="button"
                   onClick={() => openEdit(m)}
+                  disabled={saving}
                   aria-label={t('common.edit')}
-                  className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-slate-300 transition hover:border-cinema-amber/60 hover:text-cinema-amber"
+                  className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-cinema-soft transition hover:border-cinema-amber/60 hover:text-cinema-accent"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" strokeLinecap="round" strokeLinejoin="round" />
@@ -459,8 +535,9 @@ function MoviesTab() {
                 <button
                   type="button"
                   onClick={() => deleteMovie(m)}
+                  disabled={saving || m.transcodeStatus === 'processing'}
                   aria-label={t('common.delete')}
-                  className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-slate-300 transition hover:border-cinema-red/60 hover:text-cinema-red"
+                  className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-cinema-soft transition hover:border-cinema-red/60 hover:text-cinema-red"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -488,7 +565,7 @@ function MoviesTab() {
       {/* create / edit modal */}
       <Modal
         open={formOpen}
-        onClose={() => setFormOpen(false)}
+        onClose={() => { if (!saving) setFormOpen(false); }}
         wide
         title={editing ? t('admin.movies.editTitle') : t('admin.movies.createTitle')}
         footer={
@@ -503,8 +580,9 @@ function MoviesTab() {
         }
       >
         <form id="movie-form" onSubmit={submitForm} className="space-y-4">
+          <fieldset disabled={saving} className="space-y-4">
           {formError && (
-            <p className="rounded-lg border border-cinema-red/50 bg-cinema-red/10 px-3 py-2 text-sm text-red-200">{formError}</p>
+            <p className="rounded-lg border border-cinema-red/50 bg-cinema-red/10 px-3 py-2 text-sm text-cinema-error">{formError}</p>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -631,8 +709,8 @@ function MoviesTab() {
                   aria-pressed={form.genreIds.includes(g.id)}
                   className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition ${
                     form.genreIds.includes(g.id)
-                      ? 'border-cinema-amber bg-cinema-amber/15 text-cinema-amber'
-                      : 'border-cinema-border text-slate-300 hover:border-cinema-amber/50'
+                      ? 'border-cinema-amber bg-cinema-amber/15 text-cinema-accent'
+                      : 'border-cinema-border text-cinema-soft hover:border-cinema-amber/50'
                   }`}
                 >
                   {g.name}
@@ -646,7 +724,7 @@ function MoviesTab() {
             <span className={labelClass}>{t('admin.movies.actors')}</span>
             <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-cinema-border bg-cinema-black/40 p-2">
               {actors.map((a) => (
-                <label key={a.id} className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-slate-200 transition hover:bg-cinema-card">
+                <label key={a.id} className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-cinema-soft transition hover:bg-cinema-card">
                   <input
                     type="checkbox"
                     checked={form.actorIds.includes(a.id)}
@@ -692,126 +770,64 @@ function MoviesTab() {
             </div>
           </div>
 
-          {/* master video (edit only — needs an existing movie id) */}
-          {editing ? (
-            <div className="rounded-xl border border-cinema-border bg-cinema-black/40 p-4">
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <p className="text-xs font-bold uppercase tracking-wide text-cinema-muted">{t('admin.movies.masterVideo')}</p>
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                    editing.transcodeStatus === 'ready'
-                      ? 'bg-emerald-900/50 text-emerald-300'
-                      : editing.transcodeStatus === 'processing'
-                        ? 'animate-pulse bg-amber-900/50 text-amber-300'
-                        : editing.transcodeStatus === 'failed'
-                          ? 'bg-cinema-red/20 text-cinema-red'
-                          : 'bg-cinema-card text-cinema-muted'
-                  }`}
-                >
-                  {t(`admin.movies.transcode.${editing.transcodeStatus}`)}
-                </span>
-              </div>
-              <p className="mb-3 text-xs text-cinema-muted">{t('admin.movies.masterHint')}</p>
-
-              {editing.transcodeStatus === 'processing' && (
-                <p className="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
-                  {t('admin.movies.transcodeProcessing')}
-                </p>
-              )}
-
-              {/* drag-and-drop / click-to-browse zone */}
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => document.getElementById('master-file-input')?.click()}
-                onKeyDown={(e) => e.key === 'Enter' && document.getElementById('master-file-input')?.click()}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  const f = e.dataTransfer.files?.[0];
-                  if (f) void uploadMaster(f);
-                }}
-                className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-6 text-center transition ${
-                  dragOver ? 'border-cinema-amber bg-cinema-amber/10' : 'border-cinema-border hover:border-cinema-amber/60'
-                } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
-              >
-                <span className="text-2xl">🎬</span>
-                {masterFile ? (
-                  <>
-                    <p className="text-sm font-semibold text-slate-100">{masterFile.name}</p>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void uploadMaster(masterFile);
-                      }}
-                      disabled={uploading}
-                      className={primaryBtn}
-                    >
-                      {uploading ? t('admin.movies.videoUploading') : t('admin.movies.masterUpload')}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-semibold text-slate-200">{t('admin.movies.masterDropTitle')}</p>
-                    <p className="text-xs text-cinema-muted">{t('admin.movies.masterDropHint')}</p>
-                  </>
-                )}
-                <input
-                  id="master-file-input"
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={(e) => setMasterFile(e.target.files?.[0] ?? null)}
-                />
-              </div>
-
-              {/* master URL alternative */}
-              <div className="mt-3">
-                <label htmlFor="mf-master-url" className={labelClass}>
-                  {t('admin.movies.masterUrl')}
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    id="mf-master-url"
-                    type="url"
-                    value={form.masterVideoUrl}
-                    onChange={(e) => setForm({ ...form, masterVideoUrl: e.target.value })}
-                    placeholder="https://…"
-                    className={inputClass}
-                  />
-                  <span className="hidden items-center text-xs text-cinema-muted sm:flex">{t('admin.movies.masterUrlHint')}</span>
-                </div>
-              </div>
-
-              {/* generated variants */}
-              <div className="mt-3 flex flex-wrap gap-2">
-                {QUALITIES.map((q) => {
-                  const has = editing.availableQualities.includes(q);
-                  return (
-                    <span
-                      key={q}
-                      className={`rounded-full px-3 py-1 text-xs font-bold ${
-                        has ? 'bg-emerald-900/50 text-emerald-300' : 'bg-cinema-card text-cinema-muted'
-                      }`}
-                    >
-                      {has ? '✓' : '—'} {q}
-                    </span>
-                  );
-                })}
-              </div>
+          {/* Video is optional for both new and existing movies. */}
+          <div className="space-y-3 rounded-xl border border-cinema-border bg-cinema-black/40 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-cinema-muted">{t('admin.movies.masterVideo')}</p>
+              <span className="text-xs text-cinema-muted">{t('admin.movies.videoOptional')}</span>
             </div>
-          ) : (
-            <p className="rounded-xl border border-cinema-border bg-cinema-black/40 p-4 text-xs text-cinema-muted">
-              {t('admin.movies.masterCreateHint')}
-            </p>
-          )}
+            <p className="text-xs text-cinema-muted">{t('admin.movies.masterHint')}</p>
+            {activeUpload ? <p className="text-xs text-cinema-accent">{t('uploads.inPanel')}</p> : editing && <TranscodeProgress movie={editing} job={jobs[editing.id]} />}
+            <div
+              role="button"
+              aria-label={t('admin.movies.masterDropTitle')}
+              aria-disabled={saving || conversionBusy}
+              tabIndex={saving || conversionBusy ? -1 : 0}
+              onClick={() => { if (!saving && !conversionBusy) document.getElementById('master-file-input')?.click(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (!saving && !conversionBusy) document.getElementById('master-file-input')?.click();
+                }
+              }}
+              onDragOver={(e) => { e.preventDefault(); if (!saving && !conversionBusy) setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                if (!saving && !conversionBusy) selectMaster(e.dataTransfer.files?.[0] ?? null);
+              }}
+              className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-6 text-center transition ${
+                dragOver ? 'border-cinema-amber bg-cinema-amber/10' : 'border-cinema-border'
+              } ${saving || conversionBusy ? 'opacity-60' : 'cursor-pointer hover:border-cinema-amber/60'}`}
+            >
+              <span className="text-2xl">🎬</span>
+              <p className="break-all text-sm font-semibold text-cinema-soft">{masterFile?.name ?? t('admin.movies.masterDropTitle')}</p>
+              <p className="text-xs text-cinema-muted">{t(masterFile ? 'admin.movies.videoSelected' : 'admin.movies.masterDropHint')}</p>
+            </div>
+            <input
+              id="master-file-input"
+              type="file"
+              accept="video/*,.mkv,.avi,.m4v"
+              className="sr-only"
+              disabled={saving || conversionBusy}
+              onChange={(e) => { selectMaster(e.target.files?.[0] ?? null); e.target.value = ''; }}
+              aria-label={t('admin.movies.videoFile')}
+            />
+            {masterFile && (
+              <button type="button" className={ghostBtn} onClick={() => setMasterFile(null)} disabled={saving}>
+                {t('admin.movies.removeVideoSelection')}
+              </button>
+            )}
+            <div>
+              <label htmlFor="mf-master-url" className={labelClass}>{t('admin.movies.masterUrl')}</label>
+              <input id="mf-master-url" type="url" value={form.masterVideoUrl}
+                onChange={(e) => setForm({ ...form, masterVideoUrl: e.target.value })}
+                disabled={Boolean(masterFile) || conversionBusy} placeholder="https://…" className={inputClass} />
+            </div>
+            <p className="text-xs text-cinema-muted">{t(conversionBusy ? 'admin.movies.conversionBackground' : 'admin.movies.masterCreateHint')}</p>
+          </div>
+          </fieldset>
         </form>
       </Modal>
 
@@ -1232,11 +1248,11 @@ function ActorsTab() {
           {a.photoUrl ? (
             <img src={resolveMediaUrl(a.photoUrl)} alt="" className="h-9 w-9 rounded-full border border-cinema-border object-cover" loading="lazy" />
           ) : (
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-black">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-ink">
               {a.name.charAt(0).toUpperCase()}
             </span>
           )}
-          <span className="font-semibold text-slate-100">{a.name}</span>
+          <span className="font-semibold text-cinema-text">{a.name}</span>
         </div>
       ),
     },
@@ -1410,15 +1426,15 @@ function UsersTab() {
           {u.avatarUrl ? (
             <img src={resolveMediaUrl(u.avatarUrl)} alt="" className="h-8 w-8 shrink-0 rounded-full border border-cinema-border object-cover" loading="lazy" />
           ) : (
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-black">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-ink">
               {u.name.charAt(0).toUpperCase()}
             </span>
           )}
           <div className="min-w-0">
-            <p className="truncate font-semibold text-slate-100">
+            <p className="truncate font-semibold text-cinema-text">
               {u.name}
               {me?.id === u.id && (
-                <span className="ml-2 rounded-full bg-cinema-card px-2 py-0.5 text-[10px] font-bold text-cinema-amber">{t('common.you')}</span>
+                <span className="ml-2 rounded-full bg-cinema-card px-2 py-0.5 text-[10px] font-bold text-cinema-accent">{t('common.you')}</span>
               )}
             </p>
             <p className="truncate text-xs text-cinema-muted">{u.email}</p>
@@ -1435,7 +1451,7 @@ function UsersTab() {
           disabled={me?.id === u.id}
           onChange={(e) => void changeRole(u, e.target.value as Role)}
           aria-label={t('admin.users.role')}
-          className="cursor-pointer rounded-md border border-cinema-border bg-cinema-black/60 px-2 py-1 text-xs font-semibold text-slate-200 accent-cinema-amber disabled:cursor-not-allowed disabled:opacity-50"
+          className="cursor-pointer rounded-md border border-cinema-border bg-cinema-black/60 px-2 py-1 text-xs font-semibold text-cinema-soft accent-cinema-amber disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value="viewer">{t('admin.users.roleViewer')}</option>
           <option value="admin">{t('admin.users.roleAdmin')}</option>
@@ -1448,7 +1464,7 @@ function UsersTab() {
       sortable: true,
       render: (u) => (
         <span
-          className={`rounded-full px-2.5 py-1 text-xs font-bold ${u.isBlocked ? 'bg-cinema-red/15 text-cinema-red' : 'bg-emerald-900/50 text-emerald-300'}`}
+          className={`rounded-full px-2.5 py-1 text-xs font-bold ${u.isBlocked ? 'bg-cinema-red/15 text-cinema-red' : 'bg-cinema-success-surface/50 text-cinema-success'}`}
         >
           {u.isBlocked ? t('admin.users.blocked') : t('admin.users.active')}
         </span>
@@ -1540,7 +1556,7 @@ function UsersTab() {
                   disabled={me?.id === u.id}
                   onClick={() => removeUser(u)}
                   aria-label={t('admin.users.delete')}
-                  className="cursor-pointer rounded-lg border border-cinema-border p-1.5 text-slate-300 transition hover:border-cinema-red/60 hover:text-cinema-red disabled:cursor-default disabled:opacity-30"
+                  className="cursor-pointer rounded-lg border border-cinema-border p-1.5 text-cinema-soft transition hover:border-cinema-red/60 hover:text-cinema-red disabled:cursor-default disabled:opacity-30"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -1616,7 +1632,7 @@ function AnalyticsTab() {
             type="button"
             onClick={() => setIntervalDays(d)}
             className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              intervalDays === d ? 'bg-cinema-amber text-cinema-black' : 'border border-cinema-border text-slate-300 hover:border-cinema-amber/60'
+              intervalDays === d ? 'bg-cinema-amber text-cinema-ink' : 'border border-cinema-border text-cinema-soft hover:border-cinema-amber/60'
             }`}
           >
             {t('admin.analytics.lastDays', { count: d })}
@@ -1632,14 +1648,14 @@ function AnalyticsTab() {
               <span className="text-xs font-bold uppercase tracking-wide text-cinema-muted">{t(`admin.analytics.${c.key}`)}</span>
               <span className="text-2xl">{c.icon}</span>
             </div>
-            <p className="text-3xl font-extrabold text-slate-50">{c.value?.toLocaleString() ?? '—'}</p>
+            <p className="text-3xl font-extrabold text-cinema-strong">{c.value?.toLocaleString() ?? '—'}</p>
           </div>
         ))}
       </div>
 
       {/* top movies */}
       <div>
-        <h2 className="mb-3 text-lg font-bold text-slate-100">{t('admin.analytics.topMovies')}</h2>
+        <h2 className="mb-3 text-lg font-bold text-cinema-text">{t('admin.analytics.topMovies')}</h2>
         <AdminTable
           columns={[
             { key: 'title', label: t('admin.analytics.movie') },
@@ -1654,7 +1670,7 @@ function AnalyticsTab() {
 
       {/* genre popularity (FR-44) */}
       <div>
-        <h2 className="mb-3 text-lg font-bold text-slate-100">{t('admin.analytics.genrePopularity')}</h2>
+        <h2 className="mb-3 text-lg font-bold text-cinema-text">{t('admin.analytics.genrePopularity')}</h2>
         <AdminTable
           columns={[
             { key: 'genre', label: t('admin.analytics.genre'), sortable: true },
@@ -1675,7 +1691,7 @@ function AnalyticsTab() {
 
       {/* revenue by month */}
       <div>
-        <h2 className="mb-3 text-lg font-bold text-slate-100">{t('admin.analytics.revenueByMonth')}</h2>
+        <h2 className="mb-3 text-lg font-bold text-cinema-text">{t('admin.analytics.revenueByMonth')}</h2>
         {data.revenueByMonth.length === 0 ? (
           <EmptyState icon="📉" title={t('admin.analytics.noRevenue')} />
         ) : (

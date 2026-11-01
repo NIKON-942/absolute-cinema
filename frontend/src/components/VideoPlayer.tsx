@@ -306,7 +306,7 @@ export function VideoPlayer({
       onKeyDown={handleKeyDown}
       onMouseMove={bumpControls}
       onTouchStart={bumpControls}
-      className={`group relative aspect-video w-full overflow-hidden rounded-xl bg-black outline-none ring-cinema-amber/70 focus-visible:ring-2 ${className}`}
+      className={`media-surface group relative aspect-video w-full overflow-hidden rounded-xl bg-black outline-none ring-cinema-amber/70 focus-visible:ring-2 ${className}`}
     >
       <video
         ref={videoRef}
@@ -341,7 +341,7 @@ export function VideoPlayer({
           type="button"
           onClick={togglePlay}
           aria-label={t('player.play')}
-          className="absolute inset-0 m-auto flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-cinema-amber/95 text-cinema-black shadow-glow transition hover:scale-105"
+          className="absolute inset-0 m-auto flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-cinema-amber/95 text-cinema-ink shadow-glow transition hover:scale-105"
         >
           <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
             <path d="M8 5.14v14l11-7-11-7z" />
@@ -379,9 +379,9 @@ export function VideoPlayer({
           />
         </div>
 
-        <div className="flex items-center gap-2 text-slate-100 sm:gap-3">
+        <div className="flex items-center gap-2 text-cinema-text sm:gap-3">
           {/* play/pause */}
-          <button type="button" onClick={togglePlay} aria-label={playing ? t('player.pause') : t('player.play')} className="cursor-pointer rounded p-1 transition hover:text-cinema-amber">
+          <button type="button" onClick={togglePlay} aria-label={playing ? t('player.pause') : t('player.play')} className="cursor-pointer rounded p-1 transition hover:text-cinema-accent">
             {playing ? (
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z" /></svg>
             ) : (
@@ -390,14 +390,14 @@ export function VideoPlayer({
           </button>
 
           {/* skip buttons */}
-          <button type="button" onClick={() => seekBy(-10)} aria-label={t('player.back10')} className="hidden cursor-pointer rounded p-1 transition hover:text-cinema-amber sm:block">
+          <button type="button" onClick={() => seekBy(-10)} aria-label={t('player.back10')} className="hidden cursor-pointer rounded p-1 transition hover:text-cinema-accent sm:block">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M3 12a9 9 0 1 0 3-6.7L3 8" strokeLinecap="round" />
               <path d="M3 3v5h5" strokeLinecap="round" strokeLinejoin="round" />
               <text x="8.5" y="16" fontSize="8" fill="currentColor" stroke="none" fontWeight="bold">10</text>
             </svg>
           </button>
-          <button type="button" onClick={() => seekBy(10)} aria-label={t('player.forward10')} className="hidden cursor-pointer rounded p-1 transition hover:text-cinema-amber sm:block">
+          <button type="button" onClick={() => seekBy(10)} aria-label={t('player.forward10')} className="hidden cursor-pointer rounded p-1 transition hover:text-cinema-accent sm:block">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 12a9 9 0 1 1-3-6.7L21 8" strokeLinecap="round" />
               <path d="M21 3v5h-5" strokeLinecap="round" strokeLinejoin="round" />
@@ -411,7 +411,7 @@ export function VideoPlayer({
               type="button"
               onClick={() => { const next = !muted; setMuted(next); if (videoRef.current) videoRef.current.muted = next; }}
               aria-label={t('player.mute')}
-              className="cursor-pointer rounded p-1 transition hover:text-cinema-amber"
+              className="cursor-pointer rounded p-1 transition hover:text-cinema-accent"
             >
               {muted || volume === 0 ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -438,7 +438,7 @@ export function VideoPlayer({
           </div>
 
           {/* time */}
-          <span className="select-none text-xs font-medium tabular-nums text-slate-200 sm:text-sm">
+          <span className="select-none text-xs font-medium tabular-nums text-cinema-soft sm:text-sm">
             {formatDuration(displayTime)} / {formatDuration(duration)}
           </span>
 
@@ -473,12 +473,12 @@ export function VideoPlayer({
                         }
                         className={`flex cursor-pointer items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold transition ${
                           q === quality
-                            ? 'bg-cinema-amber text-cinema-black'
+                            ? 'bg-cinema-amber text-cinema-ink'
                             : locked
-                              ? 'text-slate-400 hover:text-slate-200'
+                              ? 'text-cinema-muted hover:text-cinema-soft'
                               : ready
-                                ? 'text-slate-300 hover:text-white'
-                                : 'cursor-not-allowed text-slate-500/50'
+                                ? 'text-cinema-soft hover:text-white'
+                                : 'cursor-not-allowed text-cinema-muted/50'
                         }`}
                       >
                         {q}
@@ -496,7 +496,7 @@ export function VideoPlayer({
                 onClick={() => setSpeedOpen((v) => !v)}
                 aria-label={t('player.speed')}
                 aria-expanded={speedOpen}
-                className="cursor-pointer rounded px-1.5 py-1 text-xs font-bold transition hover:text-cinema-amber"
+                className="cursor-pointer rounded px-1.5 py-1 text-xs font-bold transition hover:text-cinema-accent"
               >
                 {speed}x
               </button>
@@ -508,7 +508,7 @@ export function VideoPlayer({
                       type="button"
                       onClick={() => changeSpeed(s)}
                       className={`block w-full cursor-pointer px-3 py-1.5 text-left text-xs transition hover:bg-cinema-card ${
-                        s === speed ? 'text-cinema-amber' : 'text-slate-200'
+                        s === speed ? 'text-cinema-accent' : 'text-cinema-soft'
                       }`}
                     >
                       {s}x
@@ -519,7 +519,7 @@ export function VideoPlayer({
             </div>
 
             {/* fullscreen */}
-            <button type="button" onClick={toggleFullscreen} aria-label={t('player.fullscreen')} className="cursor-pointer rounded p-1 transition hover:text-cinema-amber">
+            <button type="button" onClick={toggleFullscreen} aria-label={t('player.fullscreen')} className="cursor-pointer rounded p-1 transition hover:text-cinema-accent">
               {fullscreen ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M8 3v3a2 2 0 0 1-2 2H3M16 3v3a2 2 0 0 0 2 2h3M8 21v-3a2 2 0 0 0-2-2H3M16 21v-3a2 2 0 0 1 2-2h3" strokeLinecap="round" />

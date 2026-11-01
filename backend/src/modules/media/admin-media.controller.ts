@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'fs';
 import { IsOptional, IsString } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -116,8 +117,7 @@ export class AdminMediaController {
           cb(null, MASTERS_DIR);
         },
         filename: (_req, file, cb) => {
-          const title = String(_req.body?.title ?? 'master');
-          cb(null, `${slugify(title)}-master${extname(file.originalname)}`);
+          cb(null, `${randomUUID()}-master${extname(file.originalname)}`);
         },
       }),
       fileFilter: videoFilter,

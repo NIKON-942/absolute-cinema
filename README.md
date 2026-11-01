@@ -6,16 +6,16 @@ A Video-on-Demand streaming platform: media catalog, HTTP Range video streaming,
 
 | Layer          | Technology                                                            |
 | -------------- | --------------------------------------------------------------------- |
-| Frontend       | React 18 + Vite, TypeScript 5.4, Tailwind CSS                         |
-| Backend        | NestJS 10, TypeScript 5.4, TypeORM, Passport (JWT + Google OAuth 2.0) |
-| Database       | PostgreSQL 14                                                         |
+| Frontend       | React 19 + Vite 8, TypeScript 5.9, Tailwind CSS 3                     |
+| Backend        | NestJS 12 / Express 5, TypeScript 5.9, TypeORM, Passport (JWT + Google OAuth 2.0) |
+| Database       | PostgreSQL 17 (local and deployment)                                 |
 | Infrastructure | Docker Compose (PostgreSQL, Jaeger, Mailpit)                          |
-| Payments       | Stripe SDK with built-in mock mode                                    |
+| Payments       | Stripe SDK 23 with built-in mock mode                                 |
 | Email          | Nodemailer SMTP (Mailpit in dev)                                      |
 
 ## Quick start
 
-Prerequisites: Node.js 22.15+, Docker, FFmpeg (optional — only for generating demo video files).
+Prerequisites: Node.js 24 LTS (see `.nvmrc`), Docker, FFmpeg (optional — only for generating demo video files).
 
 ```bash
 # 1. Install dependencies (root + backend + frontend)
@@ -34,6 +34,19 @@ npm run dev
 ```
 
 Services:
+
+For everyday local development, open Docker Desktop and run from the repository root:
+
+```bash
+npm run dev
+```
+
+The automatic `predev` hook starts PostgreSQL, Mailpit and Jaeger, waits for
+readiness, and applies pending migrations before starting the API and Vite in
+watch mode. Existing environment files and installed dependencies are required;
+demo seeding and video generation are only part of the initial setup above.
+Press Ctrl+C to stop the API and Vite. To also stop the Docker services without
+deleting their data, run `npm run docker:stop`.
 
 | Service             | URL                            |
 | ------------------- | ------------------------------ |
@@ -65,7 +78,7 @@ Business rules implemented per `docs/6`: pending orders time out after **20 minu
 
 - **Auth** — email/password (bcrypt, ≥8 chars), JWT sessions, Google OAuth 2.0, password reset with 24h single-use tokens.
 - **Catalog** — search & filters (title, genre, year, country, age rating), sorting, pagination, favorites, 1–10 ratings.
-- **Streaming** — HTTP Range requests (206 Partial Content), 480p/720p/1080p quality selection, saved watch progress, subscription-gated access. Renditions become watchable progressively while higher qualities are still transcoding — the Watch page live-polls availability, plays the best ready quality, and disables not-yet-processed ones; stream requests for a missing quality degrade to the best ready rendition. Admins upload **one master video** (drag-and-drop file or URL); a background `fluent-ffmpeg` job transcodes it into every target resolution (never upscaling) and links the variants to the movie automatically.
+- **Streaming** — HTTP Range requests (206 Partial Content), 480p/720p/1080p quality selection, saved watch progress, subscription-gated access. Renditions become watchable progressively while higher qualities are still transcoding — the Watch page live-polls availability, plays the best ready quality, and disables not-yet-processed ones; stream requests for a missing quality degrade to the best ready rendition. Admins upload **one master video** (drag-and-drop file or URL); a background FFmpeg/ffprobe job transcodes it into every target resolution (never upscaling) and links the variants to the movie automatically.
 - **Plan enforcement** — limits are strict and server-side: Basic streams on **1 device** at up to **720p**, Plus on **2 devices** at up to **1080p**, Premium on **4 devices** (1080p, priority support). The SPA heartbeats a per-browser `deviceId` while playing; a stream request for a quality above the plan returns `402 UPGRADE_REQUIRED` (the UI shows an upgrade prompt), and one more device than allowed returns `409 DEVICE_LIMIT` (with a device manager on the profile page; idle slots auto-release after 5 minutes).
 - **Recommendations** — content-based filtering over genres/director/actors/keywords weighted by your ratings & history; popular/new fallback for cold start.
 - **Subscriptions** — Basic/Plus/Premium, monthly/yearly billing, automated access control with per-tier device-count and quality ceilings.
@@ -104,8 +117,7 @@ is set to `true` and the GitHub environment `development` is configured.
 
 Production-style containers use a separate PostgreSQL 17 volume and persistent
 media storage. Do not attach an existing PostgreSQL 14 data volume to PostgreSQL 17.
-The separate **Dependency audit** workflow fails at the high severity threshold;
-it is not a deployment gate. After dependency updates, frontend has no audit
-findings and backend has 9 moderate findings, with no high or critical findings
-(snapshot: 2026-11-01). See [dependency upgrade notes](docs/dependency-upgrades.md)
-for the pinned transitive fixes and remaining work.
+The separate **Dependency audit** workflow checks root, backend and frontend at
+the high severity threshold; it is not a deployment gate. Root, backend and frontend have
+no audit findings (snapshot: 2026-11-01). See [dependency upgrade notes](docs/dependency-upgrades.md)
+for the earlier transitive fixes and remaining work.

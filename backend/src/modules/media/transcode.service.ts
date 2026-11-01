@@ -1,180 +1,159 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import ffmpeg from 'fluent-ffmpeg';
-import { mkdirSync } from 'fs';
+import { randomUUID } from 'node:crypto';
+import { basename, join } from 'node:path';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { Repository } from 'typeorm';
 import { MovieEntity, TranscodeStatusEnum } from './entities/movie.entity';
 import { MASTERS_DIR, VIDEOS_DIR } from './media.constants';
+import { canCopyVideo, prepareWebAudio, probeMedia, renderWebVideo } from './media-processing';
+import type { MediaProbe, ProcessingProgress } from './media-processing';
 
-interface TargetSpec {
-  quality: '480p' | '720p' | '1080p';
-  height: number;
-}
-
-/** Targets ordered low→high; only those <= master height are rendered. */
-const TARGETS: TargetSpec[] = [
-  { quality: '480p', height: 480 },
-  { quality: '720p', height: 720 },
-  { quality: '1080p', height: 1080 },
+type Quality = '480p' | '720p' | '1080p';
+const TARGETS: Array<{ quality: Quality; height: number; column: 'video480' | 'video720' | 'video1080' }> = [
+  { quality: '480p', height: 480, column: 'video480' },
+  { quality: '720p', height: 720, column: 'video720' },
+  { quality: '1080p', height: 1080, column: 'video1080' },
 ];
-
-const QUALITY_COLUMN: Record<TargetSpec['quality'], 'video480' | 'video720' | 'video1080'> = {
-  '480p': 'video480',
-  '720p': 'video720',
-  '1080p': 'video1080',
-};
-
+export interface RenditionProgress {
+  quality: Quality; progress: number | null; state: 'queued' | 'converting' | 'finalizing' | 'ready' | 'failed'; mode: 'copy' | 'encode';
+}
 export interface TranscodeJobInfo {
-  movieId: number;
-  status: TranscodeStatusEnum;
-  qualities: string[];
+  movieId: number; status: TranscodeStatusEnum; qualities: string[]; progress: number | null;
+  phase: 'queued' | 'probing' | 'audio' | 'converting' | 'finalizing' | 'ready' | 'failed' | 'unavailable' | 'none';
+  currentQuality: Quality | null; targetQualities: Quality[]; renditions: RenditionProgress[];
+  startedAt: string | null; finishedAt: string | null; elapsedSeconds: number; remainingSeconds: number | null;
   error?: string;
 }
 
-/**
- * Background transcoding pipeline: a single master upload is rendered into
- * 480p/720p/1080p H.264/AAC MP4s (faststart for HTTP Range streaming) and the
- * resulting file paths are linked back to the movie record. Jobs run
- * sequentially in-process; enough for this deployment's scale.
- */
+/** One FFmpeg process at a time. Audio is prepared once; compatible original
+ * video is remuxed rather than encoded. New movies publish complete renditions
+ * incrementally; replacements keep the old video until every rendition succeeds. */
 @Injectable()
 export class TranscodeService {
   private readonly logger = new Logger(TranscodeService.name);
   private readonly queue: Array<() => Promise<void>> = [];
   private draining = false;
-
-  /** Latest known state per movie, exposed to admin polling. */
   private readonly jobs = new Map<number, TranscodeJobInfo>();
-
-  constructor(
-    @InjectRepository(MovieEntity)
-    private moviesRepo: Repository<MovieEntity>,
-  ) {}
+  private readonly lastProgress = new Map<number, number>();
+  constructor(@InjectRepository(MovieEntity) private moviesRepo: Repository<MovieEntity>) {}
 
   jobInfo(movieId: number): TranscodeJobInfo | undefined {
-    return this.jobs.get(movieId);
+    const info = this.jobs.get(movieId);
+    if (info?.startedAt) {
+      info.elapsedSeconds = Math.max(0, ((info.finishedAt ? Date.parse(info.finishedAt) : Date.now()) - Date.parse(info.startedAt)) / 1000);
+      const fresh = Date.now() - (this.lastProgress.get(movieId) ?? 0) < 15_000;
+      info.remainingSeconds = info.status === TranscodeStatusEnum.PROCESSING && info.phase !== 'finalizing' && fresh
+        && info.elapsedSeconds >= 10 && info.progress !== null && info.progress > 0
+        ? Math.max(1, Math.ceil(info.elapsedSeconds * (100 - info.progress) / info.progress)) : null;
+    }
+    return info;
   }
-
-  /** Registers a job and starts draining the queue in the background. */
-  enqueue(movieId: number, masterSource: string): void {
-    this.jobs.set(movieId, {
-      movieId,
-      status: TranscodeStatusEnum.PROCESSING,
-      qualities: [],
-    });
-    // The master changed, so previous renditions are stale (and their files
-    // are about to be overwritten) — unlink them before anything renders.
-    void this.moviesRepo.update(movieId, {
-      transcodeStatus: TranscodeStatusEnum.PROCESSING,
-      video480: null,
-      video720: null,
-      video1080: null,
-    });
-    this.queue.push(() => this.run(movieId, masterSource));
-    void this.drain();
+  async enqueue(movieId: number, masterSource: string): Promise<void> {
+    if (this.jobs.get(movieId)?.status === TranscodeStatusEnum.PROCESSING) throw new ConflictException('This movie already has a video conversion in progress');
+    const info: TranscodeJobInfo = { movieId, status: TranscodeStatusEnum.PROCESSING, qualities: [], progress: null,
+      phase: 'queued', currentQuality: null, targetQualities: [], renditions: [], startedAt: null, finishedAt: null,
+      elapsedSeconds: 0, remainingSeconds: null };
+    this.jobs.set(movieId, info);
+    try { await this.moviesRepo.update(movieId, { transcodeStatus: TranscodeStatusEnum.PROCESSING }); }
+    catch (error) { this.jobs.delete(movieId); throw error; }
+    this.queue.push(() => this.run(movieId, masterSource)); void this.drain();
   }
-
   private async drain(): Promise<void> {
     if (this.draining) return;
     this.draining = true;
-    try {
-      while (this.queue.length > 0) {
-        const job = this.queue.shift();
-        if (!job) break;
-        await job().catch((err) => this.logger.error(`Job failed: ${err.message}`));
-      }
-    } finally {
-      this.draining = false;
-    }
+    try { while (this.queue.length) await this.queue.shift()!().catch(error => this.logger.error(`Job failed: ${error.message}`)); }
+    finally { this.draining = false; }
   }
-
   private async run(movieId: number, masterSource: string): Promise<void> {
-    const movie = await this.moviesRepo.findOne({ where: { id: movieId } });
-    if (!movie) return;
-
-    const input = /^https?:\/\//i.test(masterSource)
-      ? masterSource
-      : `${MASTERS_DIR}/${masterSource}`;
-
+    const outputs: string[] = []; const published = new Set<string>(); let scratch: string | undefined;
+    const input = /^https?:\/\//i.test(masterSource) ? masterSource : join(MASTERS_DIR, masterSource);
+    const info = this.jobs.get(movieId)!;
+    info.startedAt = new Date().toISOString(); info.phase = 'probing';
     try {
-      mkdirSync(VIDEOS_DIR, { recursive: true });
+      const movie = await this.moviesRepo.findOne({ where: { id: movieId } });
+      if (!movie) throw new Error('Movie no longer exists');
+      const isNew = !movie.video480 && !movie.video720 && !movie.video1080;
+      await mkdir(VIDEOS_DIR, { recursive: true }); await mkdir(MASTERS_DIR, { recursive: true });
       const meta = await this.probe(input);
-      const baseSlug = movie.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-      const targets = TARGETS.filter((t) => t.height <= meta.height || meta.height === 0);
-      const rendered: Array<{ quality: string; file: string }> = [];
-
-      for (const target of targets) {
-        const out = `${VIDEOS_DIR}/${baseSlug}-${target.quality}.mp4`;
-        await this.render(input, out, target.height);
-        const file = `${baseSlug}-${target.quality}.mp4`;
-        rendered.push({ quality: target.quality, file });
-        // Link each rendition the moment it finishes so the movie is
-        // watchable (at the qualities done so far) while the rest render.
-        const patch: Partial<
-          Pick<MovieEntity, 'video480' | 'video720' | 'video1080'>
-        > = {};
-        patch[QUALITY_COLUMN[target.quality]] = file;
-        await this.moviesRepo.update(movieId, patch);
-        const info = this.jobs.get(movieId);
-        if (info) info.qualities = rendered.map((r) => r.quality);
+      const targets = TARGETS.filter(target => target.height <= meta.height);
+      if (!targets.length) throw new Error('Master video must be at least 480 pixels high');
+      info.targetQualities = targets.map(target => target.quality);
+      info.renditions = targets.map(target => ({ quality: target.quality, state: 'queued', progress: 0, mode: canCopyVideo(meta, target.height) ? 'copy' : 'encode' }));
+      const audioWeight = meta.audio ? 0.08 : 0;
+      const weights = targets.map(target => canCopyVideo(meta, target.height) ? 0.04 : (target.height / 1080) ** 2);
+      const total = audioWeight + weights.reduce((sum, weight) => sum + weight, 0);
+      let reportedWork = -1;
+      const report = (work: number) => {
+        if (!meta.duration) return;
+        const next = Math.min(99, Math.floor(work / total * 100));
+        if (work > reportedWork) { this.lastProgress.set(movieId, Date.now()); reportedWork = work; }
+        info.progress = Math.max(info.progress ?? 0, next);
+      };
+      let done = 0; let audio: string | undefined;
+      info.progress = meta.duration ? 0 : null;
+      if (meta.audio) {
+        scratch = await mkdtemp(join(MASTERS_DIR, '.audio-')); audio = join(scratch, 'web.m4a'); info.phase = 'audio';
+        await prepareWebAudio(input, audio, meta, seconds => report(audioWeight * (meta.duration ? Math.min(1, seconds / meta.duration) : 0)));
+        done = audioWeight; report(done);
       }
-
-      await this.moviesRepo.update(movieId, {
-        video480: rendered.find((r) => r.quality === '480p')?.file ?? null,
-        video720: rendered.find((r) => r.quality === '720p')?.file ?? null,
-        video1080: rendered.find((r) => r.quality === '1080p')?.file ?? null,
-        transcodeStatus: TranscodeStatusEnum.READY,
-      });
-      const info = this.jobs.get(movieId);
-      if (info) {
-        info.status = TranscodeStatusEnum.READY;
-        info.qualities = rendered.map((r) => r.quality);
+      const base = `${movieId}-${randomUUID()}-${movie.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100)}`;
+      const rendered: Array<{ quality: Quality; file: string }> = [];
+      for (const [index, target] of targets.entries()) {
+        const rendition = info.renditions[index]; info.phase = 'converting'; info.currentQuality = target.quality; rendition.state = 'converting';
+        const file = `${base}-${target.quality}.mp4`; const out = join(VIDEOS_DIR, file); outputs.push(out);
+        await this.render(input, out, target.height, (seconds, finalizing) => {
+          const fraction = meta.duration ? Math.min(1, Math.max(0, seconds / meta.duration)) : 0;
+          if (finalizing || fraction >= 0.999) { rendition.state = 'finalizing'; info.phase = 'finalizing'; }
+          rendition.progress = meta.duration ? Math.max(rendition.progress ?? 0, Math.min(99, Math.floor(fraction * 100))) : null;
+          report(done + weights[index] * fraction);
+        }, { meta, audio });
+        const verified = await this.probe(out);
+        if (verified.height !== target.height) throw new Error(`Unexpected height for ${target.quality}`);
+        if (isNew) {
+          const patch: Partial<MovieEntity> = { masterVideo: masterSource }; patch[target.column] = file;
+          const publication = await this.moviesRepo.update(movieId, patch);
+          if (publication?.affected === 0) throw new Error('Movie no longer exists');
+          published.add(out);
+        }
+        rendered.push({ quality: target.quality, file }); info.qualities = rendered.map(r => r.quality);
+        rendition.state = 'ready'; rendition.progress = 100; done += weights[index]; report(done);
       }
-      this.logger.log(
-        `Movie #${movieId} transcoded: ${rendered.map((r) => r.quality).join(', ') || 'nothing (master too small)'}`,
-      );
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      info.phase = 'finalizing'; info.currentQuality = null;
+      const result = await this.moviesRepo.update(movieId, { masterVideo: masterSource,
+        video480: rendered.find(r => r.quality === '480p')?.file ?? null,
+        video720: rendered.find(r => r.quality === '720p')?.file ?? null,
+        video1080: rendered.find(r => r.quality === '1080p')?.file ?? null, transcodeStatus: TranscodeStatusEnum.READY });
+      if (result?.affected === 0) throw new Error('Movie no longer exists');
+      outputs.forEach(path => published.add(path));
+      info.status = TranscodeStatusEnum.READY; info.phase = 'ready'; info.progress = 100;
+      const previous = [movie.video480, movie.video720, movie.video1080].filter((file): file is string => Boolean(file) && basename(file!) === file);
+      await Promise.all(previous.map(file => rm(join(VIDEOS_DIR, file), { force: true }).catch(() => undefined)));
+      if (movie.masterVideo && movie.masterVideo !== masterSource && basename(movie.masterVideo) === movie.masterVideo) await rm(join(MASTERS_DIR, movie.masterVideo), { force: true }).catch(() => undefined);
+      this.logger.log(`Movie #${movieId} transcoded: ${rendered.map(r => r.quality).join(', ')}`);
+    } catch (error) {
+      await Promise.all(outputs.filter(path => !published.has(path)).map(path => rm(path, { force: true }).catch(() => undefined)));
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Transcode failed for movie #${movieId}: ${message}`);
-      await this.moviesRepo
-        .update(movieId, { transcodeStatus: TranscodeStatusEnum.FAILED })
-        .catch(() => undefined);
-      const info = this.jobs.get(movieId);
-      if (info) {
-        info.status = TranscodeStatusEnum.FAILED;
-        info.error = message;
-      }
+      await this.moviesRepo.update(movieId, { transcodeStatus: TranscodeStatusEnum.FAILED }).catch(() => undefined);
+      const current = info.renditions.find(r => r.quality === info.currentQuality); if (current) current.state = 'failed';
+      info.status = TranscodeStatusEnum.FAILED; info.phase = 'failed'; info.currentQuality = null; info.error = message;
+    } finally {
+      info.finishedAt = new Date().toISOString(); this.jobInfo(movieId);
+      if (scratch) await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
     }
   }
-
-  /** Resolves the input dimensions so we never upscale a small master. */
-  private probe(input: string): Promise<{ height: number }> {
-    return new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(input, (err, data) => {
-        if (err) return reject(err);
-        const video = (data.streams ?? []).find((s) => s.codec_type === 'video');
-        resolve({ height: video?.height ?? 0 });
-      });
-    });
-  }
-
-  private render(input: string, output: string, targetHeight: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      ffmpeg(input)
-        .videoFilters(
-          `scale=-2:'min(${targetHeight},ih)':force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2`,
-        )
-        .videoCodec('libx264')
-        .outputOptions(['-crf 23', '-preset veryfast', '-movflags +faststart'])
-        .audioCodec('aac')
-        .audioBitrate('128k')
-        .output(output)
-        .on('error', (err) => reject(err))
-        .on('end', () => resolve())
-        .run();
-    });
+  async probe(input: string): Promise<MediaProbe> { return probeMedia(input); }
+  private async render(input: string, output: string, height: number, progress?: ProcessingProgress, prepared?: { meta: MediaProbe; audio?: string }) {
+    if (prepared) return renderWebVideo(input, output, height, prepared.meta, prepared.audio, progress);
+    const meta = await this.probe(input); let scratch: string | undefined;
+    try {
+      let audio: string | undefined;
+      if (meta.audio) {
+        await mkdir(MASTERS_DIR, { recursive: true }); scratch = await mkdtemp(join(MASTERS_DIR, '.audio-'));
+        audio = join(scratch, 'web.m4a'); await prepareWebAudio(input, audio, meta);
+      }
+      await renderWebVideo(input, output, height, meta, audio, progress);
+    } finally { if (scratch) await rm(scratch, { recursive: true, force: true }); }
   }
 }

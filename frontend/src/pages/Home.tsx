@@ -88,7 +88,7 @@ export default function Home() {
     return (
       <div className="mx-auto max-w-7xl px-4 py-20 text-center">
         <p className="mb-4 text-lg text-cinema-muted">{t('errors.server')}</p>
-        <Link to="/" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-black">
+        <Link to="/" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink">
           {t('common.retry')}
         </Link>
       </div>
@@ -151,17 +151,17 @@ export default function Home() {
               )}
             </div>
             <div className="max-w-xl">
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-cinema-amber">{t('home.featured')}</p>
-              <h1 className="mb-3 text-3xl font-extrabold text-slate-50 sm:text-5xl">{hero.title}</h1>
-              <p className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-300">
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-cinema-accent">{t('home.featured')}</p>
+              <h1 className="mb-3 text-3xl font-extrabold text-cinema-strong sm:text-5xl">{hero.title}</h1>
+              <p className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-cinema-soft">
                 {hero.year > 0 && <span>{hero.year}</span>}
-                {hero.averageRating > 0 && <span className="font-bold text-cinema-amber">★ {hero.averageRating.toFixed(1)}</span>}
+                {hero.averageRating > 0 && <span className="font-bold text-cinema-accent">★ {hero.averageRating.toFixed(1)}</span>}
                 {hero.ageRating && <span className="rounded border border-cinema-border px-1.5 py-0.5 text-xs">{hero.ageRating}</span>}
                 {hero.genres.slice(0, 3).map((g) => (
                   <span key={g.id} className="text-cinema-muted">{g.name}</span>
                 ))}
               </p>
-              <p className="mb-6 line-clamp-3 text-sm leading-relaxed text-slate-300 sm:text-base">{hero.description}</p>
+              <p className="mb-6 line-clamp-3 text-sm leading-relaxed text-cinema-soft sm:text-base">{hero.description}</p>
               <div className="flex flex-wrap gap-3">
                 <Link
                   to={`/watch/${hero.id}`}
@@ -172,7 +172,7 @@ export default function Home() {
                 </Link>
                 <Link
                   to={`/movie/${hero.id}`}
-                  className="rounded-lg border border-cinema-border bg-cinema-black/60 px-6 py-3 font-semibold text-slate-100 backdrop-blur transition hover:border-cinema-amber/60"
+                  className="rounded-lg border border-cinema-border bg-cinema-black/60 px-6 py-3 font-semibold text-cinema-text backdrop-blur transition hover:border-cinema-amber/60"
                 >
                   {t('home.moreInfo')}
                 </Link>
@@ -210,23 +210,23 @@ export default function Home() {
           <section className="mb-10 flex flex-col items-start gap-4 rounded-2xl border border-cinema-amber/30 bg-gradient-to-r from-cinema-card via-cinema-panel to-cinema-panel p-6 sm:flex-row sm:items-center">
             <span className="text-3xl">✨</span>
             <div className="flex-1">
-              <h2 className="text-lg font-bold text-slate-100">{t('home.recommendedTitle')}</h2>
+              <h2 className="text-lg font-bold text-cinema-text">{t('home.recommendedTitle')}</h2>
               <p className="text-sm text-cinema-muted">{t('home.recommendedSubtitle')}</p>
             </div>
-            <Link to="/login" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-black transition hover:shadow-glow">
+            <Link to="/login" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink transition hover:shadow-glow">
               {t('nav.login')}
             </Link>
           </section>
         )}
 
         {popular === null ? <RowSkeleton /> : popular.length > 0 && (
-          <Carousel title={t('home.popular')} action={<Link to="/catalog?sort=popularity" className="text-sm font-semibold text-cinema-amber hover:underline">{t('common.viewAll')}</Link>}>
+          <Carousel title={t('home.popular')} action={<Link to="/catalog?sort=popularity" className="text-sm font-semibold text-cinema-accent hover:underline">{t('common.viewAll')}</Link>}>
             {popular.map((m) => <MovieCard key={m.id} movie={m} onToggleFavorite={onToggleFavorite} />)}
           </Carousel>
         )}
 
         {newest === null ? <RowSkeleton /> : newest.length > 0 && (
-          <Carousel title={t('home.newReleases')} action={<Link to="/catalog?sort=newest" className="text-sm font-semibold text-cinema-amber hover:underline">{t('common.viewAll')}</Link>}>
+          <Carousel title={t('home.newReleases')} action={<Link to="/catalog?sort=newest" className="text-sm font-semibold text-cinema-accent hover:underline">{t('common.viewAll')}</Link>}>
             {newest.map((m) => <MovieCard key={m.id} movie={m} onToggleFavorite={onToggleFavorite} />)}
           </Carousel>
         )}
@@ -237,7 +237,7 @@ export default function Home() {
             <Carousel
               key={row.genre.id}
               title={row.genre.name}
-              action={<Link to={`/catalog?genre=${encodeURIComponent(row.genre.name)}`} className="text-sm font-semibold text-cinema-amber hover:underline">{t('common.viewAll')}</Link>}
+              action={<Link to={`/catalog?genre=${encodeURIComponent(row.genre.name)}`} className="text-sm font-semibold text-cinema-accent hover:underline">{t('common.viewAll')}</Link>}
             >
               {row.movies.map((m) => <MovieCard key={m.id} movie={m} onToggleFavorite={onToggleFavorite} />)}
             </Carousel>

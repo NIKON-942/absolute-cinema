@@ -1,16 +1,45 @@
 version: 2
 updates:
   - package-ecosystem: npm
-    directory: /backend
+    directories:
+      - /
+      - /backend
+      - /frontend
+    target-branch: dev
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
-  - package-ecosystem: npm
-    directory: /frontend
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      day: monday
+      time: "09:00"
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 2
+    # Major upgrades need a coordinated migration and are handled manually.
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
+    groups:
+      nestjs:
+        patterns: ["@nestjs/*", "@types/express"]
+        update-types: [minor, patch]
+      react:
+        patterns: ["react", "react-dom", "react-router-dom", "@types/react", "@types/react-dom"]
+        update-types: [minor, patch]
+      # Catch remaining packages so none opens an individual version-update PR.
+      npm-maintenance:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 1
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
+    groups:
+      github-actions:
+        patterns: ["*"]
+        update-types: [minor, patch]

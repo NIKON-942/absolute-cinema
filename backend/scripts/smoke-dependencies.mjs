@@ -41,6 +41,9 @@ create.set('year', '2026');
 create.set('file', new Blob([poster], { type: 'image/svg+xml' }), 'poster.svg');
 const movie = await (await request('/media', { method: 'POST', headers, body: create })).json();
 assert.ok(movie.id);
+const initialJob = await (await request(`/media/${movie.id}/transcode`, { headers })).json();
+assert.equal(initialJob.status, 'none');
+assert.equal(initialJob.progress, null);
 console.log('PASS NestJS multipart poster upload with Multer 2');
 
 const temporaryDirectory = await mkdtemp(join(tmpdir(), 'cinema-smoke-'));
@@ -52,10 +55,18 @@ try {
   upload.set('file', new Blob([await readFile(master)], { type: 'video/mp4' }), 'master.mp4');
   await request(`/media/${movie.id}/master-video`, { method: 'POST', headers, body: upload });
   let ready = false;
+  let previousProgress = 0;
   for (let attempt = 0; attempt < 60; attempt++) {
     const job = await (await request(`/media/${movie.id}/transcode`, { headers })).json();
     assert.notEqual(job.status, 'failed', job.error ?? 'Transcoding failed');
+    if (job.progress !== null) {
+      assert.ok(job.progress >= previousProgress && job.progress <= 100);
+      previousProgress = job.progress;
+    }
+    if (job.status === 'processing') assert.notEqual(job.progress, 100);
     if (job.status === 'ready') {
+      assert.equal(job.progress, 100);
+      assert.equal(job.phase, 'ready');
       assert.deepEqual(job.qualities, ['480p']);
       ready = true;
       break;

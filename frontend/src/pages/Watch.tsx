@@ -93,8 +93,8 @@ export default function Watch() {
   /**
    * Keep the page fresh while renditions are transcoding: qualities appear
    * one by one (480p first) and become switchable without a reload. A slower
-   * background poll continues afterwards so a master re-upload (renditions
-   * unlinked again) is also picked up on an already-open page.
+   * background poll continues afterwards so a completed master replacement
+   * is also picked up on an already-open page.
    */
   useEffect(() => {
     const processing = movie?.transcodeStatus === 'processing';
@@ -205,7 +205,7 @@ export default function Watch() {
         <EmptyState
           icon="🎞️"
           title={t('movie.notFound')}
-          action={<Link to="/catalog" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-black">{t('common.backToCatalog')}</Link>}
+          action={<Link to="/catalog" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink">{t('common.backToCatalog')}</Link>}
         />
       </div>
     );
@@ -216,13 +216,13 @@ export default function Watch() {
       {/* header */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <Link to={`/movie/${movieId}`} className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold text-cinema-muted transition hover:text-cinema-amber">
+          <Link to={`/movie/${movieId}`} className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold text-cinema-muted transition hover:text-cinema-accent">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
               <path d="M19 12H5m7-7-7 7 7 7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             {t('watch.backToMovie')}
           </Link>
-          <h1 className="truncate text-2xl font-extrabold text-slate-50 sm:text-3xl">{movie?.title}</h1>
+          <h1 className="truncate text-2xl font-extrabold text-cinema-strong sm:text-3xl">{movie?.title}</h1>
           {movie && (
             <p className="mt-0.5 text-sm text-cinema-muted">
               {[movie.year, movie.country, movie.ageRating].filter(Boolean).join(' · ')}
@@ -237,7 +237,7 @@ export default function Watch() {
           <div className="flex aspect-video w-full flex-col items-center justify-center gap-5 rounded-2xl border border-cinema-amber/30 bg-cinema-panel/40 px-6 text-center">
             <Spinner size={10} />
             <div>
-              <h2 className="mb-1.5 text-lg font-bold text-slate-100">{t('watch.processingTitle')}</h2>
+              <h2 className="mb-1.5 text-lg font-bold text-cinema-text">{t('watch.processingTitle')}</h2>
               <p className="mx-auto max-w-md text-sm leading-relaxed text-cinema-muted">{t('watch.processingText')}</p>
             </div>
           </div>
@@ -246,7 +246,7 @@ export default function Watch() {
             icon="🎬"
             title={t('watch.noQualitiesTitle')}
             subtitle={t('watch.noQualitiesText')}
-            action={<Link to="/catalog" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-black">{t('common.backToCatalog')}</Link>}
+            action={<Link to="/catalog" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink">{t('common.backToCatalog')}</Link>}
           />
         )
       ) : needsSubscription ? (
@@ -256,11 +256,11 @@ export default function Watch() {
           </div>
           <div className="relative mx-auto max-w-md">
             <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-cinema-amber/50 bg-cinema-amber/10 text-3xl">🔒</span>
-            <h2 className="mb-2 text-2xl font-extrabold text-slate-50">{t('watch.upsellTitle')}</h2>
+            <h2 className="mb-2 text-2xl font-extrabold text-cinema-strong">{t('watch.upsellTitle')}</h2>
             <p className="mb-6 text-sm leading-relaxed text-cinema-muted">{t('watch.upsellText')}</p>
             <Link
               to="/plans"
-              className="inline-flex items-center gap-2 rounded-xl bg-cinema-amber px-7 py-3 font-bold text-cinema-black transition hover:shadow-glow"
+              className="inline-flex items-center gap-2 rounded-xl bg-cinema-amber px-7 py-3 font-bold text-cinema-ink transition hover:shadow-glow"
             >
               {t('watch.seePlans')}
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
@@ -273,7 +273,7 @@ export default function Watch() {
         <div className="relative overflow-hidden rounded-2xl border border-cinema-red/40 bg-gradient-to-b from-cinema-panel to-cinema-black p-8 text-center sm:p-14">
           <div className="relative mx-auto max-w-md">
             <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-cinema-red/50 bg-cinema-red/10 text-3xl">📺</span>
-            <h2 className="mb-2 text-2xl font-extrabold text-slate-50">{t('watch.deviceLimitTitle')}</h2>
+            <h2 className="mb-2 text-2xl font-extrabold text-cinema-strong">{t('watch.deviceLimitTitle')}</h2>
             <p className="mb-6 text-sm leading-relaxed text-cinema-muted">
               {t('watch.deviceLimitText', { maxDevices: limitsForTier(user?.activeSubscription?.tier).maxDevices })}
             </p>
@@ -286,19 +286,19 @@ export default function Watch() {
                   deviceLimitHit.current = false;
                   setDeviceLimit(false);
                 }}
-                className="cursor-pointer rounded-xl border border-cinema-border bg-cinema-card px-6 py-3 text-sm font-semibold text-slate-100 transition hover:border-cinema-amber/60 hover:text-cinema-amber"
+                className="cursor-pointer rounded-xl border border-cinema-border bg-cinema-card px-6 py-3 text-sm font-semibold text-cinema-text transition hover:border-cinema-amber/60 hover:text-cinema-accent"
               >
                 {t('common.retry')}
               </button>
               <Link
                 to="/profile"
-                className="rounded-xl border border-cinema-border bg-cinema-card px-6 py-3 text-sm font-semibold text-slate-100 transition hover:border-cinema-amber/60 hover:text-cinema-amber"
+                className="rounded-xl border border-cinema-border bg-cinema-card px-6 py-3 text-sm font-semibold text-cinema-text transition hover:border-cinema-amber/60 hover:text-cinema-accent"
               >
                 {t('watch.manageDevices')}
               </Link>
               <Link
                 to="/plans"
-                className="rounded-xl bg-cinema-amber px-6 py-3 text-sm font-bold text-cinema-black transition hover:shadow-glow"
+                className="rounded-xl bg-cinema-amber px-6 py-3 text-sm font-bold text-cinema-ink transition hover:shadow-glow"
               >
                 {t('watch.upgradeCta')}
               </Link>
@@ -308,15 +308,15 @@ export default function Watch() {
       ) : streamError ? (
         <div className="rounded-2xl border border-cinema-red/50 bg-cinema-red/10 p-8 text-center">
           <span className="mb-3 block text-4xl">⚠️</span>
-          <h2 className="mb-1 text-lg font-bold text-red-100">{t('watch.streamError')}</h2>
-          <p className="mb-4 text-sm text-red-200/80">{t('watch.streamErrorText')}</p>
+          <h2 className="mb-1 text-lg font-bold text-cinema-error">{t('watch.streamError')}</h2>
+          <p className="mb-4 text-sm text-cinema-error">{t('watch.streamErrorText')}</p>
           <button
             type="button"
             onClick={() => {
               setStreamError(false);
               setMovie((prev) => (prev ? { ...prev } : prev)); // force player remount
             }}
-            className="cursor-pointer rounded-lg border border-cinema-border bg-cinema-panel px-5 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-cinema-amber/60"
+            className="cursor-pointer rounded-lg border border-cinema-border bg-cinema-panel px-5 py-2.5 text-sm font-semibold text-cinema-text transition hover:border-cinema-amber/60"
           >
             {t('common.retry')}
           </button>
@@ -324,7 +324,7 @@ export default function Watch() {
       ) : (
         <div>
           {transcoding && (
-            <div className="mb-3 flex items-center gap-2 rounded-lg border border-cinema-amber/40 bg-cinema-amber/10 px-3 py-2 text-xs font-semibold text-cinema-amber">
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-cinema-amber/40 bg-cinema-amber/10 px-3 py-2 text-xs font-semibold text-cinema-accent">
               <span className="h-2 w-2 animate-pulse rounded-full bg-cinema-amber" />
               {t('watch.transcodingBadge')}
             </div>
@@ -357,20 +357,20 @@ export default function Watch() {
             <button
               type="button"
               onClick={() => setUpgradeQuality(null)}
-              className="cursor-pointer rounded-lg border border-cinema-border px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cinema-amber/60"
+              className="cursor-pointer rounded-lg border border-cinema-border px-4 py-2 text-sm font-semibold text-cinema-soft transition hover:border-cinema-amber/60"
             >
               {t('common.cancel')}
             </button>
             <Link
               to="/plans"
-              className="rounded-lg bg-cinema-amber px-4 py-2 text-sm font-bold text-cinema-black transition hover:shadow-glow"
+              className="rounded-lg bg-cinema-amber px-4 py-2 text-sm font-bold text-cinema-ink transition hover:shadow-glow"
             >
               {t('watch.upgradeCta')}
             </Link>
           </>
         }
       >
-        <p className="text-sm leading-relaxed text-slate-200">
+        <p className="text-sm leading-relaxed text-cinema-soft">
           {t('watch.upgradeText', { quality: upgradeQuality ?? '', maxQuality })}
         </p>
       </Modal>
@@ -378,7 +378,7 @@ export default function Watch() {
       {movie?.description && (
         <section className="mt-8 rounded-2xl border border-cinema-border bg-cinema-panel/60 p-5">
           <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-cinema-muted">{t('movie.description')}</h2>
-          <p className="whitespace-pre-line text-sm leading-relaxed text-slate-200">{movie.description}</p>
+          <p className="whitespace-pre-line text-sm leading-relaxed text-cinema-soft">{movie.description}</p>
         </section>
       )}
     </div>
