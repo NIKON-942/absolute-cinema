@@ -93,8 +93,8 @@ export default function Watch() {
   /**
    * Keep the page fresh while renditions are transcoding: qualities appear
    * one by one (480p first) and become switchable without a reload. A slower
-   * background poll continues afterwards so a master re-upload (renditions
-   * unlinked again) is also picked up on an already-open page.
+   * background poll continues afterwards so a completed master replacement
+   * is also picked up on an already-open page.
    */
   useEffect(() => {
     const processing = movie?.transcodeStatus === 'processing';

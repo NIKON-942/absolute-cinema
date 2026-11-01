@@ -81,9 +81,14 @@ export interface TranscodeJobDto {
   status: TranscodeStatus;
   qualities: string[];
   progress: number | null;
-  phase: 'queued' | 'probing' | 'converting' | 'finalizing' | 'ready' | 'failed' | 'unavailable' | 'none';
+  phase: 'queued' | 'probing' | 'audio' | 'converting' | 'finalizing' | 'ready' | 'failed' | 'unavailable' | 'none';
   currentQuality: Quality | null;
   targetQualities: Quality[];
+  renditions?: Array<{ quality: Quality; progress: number | null; state: 'queued' | 'converting' | 'finalizing' | 'ready' | 'failed'; mode: 'copy' | 'encode' }>;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  elapsedSeconds?: number;
+  remainingSeconds?: number | null;
   error?: string;
 }
 

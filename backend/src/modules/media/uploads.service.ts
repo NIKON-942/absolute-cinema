@@ -81,7 +81,8 @@ export class UploadsService implements OnModuleInit {
       if (this.locks.has(u.id) || u.state === 'verifying' || u.state === 'processing' || Date.now() - u.updatedAt < RETENTION) continue;
       await this.locked(u.id, async () => {
         // A ready source is now owned by the movie, never delete it here.
-        if (u.state !== 'ready') await rm(this.data(u), { force: true });
+        const movie = await this.media.getMovieEntity(u.movieId).catch(() => null);
+        if (u.state !== 'ready' && movie?.masterVideo !== this.source(u)) await rm(this.data(u), { force: true });
         await rm(this.directory(u.id), { recursive: true, force: true });
       }).catch(error => this.logger.warn(String(error)));
     }

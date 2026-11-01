@@ -8,6 +8,26 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [manager] = useState(() => new UploadManager());
   const { user, isAdmin } = useAuth();
   useEffect(() => {
+    const timers = new Map<string, number>();
+    const sync = () => {
+      const ready = new Set(manager.snapshot().filter(task => task.phase === 'ready').map(task => task.key));
+      for (const [key, timer] of timers) {
+        if (!ready.has(key)) { window.clearTimeout(timer); timers.delete(key); }
+      }
+      for (const key of ready) {
+        if (timers.has(key)) continue;
+        // Keep success visible briefly; polling must not restart the countdown.
+        timers.set(key, window.setTimeout(() => {
+          if (manager.snapshot().some(task => task.key === key && task.phase === 'ready')) manager.dismiss(key);
+          timers.delete(key);
+        }, 5000));
+      }
+    };
+    const unsubscribe = manager.subscribe(sync);
+    sync();
+    return () => { unsubscribe(); for (const timer of timers.values()) window.clearTimeout(timer); };
+  }, [manager]);
+  useEffect(() => {
     const controller = new AbortController();
     // Retry restoring the server's durable sessions after a transient outage.
     const restore = async () => {

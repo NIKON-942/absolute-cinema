@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import type { FormEvent } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
@@ -52,6 +53,9 @@ const TABS: Tab[] = ['movies', 'genres', 'actors', 'countries', 'directors', 'us
 export default function AdminPanel() {
   const { t } = useLanguage();
   const [tab, setTab] = useState<Tab>('movies');
+  const location = useLocation();
+  const requestedMovie = new URLSearchParams(location.search).get('editMovie');
+  useEffect(() => { if (requestedMovie) setTab('movies'); }, [location.key, requestedMovie]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
@@ -176,6 +180,9 @@ const emptyMovieForm: MovieFormState = {
 
 function MoviesTab() {
   const { t } = useLanguage();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const requestedMovie = searchParams.get('editMovie');
   const { manager: uploadManager, tasks: uploadTasks } = useUploads();
   const { success, error: errorToast } = useToast();
 
@@ -233,7 +240,7 @@ function MoviesTab() {
     setFormOpen(true);
   };
 
-  const openEdit = (movie: MovieDto) => {
+  const openEdit = useCallback((movie: MovieDto) => {
     setEditing(movie);
     setForm({
       title: movie.title,
@@ -255,7 +262,26 @@ function MoviesTab() {
     setFormError(null);
     setMasterFile(null);
     setFormOpen(true);
-  };
+  }, []);
+
+  useEffect(() => {
+    const id = Number(requestedMovie);
+    if (!requestedMovie || !/^[1-9]\d*$/.test(requestedMovie) || !Number.isSafeInteger(id)) return;
+    let cancelled = false;
+    // Load by ID: the uploaded movie may be outside the current table page/filter.
+    mediaService.getById(id).then(movie => {
+      if (!cancelled) openEdit(movie);
+    }).catch(error => {
+      if (!cancelled) errorToast(extractServerMessage(error) ?? t(errorStatusKey(error)));
+    }).finally(() => {
+      if (!cancelled) setSearchParams(params => {
+        const next = new URLSearchParams(params);
+        next.delete('editMovie');
+        return next;
+      }, { replace: true });
+    });
+    return () => { cancelled = true; };
+  }, [requestedMovie, location.key, openEdit, setSearchParams, errorToast, t]);
 
   const selectMaster = (file: File | null) => {
     if (file && !/^video\//.test(file.type) && !/\.(mp4|webm|mkv|mov|m4v|avi)$/i.test(file.name)) {
@@ -358,24 +384,29 @@ function MoviesTab() {
   // Poll visible jobs even after the movie form is closed.
   const processingIds = [...new Set([
     ...(data?.items ?? []).filter(m => m.transcodeStatus === 'processing').map(m => m.id),
+    ...uploadTasks.filter(task => task.phase === 'processing').map(task => task.movieId),
     ...(formOpen && editing?.transcodeStatus === 'processing' ? [editing.id] : []),
   ])].sort((a, b) => a - b).join(',');
   useEffect(() => {
     if (!processingIds) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
+    const synced = new Map<number, string>();
     const poll = async () => {
       await Promise.allSettled(processingIds.split(',').map(async id => {
         const job = await mediaService.transcodeStatus(Number(id));
         if (cancelled) return;
         setJobs(prev => ({ ...prev, [job.movieId]: job }));
-        if (job.status === 'ready' || job.status === 'failed') {
+        const terminal = job.status === 'ready' || job.status === 'failed';
+        const signature = `${job.status}:${job.qualities.join(',')}`;
+        if ((terminal || job.qualities.length > 0) && synced.get(job.movieId) !== signature) {
           const updated = await mediaService.getById(job.movieId);
           if (cancelled) return;
+          synced.set(job.movieId, signature);
           setEditing(prev => prev?.id === updated.id ? updated : prev);
           setData(prev => prev ? { ...prev, items: prev.items.map(m => m.id === updated.id ? updated : m) } : prev);
           if (job.status === 'ready') success(t('admin.movies.transcodeReady'));
-          else errorToast(t('admin.movies.transcodeFailed'));
+          else if (job.status === 'failed') errorToast(t('admin.movies.transcodeFailed'));
         }
       }));
       if (!cancelled) timer = setTimeout(poll, 1500);

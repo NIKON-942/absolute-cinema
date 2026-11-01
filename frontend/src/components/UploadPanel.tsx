@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useUploads } from '@/context/UploadContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { ProgressBar } from './TranscodeProgress';
+import { ProgressBar, TranscodeDetails } from './TranscodeProgress';
 import { formatBytes } from '@/utils/upload';
 import { formatDuration } from '@/utils/format';
 import type { UploadTask } from '@/services/uploadManager';
@@ -28,6 +28,7 @@ function UploadItem({ task, now }: { task: UploadTask; now: number }) {
         {terminal && <button className={button} onClick={() => manager.dismiss(task.key)} aria-label={t('uploads.dismiss')}>×</button>}
       </div>
       <ProgressBar label={task.phase === 'processing' && task.job ? t(`admin.movies.phase.${task.job.phase}`) : t(`uploads.phase.${task.phase}`)} progress={progress} />
+      {task.phase === 'processing' && task.job && <TranscodeDetails job={task.job} />}
       {task.phase !== 'hashing' && <p className="text-xs text-cinema-muted">{formatBytes(task.loaded, lang)} / {formatBytes(task.size, lang)}</p>}
       {(transferring || task.phase === 'paused') && <dl className="grid grid-cols-3 gap-2 text-xs text-cinema-muted">
         <div><dt>{t('admin.movies.uploadSpeed')}</dt><dd className="mt-1 text-cinema-soft">{rate ? t('admin.movies.bytesPerSecond', { value: formatBytes(rate, lang) }) : '—'}</dd></div>
@@ -45,7 +46,7 @@ function UploadItem({ task, now }: { task: UploadTask; now: number }) {
           : <label className={`${button} cursor-pointer`}>{t('uploads.selectFile')}<input type="file" accept="video/*,.mkv,.avi,.m4v" className="sr-only"
             aria-label={t('uploads.selectFile')} onChange={e => { const file = e.target.files?.[0]; if (file) manager.resume(task.key, file); e.target.value = ''; }} /></label>)}
         {(pausable || resumable) && <button className={button} onClick={() => setConfirm(true)}>{t('uploads.cancel')}</button>}
-        <Link className={button} to={`/movie/${task.movieId}`}>{t('uploads.openMovie')}</Link>
+        <Link className={button} to={`/admin?editMovie=${task.movieId}`}>{t('uploads.openMovie')}</Link>
       </div>
       {confirm && <div className="space-y-2 rounded-lg border border-cinema-red/40 bg-cinema-error-surface p-3" role="group" aria-label={t('uploads.cancelConfirm')}>
         <p className="text-xs text-cinema-error">{t('uploads.cancelConfirm')}</p>

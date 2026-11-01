@@ -16,7 +16,8 @@
     "test:stripe": "node scripts/smoke-stripe.mjs",
     "migration:generate": "ts-node ./node_modules/typeorm/cli.js migration:generate -d src/database/data-source.ts src/database/migrations/Auto",
     "seed": "ts-node src/database/seed.ts",
-    "videos:generate": "node scripts/generate-videos.mjs"
+    "videos:generate": "node scripts/generate-videos.mjs",
+    "videos:repair-audio": "node scripts/repair-audio.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.3.2",
