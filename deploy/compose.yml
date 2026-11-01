@@ -1,0 +1,87 @@
+name: absolute-cinema
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    # A fresh production volume uses 17; do not attach an existing PG14 volume.
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-absolutecinema}
+      POSTGRES_USER: ${DB_USER:-cinema}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in the server .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 1g
+    logging: *logging
+
+  backend:
+    image: ${IMAGE_PREFIX:?Set IMAGE_PREFIX}-backend:${IMAGE_TAG:?Set IMAGE_TAG}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ${DEPLOY_ROOT:-/opt/absolute-cinema}/.env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      NODE_OPTIONS: --max-old-space-size=1536
+    volumes:
+      - media:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:4000/api/health/ready', {signal: AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    stop_grace_period: 45s
+    cpus: 1.5
+    mem_limit: 4g
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  web:
+    image: ${IMAGE_PREFIX:?Set IMAGE_PREFIX}-frontend:${IMAGE_TAG:?Set IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?Set SITE_ADDRESS}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # Check that Caddy loaded its config. deploy.sh separately checks the
+      # SPA and API through the actual HTTP/HTTPS listener.
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1:2019/config/']
+      start_period: 10s
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    mem_limit: 256m
+    logging: *logging
+
+volumes:
+  pgdata:
+  media:
+  caddy_data:
+  caddy_config:

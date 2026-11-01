@@ -4,7 +4,7 @@
  * Exercises: mock checkout per tier, quality cap (402), device limit (409),
  * device listing/revocation, and the TTL-freeing path via /devices/end.
  */
-const BASE = 'http://localhost:4000/api';
+const BASE = process.env.SMOKE_API_URL ?? 'http://localhost:4000/api';
 
 let failures = 0;
 function check(name, cond, extra = '') {
@@ -14,6 +14,7 @@ function check(name, cond, extra = '') {
 
 async function api(method, path, { token, body } = {}) {
   const res = await fetch(`${BASE}${path}`, {
+    signal: AbortSignal.timeout(15_000),
     method,
     headers: {
       ...(body ? { 'Content-Type': 'application/json' } : {}),
@@ -38,9 +39,17 @@ async function subscribe(token, tier) {
 
 const main = async () => {
   // login
-  const login = await api('POST', '/auth/login', { body: { email: 'viewer@cinema.local', password: 'Viewer12345' } });
+  const login = await api('POST', '/auth/login', { body: {
+    email: process.env.SMOKE_EMAIL ?? 'viewer@cinema.local',
+    password: process.env.SMOKE_PASSWORD ?? 'Viewer12345',
+  } });
   check('login viewer', login.status === 200 || login.status === 201);
   const token = login.data.accessToken;
+
+  const ready = await api('GET', '/health/ready');
+  check('database readiness', ready.status === 200 && ready.data.status === 'ok');
+  const anonymous = await api('GET', '/auth/me');
+  check('anonymous access to profile rejected', anonymous.status === 401);
 
   // plans expose the new tiers + limits
   const plans = await api('GET', '/payments/plans');
@@ -53,6 +62,7 @@ const main = async () => {
   const movies = await api('GET', '/media?limit=20');
   const movie = movies.data.items.find((m) => m.availableQualities.includes('1080p'));
   check('found movie with 1080p rendition', Boolean(movie), movie?.title);
+  if (!movie) throw new Error('A movie with a ready 1080p rendition is required');
 
   // ----- BASIC tier -----
   await subscribe(token, 'basic');
@@ -65,6 +75,10 @@ const main = async () => {
 
   const s720 = await fetch(`${BASE}/media/${movie.id}/stream?quality=720p&deviceId=smoke-a&token=${token}`, { headers: { Range: 'bytes=0-1023' } });
   check('basic + 720p → 206 partial', s720.status === 206, `status=${s720.status}`);
+  check('range headers survive the proxy',
+    s720.headers.get('accept-ranges') === 'bytes' &&
+    /^bytes 0-1023\/\d+$/.test(s720.headers.get('content-range') ?? '') &&
+    s720.headers.get('content-length') === '1024');
   await s720.body.cancel();
 
   // device limit: basic allows 1

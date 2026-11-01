@@ -1,0 +1,28 @@
+{$SITE_ADDRESS} {
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+        -Server
+    }
+
+    # Do not enable access logging: stream URLs contain bearer tokens.
+    @api path /api /api/*
+    handle @api {
+        # The API accepts an 8 GiB master; allow multipart overhead as well.
+        request_body {
+            max_size 9GB
+        }
+        reverse_proxy backend:4000
+    }
+
+    handle {
+        root * /srv
+        encode zstd gzip
+        @assets path /assets/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+        @html path / /index.html
+        header @html Cache-Control "no-cache"
+        try_files {path} /index.html
+        file_server
+    }
+}
