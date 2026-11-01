@@ -6,16 +6,16 @@ A Video-on-Demand streaming platform: media catalog, HTTP Range video streaming,
 
 | Layer          | Technology                                                            |
 | -------------- | --------------------------------------------------------------------- |
-| Frontend       | React 18 + Vite, TypeScript 5.4, Tailwind CSS                         |
-| Backend        | NestJS 10, TypeScript 5.4, TypeORM, Passport (JWT + Google OAuth 2.0) |
-| Database       | PostgreSQL 14                                                         |
+| Frontend       | React 18 + Vite 8, TypeScript 5.9, Tailwind CSS 3                     |
+| Backend        | NestJS 10, TypeScript 5.9, TypeORM, Passport (JWT + Google OAuth 2.0) |
+| Database       | PostgreSQL 14 (local), 17 (deployment)                                |
 | Infrastructure | Docker Compose (PostgreSQL, Jaeger, Mailpit)                          |
 | Payments       | Stripe SDK with built-in mock mode                                    |
 | Email          | Nodemailer SMTP (Mailpit in dev)                                      |
 
 ## Quick start
 
-Prerequisites: Node.js 22.15+, Docker, FFmpeg (optional — only for generating demo video files).
+Prerequisites: Node.js 24 LTS (see `.nvmrc`), Docker, FFmpeg (optional — only for generating demo video files).
 
 ```bash
 # 1. Install dependencies (root + backend + frontend)
@@ -117,8 +117,8 @@ is set to `true` and the GitHub environment `development` is configured.
 
 Production-style containers use a separate PostgreSQL 17 volume and persistent
 media storage. Do not attach an existing PostgreSQL 14 data volume to PostgreSQL 17.
-The separate **Dependency audit** workflow fails at the high severity threshold;
-it is not a deployment gate. After dependency updates, frontend has no audit
-findings and backend has 9 moderate findings, with no high or critical findings
-(snapshot: 2026-11-01). See [dependency upgrade notes](docs/dependency-upgrades.md)
-for the pinned transitive fixes and remaining work.
+The separate **Dependency audit** workflow checks root, backend and frontend at
+the high severity threshold; it is not a deployment gate. Root and frontend have
+no audit findings; backend has 9 moderate findings, with no high or critical
+findings (snapshot: 2026-11-01). See [dependency upgrade notes](docs/dependency-upgrades.md)
+for the earlier transitive fixes and remaining work.
