@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.env
+*.local
+npm-debug.log*
+.DS_Store
+
+# local media storage content (keep dirs via .gitkeep)
+backend/storage/videos/*
+!backend/storage/videos/.gitkeep
+backend/storage/posters/*
+!backend/storage/posters/.gitkeep
+
+# uploads
+uploads/

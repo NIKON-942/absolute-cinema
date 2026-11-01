@@ -1,0 +1,220 @@
+# AbsoluteCinema — API Contract (shared source of truth for backend & frontend)
+
+Base URL: `http://localhost:4000/api`
+Auth: `Authorization: Bearer <accessToken>` on protected endpoints.
+All responses JSON unless noted. Errors follow NestJS shape:
+
+```json
+{ "statusCode": 400, "message": "string | string[]", "error": "Bad Request" }
+```
+
+Roles: `viewer`, `admin`. Subscription tiers: `basic`, `plus`, `premium` (stored on user's active subscription; access to streaming requires an active subscription of any tier). Each tier enforces limits — max concurrent streaming devices and max playback quality — that the backend validates on every stream request:
+
+| Tier | Monthly | Yearly | Max devices | Max quality | Extras |
+|------|---------|--------|-------------|-------------|--------|
+| basic | 4.99 | 49.99 | 1 | 720p | full catalog |
+| plus | 9.99 | 99.99 | 2 | 1080p | everything in Basic |
+| premium | 14.99 | 149.99 | 4 | 1080p | everything in Plus + priority support |
+
+---
+
+## Data models (DTO shapes returned to the client)
+
+```ts
+interface UserDto {
+  id: number;
+  email: string;
+  name: string;
+  role: 'viewer' | 'admin';
+  isBlocked: boolean;
+  avatarUrl: string | null;      // shown in navbar/profile (FR-35)
+  hasActiveSubscription: boolean;
+  activeSubscription: SubscriptionDto | null;
+  createdAt: string; // ISO
+  lastLoginAt: string | null;    // shown in admin users table (FR-41)
+}
+
+interface MovieDto {
+  id: number;
+  title: string;
+  originalTitle: string;
+  description: string;
+  year: number;
+  country: string;
+  ageRating: string;   // e.g. "12+", "16+", "18+"
+  director: string;
+  runtimeMinutes: number | null; // FR-33
+  trailerUrl: string | null;     // FR-33
+  keywords: string[];  // tags array
+  posterUrl: string;   // "/api/media/posters/xxx.jpg" or an external http(s) URL
+  masterVideoUrl: string | null;      // remote master URL when provided
+  transcodeStatus: 'none' | 'processing' | 'ready' | 'failed';
+  genres: GenreDto[];
+  actors: ActorDto[];
+  viewCount: number;
+  averageRating: number; // 0..10, one decimal, 0 if no ratings
+  userRating: number | null; // 1..10 if authenticated user rated
+  isFavorite: boolean;      // for authenticated user
+  availableQualities: ('480p'|'720p'|'1080p')[];
+  createdAt: string;
+}
+
+interface GenreDto { id: number; name: string; }
+interface ActorDto { id: number; name: string; photoUrl?: string; }
+interface CountryDto { id: number; name: string; }   // FR-38 dictionary
+interface DirectorDto { id: number; name: string; }  // FR-39 registry
+
+interface SubscriptionDto {
+  id: number;
+  tier: 'basic' | 'plus' | 'premium';
+  period: 'monthly' | 'yearly';
+  status: 'pending' | 'active' | 'expired' | 'cancelled';
+  startsAt: string | null;
+  endsAt: string | null;
+}
+
+interface WatchProgressDto {
+  movieId: number;
+  movieTitle: string;
+  posterUrl: string;
+  positionSeconds: number;
+  durationSeconds: number;
+  updatedAt: string;
+}
+
+interface PlanDto {
+  tier: 'basic' | 'plus' | 'premium';
+  monthlyPrice: number; // in currency units, e.g. 4.99
+  yearlyPrice: number;
+  currency: 'usd';
+  maxDevices: number;       // concurrent streaming devices (enforced server-side)
+  maxQuality: '480p' | '720p' | '1080p'; // highest requestable quality
+  prioritySupport: boolean; // premium only
+  features: string[]; // localized feature bullets handled client-side by tier key
+}
+
+interface DeviceSessionDto {
+  deviceId: string;    // client-generated UUID kept in localStorage
+  name: string | null; // browser/OS label derived from the User-Agent
+  lastSeenAt: string;  // ISO; sessions silent for 5 minutes release their slot
+  createdAt: string;
+}
+```
+
+## Pricing (fixed, seeded)
+
+| Tier | Monthly | Yearly |
+|------|---------|--------|
+| basic | 4.99 | 49.99 |
+| plus | 9.99 | 99.99 |
+| premium | 14.99 | 149.99 |
+
+---
+
+## Auth (`/auth`)
+
+| Method | Path | Auth | Body / Query | Returns |
+|---|---|---|---|---|
+| POST | `/auth/register` | — | `{ email, password (min 8), name }` | `{ user: UserDto, accessToken }` + welcome email |
+| POST | `/auth/login` | — | `{ email, password }` | `{ user: UserDto, accessToken }` (updates lastLoginAt) |
+| POST | `/auth/logout` | Bearer | — | `{ message }` — revokes all issued tokens (FR-36) |
+| GET | `/auth/google` | — | — | redirects to Google |
+| GET | `/auth/google/callback` | — | `?code=...` | 302 → `CLIENT_URL/auth/oauth-success?token=<jwt>` |
+| GET | `/auth/me` | Bearer | — | `UserDto` |
+| POST | `/auth/forgot-password` | — | `{ email }` | `{ message }` (always 200; email with reset link `/reset-password?token=...`) |
+| POST | `/auth/reset-password` | — | `{ token, newPassword }` | `{ message }` (token valid 24h) |
+
+Password rules: min 8 chars, must contain a letter and a number.
+
+## Users (`/users`, admin unless noted)
+
+| Method | Path | Auth | Body | Returns |
+|---|---|---|---|---|
+| GET | `/users` | admin | `?page=1&limit=20&search=` | `{ items: UserDto[], total, page, limit }` |
+| GET | `/users/me` | Bearer | — | `UserDto` |
+| PATCH | `/users/me` | Bearer | `{ name?, password? }` | `UserDto` |
+| PATCH | `/users/:id/role` | admin | `{ role: 'viewer'|'admin' }` | `UserDto` |
+| PATCH | `/users/:id/block` | admin | `{ isBlocked: boolean }` | `UserDto` |
+| DELETE | `/users/:id` | admin | — | 204 |
+
+Blocked users: login returns 403 `Account is blocked`.
+
+## Media (`/media`)
+
+| Method | Path | Auth | Body/Query | Returns |
+|---|---|---|---|---|
+| GET | `/media` | — | `?search=&genre=<name>&year=&yearFrom=&yearTo=&country=&ageRating=&sort=popularity|rating|newest&page=1&limit=20` | `{ items: MovieDto[], total, page, limit }` |
+| GET | `/media/:id` | — (isFavorite/userRating only when auth) | — | `MovieDto` |
+| GET | `/media/:id/similar` | — | — | `MovieDto[]` (up to 8, ranked by shared genres, FR-33) |
+| GET | `/media/genres` | — | — | `GenreDto[]` |
+| GET | `/media/actors` | — | — | `ActorDto[]` |
+| GET | `/media/countries` | — | — | `CountryDto[]` (FR-38) |
+| GET | `/media/directors` | — | — | `DirectorDto[]` (FR-39) |
+| GET | `/media/posters/:filename` | — | — | image file |
+| GET | `/media/:id/stream` | Bearer + active subscription | `?quality=480p|720p|1080p&deviceId=<uuid>`, Range header supported | `206 Partial Content` video/mp4 stream (`Accept-Ranges: bytes`). If the requested quality is not ready yet (transcoding in progress) the best ready quality **within the plan cap** is served instead; `409` only when no rendition is ready. Plan enforcement: `?quality` above the tier's cap → `402` `{ code: 'UPGRADE_REQUIRED', requestedQuality, maxQuality }`; `deviceId` identifies the streaming device (see `/devices`) and a not-yet-registered device beyond the tier's `maxDevices` → `409` `{ code: 'DEVICE_LIMIT', maxDevices, activeDevices }` |
+| POST | `/media/:id/favorites` | Bearer | — | `{ isFavorite: true }` (toggle) |
+| GET | `/media/favorites` | Bearer | — | `MovieDto[]` |
+| PUT | `/media/:id/rating` | Bearer | `{ value: 1..10 }` | `{ averageRating, userRating }` |
+| DELETE | `/media/:id/rating` | Bearer | — | `{ averageRating, userRating: null }` |
+| PUT | `/media/:id/progress` | Bearer | `{ positionSeconds, durationSeconds }` | `{ message }` |
+| GET | `/media/progress` | Bearer | — | `WatchProgressDto[]` |
+
+### Admin media CRUD (role: admin)
+| Method | Path | Body (JSON unless noted) |
+|---|---|---|
+| POST | `/media` | multipart/form-data: `file?` (poster image), plus fields `title, originalTitle?, description, year, country, ageRating, director, runtimeMinutes?, trailerUrl?, keywords? (comma string), posterUrl? (http URL alternative), masterVideoUrl? (http master video URL — transcoded server-side), genreIds: number[], actorIds?: number[]` → `MovieDto` |
+| PATCH | `/media/:id` | same multipart shape (all optional) |
+| DELETE | `/media/:id` | 204 |
+| POST | `/media/:id/master-video` | multipart: `file` (single master video, any ffmpeg-readable container) → `MovieDto` with `transcodeStatus: 'processing'`; the server renders 480p/720p/1080p H.264/AAC variants in the background and links them to the movie |
+| GET | `/media/:id/transcode` | `{ movieId, status: none|processing|ready|failed, qualities: string[], error? }` — live background-job state for polling |
+| POST | `/media/genres` / PATCH `/media/genres/:id` / DELETE | `{ name }` |
+| POST | `/media/actors` / PATCH `/media/actors/:id` / DELETE | `{ name, photoUrl? }` |
+| POST | `/media/countries` / PATCH `/media/countries/:id` / DELETE | `{ name }` (FR-38) |
+| POST | `/media/directors` / PATCH `/media/directors/:id` / DELETE | `{ name }` (FR-39) |
+
+Video pipeline: administrators provide ONE master source (upload or URL). A background fluent-ffmpeg job probes it and renders every target resolution ≤ the master's height (never upscales) as faststart MP4s in `storage/videos/`, linking them to the movie and flipping `transcodeStatus` to `ready` (or `failed`). Renditions are linked **as soon as each finishes** (low→high, so 480p is watchable while 720p/1080p still render) — `availableQualities` grows progressively and clients should poll `GET /media/:id` while `transcodeStatus === 'processing'`. Re-uploading a master immediately unlinks previous renditions. Streaming (`GET /media/:id/stream?quality=`) range-serves those generated files, degrading to the best ready quality if the requested one isn't linked yet.
+
+## Recommendations (`/recommendations`)
+
+| Method | Path | Auth | Returns |
+|---|---|---|---|
+| GET | `/recommendations` | Bearer (optional) | `MovieDto[]` (12 items; content-based from ratings ≥6 + watch history via SQL scoring on genres/director/actors/keywords; fallback = popular+newest for guests / no-history users) |
+
+## Payments (`/payments`)
+
+| Method | Path | Auth | Body | Returns |
+|---|---|---|---|---|
+| GET | `/payments/plans` | — | — | `PlanDto[]` |
+| POST | `/payments/checkout` | Bearer | `{ tier, period }` | `{ checkoutUrl }` — Stripe hosted checkout when `STRIPE_ENABLED=true`, otherwise `{ checkoutUrl: "/mock-checkout/<sessionId>" }` on the frontend |
+| POST | `/payments/mock-complete/:sessionId` | Bearer | — | `{ message }` — mock mode only: simulates the gateway webhook (activates subscription, grants access, sends receipt email) |
+| POST | `/payments/mock-cancel/:sessionId` | Bearer | — | `{ message }` — mock mode only: marks order cancelled |
+| POST | `/payments/subscription/cancel` | Bearer | — | `{ message }` — cancels the user's active subscription (and any pending checkout) immediately |
+| POST | `/payments/webhook` | Stripe sig header | raw body | 200; handles `checkout.session.completed`; pending orders time out after 20 min (cron) with up to 3 retries |
+
+Subscription activation sets `subscription.status='active'`, `startsAt=now`, `endsAt=now+1mo|1y`, and grants streaming access.
+
+## Devices (`/devices`, Bearer)
+
+Concurrent-device enforcement. The SPA generates a persistent `deviceId` (localStorage UUID), sends it on every stream request (`&deviceId=`) and heartbeats `POST /devices/heartbeat` while playing. Sessions silent for **5 minutes** release their slot automatically.
+
+| Method | Path | Body/Query | Returns |
+|---|---|---|---|
+| POST | `/devices/heartbeat` | `{ deviceId }` | `{ activeDevices, maxDevices }`; `409 { code: 'DEVICE_LIMIT', maxDevices, activeDevices }` when a new device would exceed the plan's concurrent limit |
+| GET | `/devices` | — | `{ devices: DeviceSessionDto[], maxDevices }` |
+| POST | `/devices/end` | `?deviceId=` (sendBeacon-friendly) | `{ message }` — releases this device's slot immediately |
+| DELETE | `/devices/:deviceId` | — | `{ message }` — disconnects one of the user's devices from the profile page |
+
+## Admin analytics (`/admin`)
+
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/admin/analytics?days=30` | `{ totalUsers, totalMovies, activeSubscriptions, intervalDays, newUsersInPeriod, topMovies: { id, title, viewCount, averageRating }[], genrePopularity: { genre, views, movies, averageRating }[], revenueByMonth: { month, total }[] }` — revenue/new-users are filtered to the interval; genre popularity covers all time (FR-43/44) |
+
+## Mail
+
+Transactional emails via SMTP (Mailpit at http://localhost:8025 in dev): welcome, password reset, payment receipt.
+
+## Misc
+- CORS enabled for `CLIENT_URL`.
+- Video streaming endpoint requires `Range` support (`206`, `Content-Range`, `Accept-Ranges: bytes`).
+- Seeded accounts: `admin@cinema.local` / `Admin12345` (admin), `viewer@cinema.local` / `Viewer12345` (viewer).

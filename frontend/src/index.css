@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-cinema-black;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-cinema-black text-slate-100 antialiased;
+  }
+
+  /* dark form controls (selects, date pickers) */
+  select,
+  option {
+    color-scheme: dark;
+  }
+
+  option {
+    @apply bg-cinema-panel text-slate-100;
+  }
+
+  ::selection {
+    @apply bg-cinema-amber/70 text-cinema-black;
+  }
+}
+
+@layer utilities {
+  /* hide the horizontal scrollbar on carousels (class used by <Carousel />) */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* custom slim scrollbar for the whole app */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #232739 #0b0c10;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b0c10;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #232739;
+  border-radius: 6px;
+  border: 2px solid #0b0c10;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2f3450;
+}

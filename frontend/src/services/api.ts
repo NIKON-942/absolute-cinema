@@ -1,0 +1,68 @@
+import axios, { AxiosError } from 'axios';
+import { API_BASE } from '@/utils/url';
+
+export const TOKEN_KEY = 'ac_token';
+
+export const api = axios.create({
+  baseURL: API_BASE,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+/** Attach the JWT to every request when present. */
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+/** On 401 (expired/invalid token): clear the session and send to /login. */
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    if (error.response?.status === 401) {
+      const url = error.config?.url ?? '';
+      // Login/forgot failures must not trigger a session wipe / redirect.
+      const isAuthAttempt = url.includes('/auth/login') || url.includes('/auth/register');
+      const hadToken = Boolean(localStorage.getItem(TOKEN_KEY));
+      if (!isAuthAttempt && hadToken) {
+        localStorage.removeItem(TOKEN_KEY);
+        const loginPath = `/login?expired=1`;
+        if (window.location.pathname !== '/login') {
+          window.location.href = loginPath;
+        }
+      }
+    }
+    return Promise.reject(error);
+  },
+);
+
+/** NestJS error shape: { statusCode, message: string | string[], error }. */
+export function extractServerMessage(err: unknown): string | null {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as { message?: string | string[] } | undefined;
+    if (data?.message) {
+      return Array.isArray(data.message) ? data.message.join('. ') : data.message;
+    }
+  }
+  return null;
+}
+
+/** Status-key fallbacks; used with a `t` function by callers. */
+export function errorStatusKey(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    if (!err.response) return 'errors.network';
+    const status = err.response.status;
+    if (status === 403) return 'errors.forbidden';
+    if (status === 404) return 'errors.notFound';
+    if (status >= 500) return 'errors.server';
+    return 'errors.badRequest';
+  }
+  return 'errors.unknown';
+}
+
+export function isAxiosStatus(err: unknown, status: number): boolean {
+  return axios.isAxiosError(err) && err.response?.status === status;
+}
