@@ -56,6 +56,8 @@ jobs:
           EOF
           for script in deploy/*.sh; do bash -n "$script"; done
       - uses: docker/setup-buildx-action@v4
+      - name: Check upload timing calculations
+        run: npm --prefix frontend run test:upload
       - name: Build API runtime
         uses: docker/build-push-action@v7
         with:

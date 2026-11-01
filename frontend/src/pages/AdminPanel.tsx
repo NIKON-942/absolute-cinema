@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { isCancel } from 'axios';
 import type { FormEvent } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,7 +17,9 @@ import { AutoTextarea } from '@/components/AutoTextarea';
 import { ProgressBar, TranscodeProgress } from '@/components/TranscodeProgress';
 import { LoadingBlock } from '@/components/Spinner';
 import { EmptyState } from '@/components/EmptyState';
-import { formatPrice } from '@/utils/format';
+import { formatPrice, formatDuration } from '@/utils/format';
+import { formatBytes, uploadMeasurements } from '@/utils/upload';
+import type { UploadSnapshot } from '@/utils/upload';
 import { resolveMediaUrl } from '@/utils/url';
 import type {
   ActorDto,
@@ -174,7 +177,7 @@ const emptyMovieForm: MovieFormState = {
 };
 
 function MoviesTab() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { success, error: errorToast } = useToast();
 
   const [search, setSearch] = useState('');
@@ -200,6 +203,12 @@ function MoviesTab() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(0);
   const [uploadMovieId, setUploadMovieId] = useState<number | null>(null);
+  const uploadAbort = useRef<AbortController | null>(null);
+  const [uploadSnapshot, setUploadSnapshot] = useState<UploadSnapshot | null>(null);
+  const [uploadNow, setUploadNow] = useState(0);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const [completedUploadSeconds, setCompletedUploadSeconds] = useState<number | null>(null);
+  const measurements = uploadSnapshot ? uploadMeasurements(uploadSnapshot, uploadNow) : null;
   const [jobs, setJobs] = useState<Record<number, TranscodeJobDto>>({});
   const conversionBusy = editing?.transcodeStatus === 'processing' && jobs[editing.id]?.phase !== 'unavailable';
 
@@ -226,6 +235,8 @@ function MoviesTab() {
   }, []);
 
   const openCreate = () => {
+    setUploadNotice(null);
+    setCompletedUploadSeconds(null);
     setEditing(null);
     setForm(emptyMovieForm);
     setFormError(null);
@@ -234,6 +245,8 @@ function MoviesTab() {
   };
 
   const openEdit = (movie: MovieDto) => {
+    setUploadNotice(null);
+    setCompletedUploadSeconds(null);
     setEditing(movie);
     setForm({
       title: movie.title,
@@ -280,6 +293,7 @@ function MoviesTab() {
     }
     setFormError(null);
     setSaving(true);
+    setUploadNotice(null);
     let savedMovie: MovieDto | null = null;
     try {
       const payload: MovieUpsertPayload = {
@@ -325,8 +339,24 @@ function MoviesTab() {
         if (savedMovie.transcodeStatus !== 'processing') setFormOpen(false);
       }
     } catch (err) {
-      if (savedMovie && masterFile) setFormError(t('admin.movies.uploadFailedSaved'));
-      errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
+      if (isCancel(err)) {
+        setUploadNotice(t('admin.movies.uploadCancelled'));
+        // The server may have accepted the full file just before cancellation.
+        if (savedMovie) {
+          try {
+            const updated = await mediaService.getById(savedMovie.id);
+            setEditing(updated);
+            setData(prev => prev ? { ...prev, items: prev.items.map(m => m.id === updated.id ? updated : m) } : prev);
+            if (updated.masterVideoUrl && updated.masterVideoUrl !== savedMovie.masterVideoUrl) {
+              setMasterFile(null);
+              setUploadNotice(t('admin.movies.uploadAlreadyReceived'));
+            }
+          } catch { /* Keep saved details and the selected file available for retry. */ }
+        }
+      } else {
+        if (savedMovie && masterFile) setFormError(t('admin.movies.uploadFailedSaved'));
+        errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
+      }
     } finally {
       setSaving(false);
     }
@@ -354,16 +384,29 @@ function MoviesTab() {
 
   /** Uploads the single master video; variants are transcoded server-side. */
   const uploadMaster = async (movie: MovieDto, file: File) => {
+    const controller = new AbortController();
+    uploadAbort.current = controller;
+    const startedAt = performance.now();
+    setCompletedUploadSeconds(null);
+    setUploadNow(startedAt);
+    setUploadSnapshot({ startedAt, lastProgressAt: startedAt, loaded: 0, total: file.size, rate: null });
     setUploading(true);
     setUploadMovieId(movie.id);
     setUploadProgress(0);
     try {
-      const updated = await mediaService.uploadMasterVideo(movie.id, file, setUploadProgress);
+      const updated = await mediaService.uploadMasterVideo(movie.id, file, (percent, details) => {
+        const now = performance.now();
+        setUploadProgress(percent);
+        setUploadSnapshot({ startedAt, lastProgressAt: now, ...details });
+        setUploadNow(now);
+      }, controller.signal);
+      setCompletedUploadSeconds((performance.now() - startedAt) / 1000);
       setEditing(updated);
       setMasterFile(null);
       setData((prev) => (prev ? { ...prev, items: prev.items.map((m) => (m.id === updated.id ? updated : m)) } : prev));
       success(t('admin.movies.masterUploaded'));
     } finally {
+      uploadAbort.current = null;
       setUploading(false);
       setUploadMovieId(null);
     }
@@ -400,10 +443,13 @@ function MoviesTab() {
 
   useEffect(() => {
     if (!uploading) return;
+    const timer = setInterval(() => setUploadNow(performance.now()), 500);
     const preventExit = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', preventExit);
-    return () => window.removeEventListener('beforeunload', preventExit);
+    return () => { clearInterval(timer); window.removeEventListener('beforeunload', preventExit); };
   }, [uploading]);
+
+  useEffect(() => () => uploadAbort.current?.abort(), []);
 
   const toggleId = (list: number[], id: number): number[] =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -555,12 +601,19 @@ function MoviesTab() {
         title={editing ? t('admin.movies.editTitle') : t('admin.movies.createTitle')}
         footer={
           <>
+            {uploading && (
+              <button type="button" onClick={() => uploadAbort.current?.abort()} className={dangerBtn}>
+                {t('admin.movies.cancelUpload')}
+              </button>
+            )}
+            {!uploading && <>
             <button type="button" onClick={() => setFormOpen(false)} className={ghostBtn} disabled={saving}>
               {t('common.cancel')}
             </button>
             <button type="submit" form="movie-form" className={primaryBtn} disabled={saving}>
               {saving ? t('common.loading') : editing ? t('common.save') : t('common.create')}
             </button>
+            </>}
           </>
         }
       >
@@ -569,6 +622,7 @@ function MoviesTab() {
           {formError && (
             <p className="rounded-lg border border-cinema-red/50 bg-cinema-red/10 px-3 py-2 text-sm text-red-200">{formError}</p>
           )}
+          {uploadNotice && <p role="status" className="rounded-lg border border-cinema-amber/40 bg-cinema-amber/10 px-3 py-2 text-sm text-amber-200">{uploadNotice}</p>}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="mf-title" className={labelClass}>
@@ -764,12 +818,24 @@ function MoviesTab() {
             <p className="text-xs text-cinema-muted">{t('admin.movies.masterHint')}</p>
             {editing && <TranscodeProgress movie={editing} job={jobs[editing.id]} />}
             {uploading && (
-              <div className="space-y-2" aria-live="polite">
+              <div className="space-y-2">
                 <ProgressBar label={t('admin.movies.uploadProgress')} progress={uploadProgress} />
+                {measurements && uploadSnapshot && (
+                  <dl className="grid grid-cols-2 gap-2 text-xs text-cinema-muted sm:grid-cols-4" data-testid="upload-measurements">
+                    <div><dt>{t('admin.movies.uploadTransferred')}</dt><dd className="mt-1 text-slate-200">{formatBytes(uploadSnapshot.loaded, lang)}{uploadSnapshot.total !== null ? ` / ${formatBytes(uploadSnapshot.total, lang)}` : ''}</dd></div>
+                    <div><dt>{t('admin.movies.uploadSpeed')}</dt><dd className="mt-1 text-slate-200">{measurements.bytesPerSecond === null ? '—' : t('admin.movies.bytesPerSecond', { value: formatBytes(measurements.bytesPerSecond, lang) })}</dd></div>
+                    <div><dt>{t('admin.movies.uploadElapsed')}</dt><dd className="mt-1 tabular-nums text-slate-200">{formatDuration(measurements.elapsedSeconds)}</dd></div>
+                    <div><dt>{t('admin.movies.uploadRemaining')}</dt><dd className="mt-1 tabular-nums text-slate-200">{measurements.transferred ? '—' : measurements.remainingSeconds !== null ? `~${formatDuration(measurements.remainingSeconds)}` : t('admin.movies.uploadCalculating')}</dd></div>
+                  </dl>
+                )}
+                {measurements?.stalled && <p className="text-xs text-amber-200">{t('admin.movies.uploadStalled')}</p>}
                 <p className="text-xs text-cinema-muted">
                   {t(uploadProgress === 100 ? 'admin.movies.uploadReceiving' : 'admin.movies.uploadKeepOpen')}
                 </p>
               </div>
+            )}
+            {!uploading && completedUploadSeconds !== null && (
+              <p className="text-xs text-emerald-300">{t('admin.movies.uploadCompletedIn', { time: formatDuration(completedUploadSeconds) })}</p>
             )}
             <div
               role="button"
