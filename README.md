@@ -15,7 +15,7 @@ A Video-on-Demand streaming platform: media catalog, HTTP Range video streaming,
 
 ## Quick start
 
-Prerequisites: Node.js 22, Docker, FFmpeg (optional — only for generating demo video files).
+Prerequisites: Node.js 22.15+, Docker, FFmpeg (optional — only for generating demo video files).
 
 ```bash
 # 1. Install dependencies (root + backend + frontend)
@@ -104,6 +104,8 @@ is set to `true` and the GitHub environment `development` is configured.
 
 Production-style containers use a separate PostgreSQL 17 volume and persistent
 media storage. Do not attach an existing PostgreSQL 14 data volume to PostgreSQL 17.
-The separate **Dependency audit** workflow reports existing security debt and
-currently fails at the high severity threshold; it is not a deployment gate.
-Resolve those findings before using this demo for real customers or payments.
+The separate **Dependency audit** workflow fails at the high severity threshold;
+it is not a deployment gate. After dependency updates, frontend has no audit
+findings and backend has 9 moderate findings, with no high or critical findings
+(snapshot: 2026-11-01). See [dependency upgrade notes](docs/dependency-upgrades.md)
+for the pinned transitive fixes and remaining work.

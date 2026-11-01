@@ -14,17 +14,17 @@ async function bootstrapTracing(): Promise<void> {
     const { OTLPTraceExporter } = await import(
       '@opentelemetry/exporter-trace-otlp-http'
     );
-    const { Resource } = await import('@opentelemetry/resources');
+    const { resourceFromAttributes } = await import('@opentelemetry/resources');
     const {
-      SemanticResourceAttributes,
+      ATTR_SERVICE_NAME,
     } = await import('@opentelemetry/semantic-conventions');
     const {
       getNodeAutoInstrumentations,
     } = await import('@opentelemetry/auto-instrumentations-node');
 
     const sdk = new NodeSDK({
-      resource: new Resource({
-        [SemanticResourceAttributes.SERVICE_NAME]: 'absolutecinema-api',
+      resource: resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: 'absolutecinema-api',
       }),
       traceExporter: new OTLPTraceExporter({ url: `${endpoint}/v1/traces` }),
       instrumentations: [getNodeAutoInstrumentations()],

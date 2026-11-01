@@ -20,3 +20,5 @@ backend/storage/masters/*
 
 # uploads
 uploads/
+
+docs/
