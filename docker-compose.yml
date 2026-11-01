@@ -1,9 +1,6 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:14-alpine
-    container_name: absolutecinema-postgres
     environment:
       POSTGRES_USER: cinema
       POSTGRES_PASSWORD: cinema
@@ -20,7 +17,6 @@ services:
 
   jaeger:
     image: jaegertracing/all-in-one:1.57
-    container_name: absolutecinema-jaeger
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
@@ -30,7 +26,6 @@ services:
 
   mailpit:
     image: axllent/mailpit:latest
-    container_name: absolutecinema-mailpit
     ports:
       - "8025:8025" # Mailpit UI
       - "1025:1025" # SMTP

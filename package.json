@@ -5,13 +5,15 @@
   "description": "AbsoluteCinema VoD platform - root script runner",
   "scripts": {
     "install:all": "npm install && npm --prefix backend install && npm --prefix frontend install",
-    "docker:up": "docker compose up -d",
+    "docker:up": "docker compose up -d --wait",
     "docker:down": "docker compose down",
+    "docker:stop": "docker compose stop",
     "db:migrate": "npm --prefix backend run migration:run",
     "db:seed": "npm --prefix backend run seed",
     "db:setup": "npm run docker:up && npm run db:migrate && npm run db:seed && npm --prefix backend run videos:generate",
     "dev:backend": "npm --prefix backend run start:dev",
     "dev:frontend": "npm --prefix frontend run dev",
+    "predev": "npm run docker:up && npm run db:migrate",
     "dev": "concurrently -n api,web -c blue,magenta \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "npm --prefix backend run build && npm --prefix frontend run build"
   },

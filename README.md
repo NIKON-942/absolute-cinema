@@ -35,6 +35,19 @@ npm run dev
 
 Services:
 
+For everyday local development, open Docker Desktop and run from the repository root:
+
+```bash
+npm run dev
+```
+
+The automatic `predev` hook starts PostgreSQL, Mailpit and Jaeger, waits for
+readiness, and applies pending migrations before starting the API and Vite in
+watch mode. Existing environment files and installed dependencies are required;
+demo seeding and video generation are only part of the initial setup above.
+Press Ctrl+C to stop the API and Vite. To also stop the Docker services without
+deleting their data, run `npm run docker:stop`.
+
 | Service             | URL                            |
 | ------------------- | ------------------------------ |
 | Web app             | http://localhost:5173          |
