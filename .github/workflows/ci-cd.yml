@@ -26,7 +26,7 @@ jobs:
       IMAGE_TAG: ${{ github.sha }}
       SMOKE_API_URL: http://localhost/api
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@v6
@@ -145,7 +145,7 @@ jobs:
       OCI_KNOWN_HOSTS: ${{ secrets.OCI_KNOWN_HOSTS }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Configure SSH with verified host keys
