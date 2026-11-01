@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdirSync } from 'fs';
 import { Repository } from 'typeorm';
@@ -32,6 +32,10 @@ export interface TranscodeJobInfo {
   movieId: number;
   status: TranscodeStatusEnum;
   qualities: string[];
+  progress: number | null;
+  phase: 'queued' | 'probing' | 'converting' | 'finalizing' | 'ready' | 'failed' | 'unavailable' | 'none';
+  currentQuality: TargetSpec['quality'] | null;
+  targetQualities: TargetSpec['quality'][];
   error?: string;
 }
 
@@ -60,20 +64,34 @@ export class TranscodeService {
   }
 
   /** Registers a job and starts draining the queue in the background. */
-  enqueue(movieId: number, masterSource: string): void {
-    this.jobs.set(movieId, {
+  async enqueue(movieId: number, masterSource: string): Promise<void> {
+    if (this.jobs.get(movieId)?.status === TranscodeStatusEnum.PROCESSING) {
+      throw new ConflictException('This movie already has a video conversion in progress');
+    }
+    const info: TranscodeJobInfo = {
       movieId,
       status: TranscodeStatusEnum.PROCESSING,
       qualities: [],
-    });
+      progress: null,
+      phase: 'queued',
+      currentQuality: null,
+      targetQualities: [],
+    };
+    this.jobs.set(movieId, info);
     // The master changed, so previous renditions are stale (and their files
     // are about to be overwritten) — unlink them before anything renders.
-    void this.moviesRepo.update(movieId, {
-      transcodeStatus: TranscodeStatusEnum.PROCESSING,
-      video480: null,
-      video720: null,
-      video1080: null,
-    });
+    try {
+      await this.moviesRepo.update(movieId, {
+        masterVideo: masterSource,
+        transcodeStatus: TranscodeStatusEnum.PROCESSING,
+        video480: null,
+        video720: null,
+        video1080: null,
+      });
+    } catch (error) {
+      this.jobs.delete(movieId);
+      throw error;
+    }
     this.queue.push(() => this.run(movieId, masterSource));
     void this.drain();
   }
@@ -93,26 +111,37 @@ export class TranscodeService {
   }
 
   private async run(movieId: number, masterSource: string): Promise<void> {
-    const movie = await this.moviesRepo.findOne({ where: { id: movieId } });
-    if (!movie) return;
-
     const input = /^https?:\/\//i.test(masterSource)
       ? masterSource
       : `${MASTERS_DIR}/${masterSource}`;
 
     try {
+      const info = this.jobs.get(movieId)!;
+      info.phase = 'probing';
+      const movie = await this.moviesRepo.findOne({ where: { id: movieId } });
+      if (!movie) throw new Error('Movie no longer exists');
       mkdirSync(VIDEOS_DIR, { recursive: true });
       const meta = await this.probe(input);
-      const baseSlug = movie.title
+      const baseSlug = `${movieId}-` + movie.title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
       const targets = TARGETS.filter((t) => t.height <= meta.height);
+      if (targets.length === 0) throw new Error('Master video must be at least 480 pixels high');
+      info.targetQualities = targets.map(t => t.quality);
+      info.progress = meta.duration ? 0 : null;
       const rendered: Array<{ quality: string; file: string }> = [];
 
-      for (const target of targets) {
+      for (const [index, target] of targets.entries()) {
+        info.phase = 'converting';
+        info.currentQuality = target.quality;
         const out = `${VIDEOS_DIR}/${baseSlug}-${target.quality}.mp4`;
-        await this.render(input, out, target.height);
+        await this.render(input, out, target.height, (seconds) => {
+          if (!meta.duration) return;
+          const fraction = Math.min(1, Math.max(0, seconds / meta.duration));
+          const progress = Math.min(99, Math.floor((index + fraction) / targets.length * 100));
+          info.progress = Math.max(info.progress ?? 0, progress);
+        });
         const file = `${baseSlug}-${target.quality}.mp4`;
         rendered.push({ quality: target.quality, file });
         // Link each rendition the moment it finishes so the movie is
@@ -122,21 +151,23 @@ export class TranscodeService {
         > = {};
         patch[QUALITY_COLUMN[target.quality]] = file;
         await this.moviesRepo.update(movieId, patch);
-        const info = this.jobs.get(movieId);
-        if (info) info.qualities = rendered.map((r) => r.quality);
+        info.qualities = rendered.map((r) => r.quality);
+        if (meta.duration) info.progress = Math.min(99, Math.floor((index + 1) / targets.length * 100));
       }
 
+      info.phase = 'finalizing';
+      info.currentQuality = null;
       await this.moviesRepo.update(movieId, {
         video480: rendered.find((r) => r.quality === '480p')?.file ?? null,
         video720: rendered.find((r) => r.quality === '720p')?.file ?? null,
         video1080: rendered.find((r) => r.quality === '1080p')?.file ?? null,
         transcodeStatus: TranscodeStatusEnum.READY,
       });
-      const info = this.jobs.get(movieId);
-      if (info) {
-        info.status = TranscodeStatusEnum.READY;
-        info.qualities = rendered.map((r) => r.quality);
-      }
+      info.status = TranscodeStatusEnum.READY;
+      info.phase = 'ready';
+      info.progress = 100;
+      info.currentQuality = null;
+      info.qualities = rendered.map((r) => r.quality);
       this.logger.log(
         `Movie #${movieId} transcoded: ${rendered.map((r) => r.quality).join(', ') || 'nothing (master too small)'}`,
       );
@@ -149,33 +180,57 @@ export class TranscodeService {
       const info = this.jobs.get(movieId);
       if (info) {
         info.status = TranscodeStatusEnum.FAILED;
+        info.phase = 'failed';
+        info.currentQuality = null;
         info.error = message;
       }
     }
   }
 
   /** Resolves the input dimensions so we never upscale a small master. */
-  private async probe(input: string): Promise<{ height: number }> {
+  private async probe(input: string): Promise<{ height: number; duration: number | null }> {
     const { stdout } = await runExecutable('ffprobe', [
-      '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=height',
+      '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=height,duration:format=duration',
       '-of', 'json', input,
     ], PROCESS_OPTIONS);
-    const data = JSON.parse(stdout) as { streams?: Array<{ height?: number }> };
+    const data = JSON.parse(stdout) as { streams?: Array<{ height?: number; duration?: string }>; format?: { duration?: string } };
     const height = data.streams?.[0]?.height;
     if (!height || !Number.isFinite(height) || height <= 0) {
       throw new Error('Master source must contain a video stream with a valid height');
     }
-    return { height };
+    const duration = Number(data.format?.duration ?? data.streams?.[0]?.duration);
+    return { height, duration: Number.isFinite(duration) && duration > 0 ? duration : null };
   }
 
-  private async render(input: string, output: string, targetHeight: number): Promise<void> {
+  private render(input: string, output: string, targetHeight: number, onProgress?: (seconds: number) => void): Promise<void> {
     // Argument arrays bypass the shell, including for URLs and filenames with spaces.
-    await runExecutable('ffmpeg', [
-      '-nostdin', '-hide_banner', '-loglevel', 'error', '-y', '-i', input,
-      '-map', '0:v:0', '-map', '0:a:0?',
-      '-vf', `scale=-2:'min(${targetHeight},ih)':force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2`,
-      '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '128k', output,
-    ], PROCESS_OPTIONS);
+    return new Promise((resolve, reject) => {
+      const child = spawn('ffmpeg', [
+        '-nostdin', '-hide_banner', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', '-y', '-i', input,
+        '-map', '0:v:0', '-map', '0:a:0?',
+        '-vf', `scale=-2:'min(${targetHeight},ih)':force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2`,
+        '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '128k', output,
+      ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      let buffer = '';
+      let stderr = '';
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', (chunk: string) => {
+        buffer += chunk;
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('out_time_us=')) continue;
+          const microseconds = Number(line.slice('out_time_us='.length).trim());
+          if (Number.isFinite(microseconds) && microseconds >= 0) onProgress?.(microseconds / 1_000_000);
+        }
+      });
+      child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-8192); });
+      child.once('error', reject);
+      child.once('close', (code, signal) => {
+        if (code === 0) resolve();
+        else reject(new Error(`FFmpeg failed (${signal ?? code}): ${stderr.trim()}`));
+      });
+    });
   }
 }

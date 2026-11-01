@@ -80,6 +80,10 @@ export interface TranscodeJobDto {
   movieId: number;
   status: TranscodeStatus;
   qualities: string[];
+  progress: number | null;
+  phase: 'queued' | 'probing' | 'converting' | 'finalizing' | 'ready' | 'failed' | 'unavailable' | 'none';
+  currentQuality: Quality | null;
+  targetQualities: Quality[];
   error?: string;
 }
 

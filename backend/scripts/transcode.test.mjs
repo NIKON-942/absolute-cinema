@@ -21,8 +21,13 @@ test('direct FFmpeg preserves audio, dimensions and faststart; filenames bypass 
     ffmpeg(['-f', 'lavfi', '-i', 'color=c=blue:s=1280x720:r=2',
       '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100',
       '-t', '1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', input]);
-    assert.deepEqual(await service.probe(input), { height: 720 });
-    await service.render(input, output, 480);
+    const metadata = await service.probe(input);
+    assert.equal(metadata.height, 720);
+    assert.ok(metadata.duration > 0);
+    const progress = [];
+    await service.render(input, output, 480, seconds => progress.push(seconds));
+    assert.ok(progress.length > 0);
+    assert.ok(progress.every(seconds => Number.isFinite(seconds) && seconds >= 0));
     const streams = probe(output).streams;
     const video = streams.find(s => s.codec_type === 'video');
     assert.equal(video.codec_name, 'h264');
@@ -57,4 +62,67 @@ test('silent video works; corrupt and audio-only masters fail clearly', async ()
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+async function waitFor(check) {
+  for (let i = 0; i < 1000; i++) {
+    if (check()) return;
+    await new Promise(resolve => setTimeout(resolve, 1));
+  }
+  assert.fail('Job did not settle');
+}
+
+test('aggregate conversion progress is monotonic and reaches 100 only after the final database update', async () => {
+  const samples = [];
+  const writes = [];
+  const pipeline = new TranscodeService({
+    findOne: async ({ where }) => ({ id: where.id, title: 'Progress fixture' }),
+    update: async (_id, patch) => {
+      if (patch.transcodeStatus === 'ready') assert.ok(pipeline.jobInfo(1).progress < 100);
+      writes.push(patch);
+    },
+  });
+  pipeline.probe = async () => ({ height: 1080, duration: 10 });
+  pipeline.render = async (_input, _output, height, report) => {
+    assert.equal(pipeline.jobInfo(1).currentQuality, `${height}p`);
+    for (const seconds of [0, 5, 4, 10, 12]) {
+      report(seconds);
+      samples.push(pipeline.jobInfo(1).progress);
+    }
+  };
+  await pipeline.enqueue(1, 'fixture.mp4');
+  await waitFor(() => pipeline.jobInfo(1).status === 'ready');
+  assert.ok(samples.every((value, index) => value >= 0 && value < 100 && (!index || value >= samples[index - 1])));
+  assert.ok(samples.some(value => value > 0 && value < 99));
+  assert.equal(pipeline.jobInfo(1).progress, 100);
+  assert.equal(pipeline.jobInfo(1).phase, 'ready');
+  assert.deepEqual(pipeline.jobInfo(1).qualities, ['480p', '720p', '1080p']);
+  assert.equal(writes.filter(patch => patch.video480 || patch.video720 || patch.video1080).length, 4);
+});
+
+test('queued movies keep separate states; duplicate jobs are rejected and failures release the queue', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const pipeline = new TranscodeService({
+    findOne: async ({ where }) => ({ id: where.id, title: 'Same title' }), update: async () => {},
+  });
+  pipeline.probe = async () => ({ height: 480, duration: 10 });
+  pipeline.render = async (input, _output, _height, report) => {
+    if (input.endsWith('bad.mp4')) {
+      await gate;
+      report(5);
+      throw new Error('Synthetic encoder failure');
+    }
+    report(10);
+  };
+  await pipeline.enqueue(1, 'bad.mp4');
+  await pipeline.enqueue(2, 'good.mp4');
+  assert.equal(pipeline.jobInfo(2).phase, 'queued');
+  assert.equal(pipeline.jobInfo(2).progress, null);
+  await assert.rejects(pipeline.enqueue(2, 'replacement.mp4'), /already has a video conversion/);
+  release();
+  await waitFor(() => pipeline.jobInfo(2).status === 'ready');
+  assert.equal(pipeline.jobInfo(1).phase, 'failed');
+  assert.equal(pipeline.jobInfo(1).progress, 50);
+  assert.equal(pipeline.jobInfo(2).progress, 100);
 });

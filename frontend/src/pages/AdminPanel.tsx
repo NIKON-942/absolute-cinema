@@ -13,6 +13,7 @@ import { AdminTable } from '@/components/AdminTable';
 import type { Column } from '@/components/AdminTable';
 import { Modal } from '@/components/Modal';
 import { AutoTextarea } from '@/components/AutoTextarea';
+import { ProgressBar, TranscodeProgress } from '@/components/TranscodeProgress';
 import { LoadingBlock } from '@/components/Spinner';
 import { EmptyState } from '@/components/EmptyState';
 import { formatPrice } from '@/utils/format';
@@ -25,14 +26,13 @@ import type {
   GenreDto,
   MovieDto,
   Paginated,
-  Quality,
   Role,
+  TranscodeJobDto,
   UserDto,
 } from '@/types';
 
 const PAGE_SIZE = 10;
 const AGE_RATINGS = ['0+', '6+', '12+', '16+', '18+'];
-const QUALITIES: Quality[] = ['480p', '720p', '1080p'];
 const ANALYTICS_INTERVALS = [7, 30, 90, 365];
 
 const inputClass =
@@ -198,6 +198,10 @@ function MoviesTab() {
   const [masterFile, setMasterFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(0);
+  const [uploadMovieId, setUploadMovieId] = useState<number | null>(null);
+  const [jobs, setJobs] = useState<Record<number, TranscodeJobDto>>({});
+  const conversionBusy = editing?.transcodeStatus === 'processing' && jobs[editing.id]?.phase !== 'unavailable';
 
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -246,11 +250,25 @@ function MoviesTab() {
       genreIds: movie.genres.map((g) => g.id),
       actorIds: movie.actors.map((a) => a.id),
       file: null,
-      masterVideoUrl: movie.masterVideoUrl ?? '',
+      masterVideoUrl: /^https?:\/\//i.test(movie.masterVideoUrl ?? '') ? movie.masterVideoUrl! : '',
     });
     setFormError(null);
     setMasterFile(null);
     setFormOpen(true);
+  };
+
+  const selectMaster = (file: File | null) => {
+    if (file && !/^video\//.test(file.type) && !/\.(mp4|webm|mkv|mov|m4v|avi)$/i.test(file.name)) {
+      errorToast(t('admin.movies.videoUnsupported'));
+      return;
+    }
+    if (file && file.size > 8 * 1024 ** 3) {
+      errorToast(t('admin.movies.videoTooLarge'));
+      return;
+    }
+    setMasterFile(file);
+    setFormError(null);
+    if (file) setForm(prev => ({ ...prev, masterVideoUrl: '' }));
   };
 
   const submitForm = async (e: FormEvent) => {
@@ -262,6 +280,7 @@ function MoviesTab() {
     }
     setFormError(null);
     setSaving(true);
+    let savedMovie: MovieDto | null = null;
     try {
       const payload: MovieUpsertPayload = {
         title: form.title.trim(),
@@ -278,18 +297,35 @@ function MoviesTab() {
         genreIds: form.genreIds,
         actorIds: form.actorIds,
         file: form.file,
-        masterVideoUrl: form.masterVideoUrl.trim(),
+        masterVideoUrl: !masterFile && form.masterVideoUrl.trim() !== editing?.masterVideoUrl
+          ? form.masterVideoUrl.trim() : undefined,
       };
-      if (editing) {
-        await mediaService.updateMovie(editing.id, payload);
-        success(t('admin.movies.updated'));
-      } else {
-        await mediaService.createMovie(payload);
-        success(t('admin.movies.created'));
+      savedMovie = editing
+        ? await mediaService.updateMovie(editing.id, payload)
+        : await mediaService.createMovie(payload);
+      const saved = savedMovie;
+      setEditing(saved);
+      setForm(prev => ({ ...prev, file: null }));
+      if (masterFile || payload.masterVideoUrl) {
+        setJobs(prev => { const next = { ...prev }; delete next[saved.id]; return next; });
       }
-      setFormOpen(false);
-      reload();
+      // Keep the saved movie visible without a list response racing the upload response.
+      setData(prev => prev ? {
+        ...prev,
+        total: prev.total + (editing ? 0 : 1),
+        items: prev.items.some(movie => movie.id === saved.id)
+          ? prev.items.map(movie => movie.id === saved.id ? saved : movie)
+          : [saved, ...prev.items].slice(0, PAGE_SIZE),
+      } : prev);
+      if (masterFile) {
+        await uploadMaster(saved, masterFile);
+      } else {
+        reload();
+        success(t(editing ? 'admin.movies.updated' : 'admin.movies.created'));
+        if (savedMovie.transcodeStatus !== 'processing') setFormOpen(false);
+      }
     } catch (err) {
+      if (savedMovie && masterFile) setFormError(t('admin.movies.uploadFailedSaved'));
       errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
     } finally {
       setSaving(false);
@@ -317,40 +353,57 @@ function MoviesTab() {
   };
 
   /** Uploads the single master video; variants are transcoded server-side. */
-  const uploadMaster = async (file: File) => {
-    if (!editing) return;
+  const uploadMaster = async (movie: MovieDto, file: File) => {
     setUploading(true);
+    setUploadMovieId(movie.id);
+    setUploadProgress(0);
     try {
-      const updated = await mediaService.uploadMasterVideo(editing.id, file);
+      const updated = await mediaService.uploadMasterVideo(movie.id, file, setUploadProgress);
       setEditing(updated);
       setMasterFile(null);
       setData((prev) => (prev ? { ...prev, items: prev.items.map((m) => (m.id === updated.id ? updated : m)) } : prev));
       success(t('admin.movies.masterUploaded'));
-    } catch (err) {
-      errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
     } finally {
       setUploading(false);
+      setUploadMovieId(null);
     }
   };
 
-  // Poll the background transcode job while it runs
+  // Poll visible jobs even after the movie form is closed.
+  const processingIds = [...new Set([
+    ...(data?.items ?? []).filter(m => m.transcodeStatus === 'processing').map(m => m.id),
+    ...(formOpen && editing?.transcodeStatus === 'processing' ? [editing.id] : []),
+  ])].sort((a, b) => a - b).join(',');
   useEffect(() => {
-    if (!editing || editing.transcodeStatus !== 'processing') return;
-    const timer = setInterval(async () => {
-      try {
-        const job = await mediaService.transcodeStatus(editing.id);
-        if (job.status !== 'processing') {
-          const updated = await mediaService.getById(editing.id);
-          setEditing(updated);
-          setData((prev) => (prev ? { ...prev, items: prev.items.map((m) => (m.id === updated.id ? updated : m)) } : prev));
-          success(job.status === 'ready' ? t('admin.movies.transcodeReady') : t('admin.movies.transcodeFailed'));
+    if (!processingIds) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await Promise.allSettled(processingIds.split(',').map(async id => {
+        const job = await mediaService.transcodeStatus(Number(id));
+        if (cancelled) return;
+        setJobs(prev => ({ ...prev, [job.movieId]: job }));
+        if (job.status === 'ready' || job.status === 'failed') {
+          const updated = await mediaService.getById(job.movieId);
+          if (cancelled) return;
+          setEditing(prev => prev?.id === updated.id ? updated : prev);
+          setData(prev => prev ? { ...prev, items: prev.items.map(m => m.id === updated.id ? updated : m) } : prev);
+          if (job.status === 'ready') success(t('admin.movies.transcodeReady'));
+          else errorToast(t('admin.movies.transcodeFailed'));
         }
-      } catch {
-        /* keep polling; next tick may succeed */
-      }
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [editing, t, success]);
+      }));
+      if (!cancelled) timer = setTimeout(poll, 1500);
+    };
+    void poll();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [processingIds, t, success, errorToast]);
+
+  useEffect(() => {
+    if (!uploading) return;
+    const preventExit = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', preventExit);
+    return () => window.removeEventListener('beforeunload', preventExit);
+  }, [uploading]);
 
   const toggleId = (list: number[], id: number): number[] =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -396,6 +449,13 @@ function MoviesTab() {
       className: 'hidden sm:table-cell',
     },
     {
+      key: 'transcodeStatus',
+      label: t('admin.movies.masterVideo'),
+      render: (m) => uploadMovieId === m.id
+        ? <ProgressBar label={t('admin.movies.uploadProgress')} progress={uploadProgress} />
+        : <TranscodeProgress movie={m} job={jobs[m.id]} compact />,
+    },
+    {
       key: 'availableQualities',
       label: t('player.quality'),
       render: (m) => <span className="text-xs text-cinema-muted">{m.availableQualities.join(' / ') || '—'}</span>,
@@ -420,7 +480,7 @@ function MoviesTab() {
           aria-label={t('common.search')}
         />
         <span className="flex-1 text-sm text-cinema-muted">{data ? t('catalog.foundCount', { count: data.total }) : ''}</span>
-        <button type="button" onClick={openCreate} className={primaryBtn}>
+        <button type="button" onClick={openCreate} className={primaryBtn} disabled={saving}>
           + {t('admin.movies.add')}
         </button>
       </div>
@@ -449,6 +509,7 @@ function MoviesTab() {
                 <button
                   type="button"
                   onClick={() => openEdit(m)}
+                  disabled={saving}
                   aria-label={t('common.edit')}
                   className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-slate-300 transition hover:border-cinema-amber/60 hover:text-cinema-amber"
                 >
@@ -459,6 +520,7 @@ function MoviesTab() {
                 <button
                   type="button"
                   onClick={() => deleteMovie(m)}
+                  disabled={saving || m.transcodeStatus === 'processing'}
                   aria-label={t('common.delete')}
                   className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-slate-300 transition hover:border-cinema-red/60 hover:text-cinema-red"
                 >
@@ -488,7 +550,7 @@ function MoviesTab() {
       {/* create / edit modal */}
       <Modal
         open={formOpen}
-        onClose={() => setFormOpen(false)}
+        onClose={() => { if (!saving && !uploading) setFormOpen(false); }}
         wide
         title={editing ? t('admin.movies.editTitle') : t('admin.movies.createTitle')}
         footer={
@@ -503,6 +565,7 @@ function MoviesTab() {
         }
       >
         <form id="movie-form" onSubmit={submitForm} className="space-y-4">
+          <fieldset disabled={saving || uploading} className="space-y-4">
           {formError && (
             <p className="rounded-lg border border-cinema-red/50 bg-cinema-red/10 px-3 py-2 text-sm text-red-200">{formError}</p>
           )}
@@ -692,126 +755,72 @@ function MoviesTab() {
             </div>
           </div>
 
-          {/* master video (edit only — needs an existing movie id) */}
-          {editing ? (
-            <div className="rounded-xl border border-cinema-border bg-cinema-black/40 p-4">
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <p className="text-xs font-bold uppercase tracking-wide text-cinema-muted">{t('admin.movies.masterVideo')}</p>
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                    editing.transcodeStatus === 'ready'
-                      ? 'bg-emerald-900/50 text-emerald-300'
-                      : editing.transcodeStatus === 'processing'
-                        ? 'animate-pulse bg-amber-900/50 text-amber-300'
-                        : editing.transcodeStatus === 'failed'
-                          ? 'bg-cinema-red/20 text-cinema-red'
-                          : 'bg-cinema-card text-cinema-muted'
-                  }`}
-                >
-                  {t(`admin.movies.transcode.${editing.transcodeStatus}`)}
-                </span>
-              </div>
-              <p className="mb-3 text-xs text-cinema-muted">{t('admin.movies.masterHint')}</p>
-
-              {editing.transcodeStatus === 'processing' && (
-                <p className="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
-                  {t('admin.movies.transcodeProcessing')}
-                </p>
-              )}
-
-              {/* drag-and-drop / click-to-browse zone */}
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => document.getElementById('master-file-input')?.click()}
-                onKeyDown={(e) => e.key === 'Enter' && document.getElementById('master-file-input')?.click()}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  const f = e.dataTransfer.files?.[0];
-                  if (f) void uploadMaster(f);
-                }}
-                className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-6 text-center transition ${
-                  dragOver ? 'border-cinema-amber bg-cinema-amber/10' : 'border-cinema-border hover:border-cinema-amber/60'
-                } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
-              >
-                <span className="text-2xl">🎬</span>
-                {masterFile ? (
-                  <>
-                    <p className="text-sm font-semibold text-slate-100">{masterFile.name}</p>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void uploadMaster(masterFile);
-                      }}
-                      disabled={uploading}
-                      className={primaryBtn}
-                    >
-                      {uploading ? t('admin.movies.videoUploading') : t('admin.movies.masterUpload')}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-semibold text-slate-200">{t('admin.movies.masterDropTitle')}</p>
-                    <p className="text-xs text-cinema-muted">{t('admin.movies.masterDropHint')}</p>
-                  </>
-                )}
-                <input
-                  id="master-file-input"
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={(e) => setMasterFile(e.target.files?.[0] ?? null)}
-                />
-              </div>
-
-              {/* master URL alternative */}
-              <div className="mt-3">
-                <label htmlFor="mf-master-url" className={labelClass}>
-                  {t('admin.movies.masterUrl')}
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    id="mf-master-url"
-                    type="url"
-                    value={form.masterVideoUrl}
-                    onChange={(e) => setForm({ ...form, masterVideoUrl: e.target.value })}
-                    placeholder="https://…"
-                    className={inputClass}
-                  />
-                  <span className="hidden items-center text-xs text-cinema-muted sm:flex">{t('admin.movies.masterUrlHint')}</span>
-                </div>
-              </div>
-
-              {/* generated variants */}
-              <div className="mt-3 flex flex-wrap gap-2">
-                {QUALITIES.map((q) => {
-                  const has = editing.availableQualities.includes(q);
-                  return (
-                    <span
-                      key={q}
-                      className={`rounded-full px-3 py-1 text-xs font-bold ${
-                        has ? 'bg-emerald-900/50 text-emerald-300' : 'bg-cinema-card text-cinema-muted'
-                      }`}
-                    >
-                      {has ? '✓' : '—'} {q}
-                    </span>
-                  );
-                })}
-              </div>
+          {/* Video is optional for both new and existing movies. */}
+          <div className="space-y-3 rounded-xl border border-cinema-border bg-cinema-black/40 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-cinema-muted">{t('admin.movies.masterVideo')}</p>
+              <span className="text-xs text-cinema-muted">{t('admin.movies.videoOptional')}</span>
             </div>
-          ) : (
-            <p className="rounded-xl border border-cinema-border bg-cinema-black/40 p-4 text-xs text-cinema-muted">
-              {t('admin.movies.masterCreateHint')}
-            </p>
-          )}
+            <p className="text-xs text-cinema-muted">{t('admin.movies.masterHint')}</p>
+            {editing && <TranscodeProgress movie={editing} job={jobs[editing.id]} />}
+            {uploading && (
+              <div className="space-y-2" aria-live="polite">
+                <ProgressBar label={t('admin.movies.uploadProgress')} progress={uploadProgress} />
+                <p className="text-xs text-cinema-muted">
+                  {t(uploadProgress === 100 ? 'admin.movies.uploadReceiving' : 'admin.movies.uploadKeepOpen')}
+                </p>
+              </div>
+            )}
+            <div
+              role="button"
+              aria-label={t('admin.movies.masterDropTitle')}
+              aria-disabled={saving || conversionBusy}
+              tabIndex={saving || conversionBusy ? -1 : 0}
+              onClick={() => { if (!saving && !conversionBusy) document.getElementById('master-file-input')?.click(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (!saving && !conversionBusy) document.getElementById('master-file-input')?.click();
+                }
+              }}
+              onDragOver={(e) => { e.preventDefault(); if (!saving && !conversionBusy) setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                if (!saving && !conversionBusy) selectMaster(e.dataTransfer.files?.[0] ?? null);
+              }}
+              className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-6 text-center transition ${
+                dragOver ? 'border-cinema-amber bg-cinema-amber/10' : 'border-cinema-border'
+              } ${saving || conversionBusy ? 'opacity-60' : 'cursor-pointer hover:border-cinema-amber/60'}`}
+            >
+              <span className="text-2xl">🎬</span>
+              <p className="break-all text-sm font-semibold text-slate-200">{masterFile?.name ?? t('admin.movies.masterDropTitle')}</p>
+              <p className="text-xs text-cinema-muted">{t(uploading ? 'admin.movies.uploadKeepOpen' : masterFile ? 'admin.movies.videoSelected' : 'admin.movies.masterDropHint')}</p>
+            </div>
+            <input
+              id="master-file-input"
+              type="file"
+              accept="video/*,.mkv,.avi,.m4v"
+              className="sr-only"
+              disabled={saving || conversionBusy}
+              onChange={(e) => { selectMaster(e.target.files?.[0] ?? null); e.target.value = ''; }}
+              aria-label={t('admin.movies.videoFile')}
+            />
+            {masterFile && (
+              <button type="button" className={ghostBtn} onClick={() => setMasterFile(null)} disabled={saving}>
+                {t('admin.movies.removeVideoSelection')}
+              </button>
+            )}
+            <div>
+              <label htmlFor="mf-master-url" className={labelClass}>{t('admin.movies.masterUrl')}</label>
+              <input id="mf-master-url" type="url" value={form.masterVideoUrl}
+                onChange={(e) => setForm({ ...form, masterVideoUrl: e.target.value })}
+                disabled={Boolean(masterFile) || conversionBusy} placeholder="https://…" className={inputClass} />
+            </div>
+            <p className="text-xs text-cinema-muted">{t(conversionBusy ? 'admin.movies.conversionBackground' : 'admin.movies.masterCreateHint')}</p>
+          </div>
+          </fieldset>
         </form>
       </Modal>
 

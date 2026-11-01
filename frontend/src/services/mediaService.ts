@@ -186,11 +186,14 @@ export const mediaService = {
    * Master video upload: the server stores it in storage/masters and runs
    * background transcoding into 480p/720p/1080p.
    */
-  uploadMasterVideo(id: number, file: File): Promise<MovieDto> {
+  uploadMasterVideo(id: number, file: File, onProgress?: (percent: number | null) => void): Promise<MovieDto> {
     const form = new FormData();
     form.append('file', file);
     return api
-      .post(`/media/${id}/master-video`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      .post(`/media/${id}/master-video`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: ({ loaded, total }) => onProgress?.(total ? Math.min(100, Math.floor(loaded / total * 100)) : null),
+      })
       .then((r) => r.data);
   },
 
