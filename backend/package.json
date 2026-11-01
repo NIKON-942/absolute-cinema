@@ -8,6 +8,9 @@
     "start": "node dist/main.js",
     "build": "nest build",
     "migration:run": "ts-node ./node_modules/typeorm/cli.js migration:run -d src/database/data-source.ts",
+    "migration:run:prod": "node dist/database/run-migrations.js",
+    "bootstrap:prod": "node dist/database/bootstrap.js",
+    "test:smoke": "node scripts/smoke-plans.mjs",
     "migration:generate": "ts-node ./node_modules/typeorm/cli.js migration:generate -d src/database/data-source.ts src/database/migrations/Auto",
     "seed": "ts-node src/database/seed.ts",
     "videos:generate": "node scripts/generate-videos.mjs"
@@ -28,7 +31,6 @@
     "@opentelemetry/resources": "^1.28.0",
     "@opentelemetry/sdk-node": "^0.55.0",
     "@opentelemetry/semantic-conventions": "^1.28.0",
-    "absolutecinema": "file:..",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",

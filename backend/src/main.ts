@@ -38,19 +38,8 @@ async function bootstrapTracing(): Promise<void> {
 async function bootstrap(): Promise<void> {
   await bootstrapTracing();
 
-  // Refuse to run a production deployment on the well-known dev secret —
-  // anyone could forge admin tokens offline.
-  if (
-    process.env.NODE_ENV === 'production' &&
-    (process.env.JWT_SECRET ?? 'dev-only-secret-change-me') ===
-      'dev-only-secret-change-me'
-  ) {
-    throw new Error(
-      'Refusing to start: JWT_SECRET is not set (default dev secret in production)',
-    );
-  }
-
   const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.enableShutdownHooks();
   app.setGlobalPrefix('api');
 
   if (process.env.NODE_ENV !== 'production') {

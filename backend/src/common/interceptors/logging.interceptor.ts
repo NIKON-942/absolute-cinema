@@ -14,10 +14,12 @@ export class LoggingInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = context.switchToHttp().getRequest();
     const { method, originalUrl } = req;
+    // Video requests carry a JWT in the query string; never persist it in logs.
+    const pathname = originalUrl.split('?')[0];
     const start = Date.now();
     return next.handle().pipe(
       tap(() =>
-        this.logger.log(`${method} ${originalUrl} -> ${Date.now() - start}ms`),
+        this.logger.log(`${method} ${pathname} -> ${Date.now() - start}ms`),
       ),
     );
   }

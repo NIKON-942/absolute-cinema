@@ -1,0 +1,187 @@
+name: CI and Oracle deployment
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cinema-${{ github.workflow }}-${{ github.ref }}
+  # Do not interrupt a deployment halfway through a migration.
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Build and integration checks (ARM64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE_TAG: ${{ github.sha }}
+      SMOKE_API_URL: http://localhost/api
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare isolated configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          export DEPLOY_ROOT="$RUNNER_TEMP/absolute-cinema"
+          echo "DEPLOY_ROOT=$DEPLOY_ROOT" >> "$GITHUB_ENV"
+          mkdir -p "$DEPLOY_ROOT"
+          umask 077
+          cat > "$DEPLOY_ROOT/.env" <<EOF
+          SITE_ADDRESS=http://localhost
+          CLIENT_URL=http://localhost
+          DB_NAME=absolutecinema
+          DB_USER=cinema
+          DB_PASSWORD=$(openssl rand -hex 24)
+          JWT_SECRET=$(openssl rand -hex 32)
+          INITIAL_ADMIN_EMAIL=ci-admin@example.com
+          INITIAL_ADMIN_PASSWORD=$(openssl rand -hex 24)
+          STRIPE_ENABLED=false
+          OTEL_EXPORTER_OTLP_ENDPOINT=
+          EOF
+          for script in deploy/*.sh; do bash -n "$script"; done
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          load: true
+          tags: ${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=backend-arm64
+          cache-to: type=gha,mode=max,scope=backend-arm64
+      - name: Build web runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          load: true
+          tags: ${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=frontend-arm64
+          cache-to: type=gha,mode=max,scope=frontend-arm64
+      - name: Check Caddy, migrations and production bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
+          dc config --quiet
+          docker run --rm -e SITE_ADDRESS=http://localhost --entrypoint caddy \
+            "$IMAGE_PREFIX-frontend:$IMAGE_TAG" validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          dc up -d --wait --wait-timeout 120 postgres
+          # Test compiled migration discovery and repeatability on an empty DB.
+          dc run --rm --no-deps backend node dist/database/run-migrations.js
+          dc run --rm --no-deps backend node dist/database/run-migrations.js
+          dc run --rm --no-deps backend node dist/database/bootstrap.js
+          dc run --rm --no-deps backend node dist/database/bootstrap.js
+          dc run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true \
+            -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/prepare-smoke.mjs
+          dc up -d --wait --wait-timeout 180
+      - name: Check SPA, authentication, payments, streaming and device limits
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent http://localhost/login | grep -q '<div id="root">'
+          node backend/scripts/smoke-plans.mjs
+      - name: Show container state on failure
+        if: failure()
+        run: |
+          docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml ps
+          docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml logs --tail=100
+      - name: Remove isolated containers and test data
+        if: always()
+        run: docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml down -v --remove-orphans
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish tested images
+        if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
+        run: |
+          docker push "$IMAGE_PREFIX-backend:$IMAGE_TAG"
+          docker push "$IMAGE_PREFIX-frontend:$IMAGE_TAG"
+
+  deploy:
+    name: Deploy dev to Oracle VM
+    needs: checks
+    if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment: development
+    permissions:
+      contents: read
+      packages: read
+    env:
+      OCI_HOST: ${{ secrets.OCI_HOST }}
+      OCI_USER: ${{ secrets.OCI_USER }}
+      OCI_PORT: ${{ secrets.OCI_PORT || '22' }}
+      OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+      OCI_KNOWN_HOSTS: ${{ secrets.OCI_KNOWN_HOSTS }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configure SSH with verified host keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in OCI_HOST OCI_USER OCI_SSH_KEY OCI_KNOWN_HOSTS; do
+            [[ -n "${!name}" ]] || { echo "Missing secret: $name" >&2; exit 1; }
+          done
+          [[ "$OCI_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]
+          [[ "$OCI_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          [[ "$OCI_PORT" =~ ^[0-9]+$ ]]
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/oci
+          printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/oci ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host cinema-oci
+            HostName $OCI_HOST
+            User $OCI_USER
+            Port $OCI_PORT
+            IdentityFile ~/.ssh/oci
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 20
+            ServerAliveInterval 15
+            ServerAliveCountMax 8
+          EOF
+      - name: Upload release and deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="ghcr.io/${GITHUB_REPOSITORY,,}"
+          release="/opt/absolute-cinema/releases/$GITHUB_SHA"
+          # Expand these validated GitHub values on the runner before SSH.
+          # shellcheck disable=SC2029
+          ssh cinema-oci "mkdir -p '$release' && chmod 700 '$release'"
+          # shellcheck disable=SC2029
+          tar -C deploy -czf - compose.yml deploy.sh backup.sh \
+            | ssh cinema-oci "tar -xzf - -C '$release'"
+          # shellcheck disable=SC2029
+          printf '%s\n' "$GH_TOKEN" | ssh cinema-oci \
+            "bash '$release/deploy.sh' '$prefix' '$GITHUB_SHA' '$GITHUB_ACTOR'"
+      - name: Remove runner SSH credentials
+        if: always()
+        run: rm -f ~/.ssh/oci

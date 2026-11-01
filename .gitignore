@@ -2,15 +2,21 @@ node_modules/
 dist/
 build/
 .env
+.env.production
+deploy/.env
+*.tsbuildinfo
 *.local
 npm-debug.log*
 .DS_Store
+.tmp/
 
 # local media storage content (keep dirs via .gitkeep)
 backend/storage/videos/*
 !backend/storage/videos/.gitkeep
 backend/storage/posters/*
 !backend/storage/posters/.gitkeep
+backend/storage/masters/*
+!backend/storage/masters/.gitkeep
 
 # uploads
 uploads/

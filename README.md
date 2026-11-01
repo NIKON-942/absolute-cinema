@@ -15,7 +15,7 @@ A Video-on-Demand streaming platform: media catalog, HTTP Range video streaming,
 
 ## Quick start
 
-Prerequisites: Node.js 18+, Docker, FFmpeg (optional — only for generating demo video files).
+Prerequisites: Node.js 22, Docker, FFmpeg (optional — only for generating demo video files).
 
 ```bash
 # 1. Install dependencies (root + backend + frontend)
@@ -90,3 +90,20 @@ absolutecinema/
 - Passwords stored as bcrypt hashes only; secrets via environment variables.
 - Card data never touches the server (Stripe-hosted checkout).
 - Watch history is scoped per user with documented retention (1 year from last activity).
+
+## Oracle Cloud and CI/CD
+
+The `dev` branch is the Oracle test environment; `main` holds the reviewed stable
+code. Pull requests and pushes to both branches run container integration checks.
+Only `dev` publishes images and can deploy; merging `dev` into `main` does not
+deploy. Deployment stays disabled until the repository variable `DEPLOY_ENABLED`
+is set to `true` and the GitHub environment `development` is configured.
+
+- [Налаштування Oracle Cloud і CI/CD з нуля](docs/oracle-cloud-cicd.md)
+- [Аналіз архітектури, залежностей і обмежень](docs/repository-review.md)
+
+Production-style containers use a separate PostgreSQL 17 volume and persistent
+media storage. Do not attach an existing PostgreSQL 14 data volume to PostgreSQL 17.
+The separate **Dependency audit** workflow reports existing security debt and
+currently fails at the high severity threshold; it is not a deployment gate.
+Resolve those findings before using this demo for real customers or payments.
