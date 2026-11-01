@@ -115,6 +115,8 @@ jobs:
           dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
           dc run --rm --no-deps -v "$PWD/backend/scripts:/app/scripts:ro" \
             backend node --test scripts/transcode.test.mjs
+          dc run --rm --no-deps -v "$PWD/backend/scripts:/app/scripts:ro" \
+            backend node --test scripts/uploads.test.mjs
           dc run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true \
             -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-stripe.mjs
       - name: Show container state on failure

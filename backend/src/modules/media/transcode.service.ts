@@ -2,7 +2,10 @@ import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
+import { randomUUID } from 'node:crypto';
+import { basename, join } from 'node:path';
 import { mkdirSync } from 'fs';
+import { rm } from 'node:fs/promises';
 import { Repository } from 'typeorm';
 import { MovieEntity, TranscodeStatusEnum } from './entities/movie.entity';
 import { MASTERS_DIR, VIDEOS_DIR } from './media.constants';
@@ -21,12 +24,6 @@ const TARGETS: TargetSpec[] = [
   { quality: '720p', height: 720 },
   { quality: '1080p', height: 1080 },
 ];
-
-const QUALITY_COLUMN: Record<TargetSpec['quality'], 'video480' | 'video720' | 'video1080'> = {
-  '480p': 'video480',
-  '720p': 'video720',
-  '1080p': 'video1080',
-};
 
 export interface TranscodeJobInfo {
   movieId: number;
@@ -78,15 +75,10 @@ export class TranscodeService {
       targetQualities: [],
     };
     this.jobs.set(movieId, info);
-    // The master changed, so previous renditions are stale (and their files
-    // are about to be overwritten) — unlink them before anything renders.
+    // Keep the current master and renditions playable until replacement succeeds.
     try {
       await this.moviesRepo.update(movieId, {
-        masterVideo: masterSource,
         transcodeStatus: TranscodeStatusEnum.PROCESSING,
-        video480: null,
-        video720: null,
-        video1080: null,
       });
     } catch (error) {
       this.jobs.delete(movieId);
@@ -111,6 +103,7 @@ export class TranscodeService {
   }
 
   private async run(movieId: number, masterSource: string): Promise<void> {
+    const outputs: string[] = [];
     const input = /^https?:\/\//i.test(masterSource)
       ? masterSource
       : `${MASTERS_DIR}/${masterSource}`;
@@ -122,10 +115,10 @@ export class TranscodeService {
       if (!movie) throw new Error('Movie no longer exists');
       mkdirSync(VIDEOS_DIR, { recursive: true });
       const meta = await this.probe(input);
-      const baseSlug = `${movieId}-` + movie.title
+      const baseSlug = `${movieId}-${randomUUID()}-` + movie.title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
+        .replace(/^-+|-+$/g, '').slice(0, 100);
       const targets = TARGETS.filter((t) => t.height <= meta.height);
       if (targets.length === 0) throw new Error('Master video must be at least 480 pixels high');
       info.targetQualities = targets.map(t => t.quality);
@@ -136,6 +129,7 @@ export class TranscodeService {
         info.phase = 'converting';
         info.currentQuality = target.quality;
         const out = `${VIDEOS_DIR}/${baseSlug}-${target.quality}.mp4`;
+        outputs.push(out);
         await this.render(input, out, target.height, (seconds) => {
           if (!meta.duration) return;
           const fraction = Math.min(1, Math.max(0, seconds / meta.duration));
@@ -144,13 +138,6 @@ export class TranscodeService {
         });
         const file = `${baseSlug}-${target.quality}.mp4`;
         rendered.push({ quality: target.quality, file });
-        // Link each rendition the moment it finishes so the movie is
-        // watchable (at the qualities done so far) while the rest render.
-        const patch: Partial<
-          Pick<MovieEntity, 'video480' | 'video720' | 'video1080'>
-        > = {};
-        patch[QUALITY_COLUMN[target.quality]] = file;
-        await this.moviesRepo.update(movieId, patch);
         info.qualities = rendered.map((r) => r.quality);
         if (meta.duration) info.progress = Math.min(99, Math.floor((index + 1) / targets.length * 100));
       }
@@ -158,6 +145,7 @@ export class TranscodeService {
       info.phase = 'finalizing';
       info.currentQuality = null;
       await this.moviesRepo.update(movieId, {
+        masterVideo: masterSource,
         video480: rendered.find((r) => r.quality === '480p')?.file ?? null,
         video720: rendered.find((r) => r.quality === '720p')?.file ?? null,
         video1080: rendered.find((r) => r.quality === '1080p')?.file ?? null,
@@ -168,10 +156,19 @@ export class TranscodeService {
       info.progress = 100;
       info.currentQuality = null;
       info.qualities = rendered.map((r) => r.quality);
+      // Publish the replacement first. Never remove a playable rendition while
+      // a new upload is still being verified or converted.
+      const previous = [movie.video480, movie.video720, movie.video1080]
+        .filter((file): file is string => Boolean(file) && basename(file!) === file);
+      await Promise.all(previous.map(file => rm(join(VIDEOS_DIR, file), { force: true }).catch(() => undefined)));
+      if (movie.masterVideo && movie.masterVideo !== masterSource && basename(movie.masterVideo) === movie.masterVideo) {
+        await rm(join(MASTERS_DIR, movie.masterVideo), { force: true }).catch(() => undefined);
+      }
       this.logger.log(
         `Movie #${movieId} transcoded: ${rendered.map((r) => r.quality).join(', ') || 'nothing (master too small)'}`,
       );
     } catch (err: unknown) {
+      await Promise.all(outputs.map(path => rm(path, { force: true }).catch(() => undefined)));
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Transcode failed for movie #${movieId}: ${message}`);
       await this.moviesRepo
@@ -188,11 +185,11 @@ export class TranscodeService {
   }
 
   /** Resolves the input dimensions so we never upscale a small master. */
-  private async probe(input: string): Promise<{ height: number; duration: number | null }> {
+  async probe(input: string): Promise<{ height: number; duration: number | null }> {
     const { stdout } = await runExecutable('ffprobe', [
       '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=height,duration:format=duration',
       '-of', 'json', input,
-    ], PROCESS_OPTIONS);
+    ], { ...PROCESS_OPTIONS, timeout: 60_000 });
     const data = JSON.parse(stdout) as { streams?: Array<{ height?: number; duration?: string }>; format?: { duration?: string } };
     const height = data.streams?.[0]?.height;
     if (!height || !Number.isFinite(height) || height <= 0) {

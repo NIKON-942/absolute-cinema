@@ -57,6 +57,7 @@ async function bootstrap(): Promise<void> {
   }
 
   app.enableCors({
+    exposedHeaders: ['Location', 'Upload-Offset', 'Upload-Length', 'Tus-Resumable', 'Tus-Version', 'Tus-Extension', 'Tus-Checksum-Algorithm', 'Tus-Max-Size'],
     origin: process.env.CLIENT_URL?.split(',') ?? ['http://localhost:5173'],
     credentials: true,
   });
@@ -68,6 +69,8 @@ async function bootstrap(): Promise<void> {
 
   const port = parseInt(process.env.PORT ?? '4000', 10);
   await app.listen(port);
+  // Large chunks may take several minutes on a slow connection.
+  app.getHttpServer().requestTimeout = 15 * 60 * 1000;
   console.log(`AbsoluteCinema API listening on http://localhost:${port}/api`);
 }
 

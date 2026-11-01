@@ -2,8 +2,16 @@ import { LanguageProvider, useLanguage } from '@/context/LanguageContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { UploadProvider, useUploads } from '@/context/UploadContext';
+import { lazy, Suspense } from 'react';
 import { Navbar } from '@/components/Navbar';
 import AppRoutes from '@/routes/AppRoutes';
+
+const UploadPanel = lazy(() => import('@/components/UploadPanel').then(module => ({ default: module.UploadPanel })));
+function BackgroundUploads() {
+  const { tasks } = useUploads();
+  return tasks.length ? <Suspense fallback={null}><UploadPanel /></Suspense> : null;
+}
 
 function SiteFooter() {
   const { t } = useLanguage();
@@ -23,13 +31,16 @@ export default function App() {
       <LanguageProvider>
         <AuthProvider>
           <ToastProvider>
-            <div className="flex min-h-screen flex-col bg-cinema-black font-sans text-cinema-text">
-              <Navbar />
-              <main className="flex-1">
-                <AppRoutes />
-              </main>
-              <SiteFooter />
-            </div>
+            <UploadProvider>
+              <div className="flex min-h-screen flex-col bg-cinema-black font-sans text-cinema-text">
+                <Navbar />
+                <main className="flex-1">
+                  <AppRoutes />
+                </main>
+                <SiteFooter />
+                <BackgroundUploads />
+              </div>
+            </UploadProvider>
           </ToastProvider>
         </AuthProvider>
       </LanguageProvider>

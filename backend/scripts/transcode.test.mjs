@@ -97,7 +97,8 @@ test('aggregate conversion progress is monotonic and reaches 100 only after the 
   assert.equal(pipeline.jobInfo(1).progress, 100);
   assert.equal(pipeline.jobInfo(1).phase, 'ready');
   assert.deepEqual(pipeline.jobInfo(1).qualities, ['480p', '720p', '1080p']);
-  assert.equal(writes.filter(patch => patch.video480 || patch.video720 || patch.video1080).length, 4);
+  assert.equal(writes.filter(patch => patch.video480 || patch.video720 || patch.video1080).length, 1);
+  assert.ok(writes.slice(0, -1).every(patch => !('masterVideo' in patch) && !('video480' in patch)));
 });
 
 test('queued movies keep separate states; duplicate jobs are rejected and failures release the queue', async () => {
@@ -125,4 +126,19 @@ test('queued movies keep separate states; duplicate jobs are rejected and failur
   assert.equal(pipeline.jobInfo(1).phase, 'failed');
   assert.equal(pipeline.jobInfo(1).progress, 50);
   assert.equal(pipeline.jobInfo(2).progress, 100);
+});
+
+test('failed replacement preserves the previous master and playable renditions', async () => {
+  const movie = { id: 7, title: 'Existing movie', masterVideo: 'previous-master.mp4', video480: 'previous-480p.mp4', video720: 'previous-720p.mp4', transcodeStatus: 'ready' };
+  const pipeline = new TranscodeService({
+    findOne: async () => ({ ...movie }),
+    update: async (_id, patch) => { Object.assign(movie, patch); },
+  });
+  pipeline.probe = async () => ({ height: 720, duration: 10 });
+  pipeline.render = async () => { throw Error('Synthetic replacement failure'); };
+  await pipeline.enqueue(movie.id, 'replacement-master.mp4');
+  await waitFor(() => pipeline.jobInfo(movie.id).status === 'failed');
+  assert.equal(movie.masterVideo, 'previous-master.mp4');
+  assert.equal(movie.video480, 'previous-480p.mp4');
+  assert.equal(movie.video720, 'previous-720p.mp4');
 });
