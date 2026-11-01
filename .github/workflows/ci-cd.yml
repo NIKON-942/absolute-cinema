@@ -106,6 +106,15 @@ jobs:
           docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml \
             run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true -e SMOKE_API_URL=http://backend:4000/api \
             -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-dependencies.mjs
+      - name: Check direct FFmpeg and Stripe SDK migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
+          dc run --rm --no-deps -v "$PWD/backend/scripts:/app/scripts:ro" \
+            backend node --test scripts/transcode.test.mjs
+          dc run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true \
+            -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-stripe.mjs
       - name: Show container state on failure
         if: failure()
         run: |

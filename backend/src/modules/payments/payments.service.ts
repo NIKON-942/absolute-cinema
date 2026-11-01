@@ -41,7 +41,9 @@ export class PaymentsService {
   ) {
     const cfg = config.get('stripe', { infer: true })!;
     if (cfg.enabled && cfg.secretKey) {
-      this.stripe = new Stripe(cfg.secretKey);
+      this.stripe = new Stripe(cfg.secretKey, {
+        apiVersion: '2026-10-28.endive',
+      });
     }
   }
 

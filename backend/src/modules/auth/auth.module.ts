@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
+import { JwtModule, JwtSignOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { config as loadEnv } from 'dotenv';
@@ -9,7 +9,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 // Needed before module decorators evaluate: GoogleStrategy registration
 // depends on env that @nestjs/config has not loaded yet at import time.
 loadEnv({ path: '.env' });
-loadEnv({ path: '../.env' });import { UserEntity } from '../users/user.entity';
+loadEnv({ path: '../.env' });
+import { UserEntity } from '../users/user.entity';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -27,7 +28,8 @@ import { JwtStrategy } from './jwt.strategy';
       useFactory: (config: ConfigService<AppConfig, true>) => ({
         secret: config.get('jwt', { infer: true })!.secret,
         signOptions: {
-          expiresIn: config.get('jwt', { infer: true })!.expiresIn,
+          // jsonwebtoken validates the environment-provided duration at signing time.
+          expiresIn: config.get('jwt', { infer: true })!.expiresIn as JwtSignOptions['expiresIn'],
         },
       }),
     }),

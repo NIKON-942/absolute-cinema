@@ -1,10 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import ffmpeg from 'fluent-ffmpeg';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdirSync } from 'fs';
 import { Repository } from 'typeorm';
 import { MovieEntity, TranscodeStatusEnum } from './entities/movie.entity';
 import { MASTERS_DIR, VIDEOS_DIR } from './media.constants';
+
+const runExecutable = promisify(execFile);
+const PROCESS_OPTIONS = { encoding: 'utf8' as const, maxBuffer: 1024 * 1024, windowsHide: true };
 
 interface TargetSpec {
   quality: '480p' | '720p' | '1080p';
@@ -103,7 +107,7 @@ export class TranscodeService {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
-      const targets = TARGETS.filter((t) => t.height <= meta.height || meta.height === 0);
+      const targets = TARGETS.filter((t) => t.height <= meta.height);
       const rendered: Array<{ quality: string; file: string }> = [];
 
       for (const target of targets) {
@@ -151,30 +155,27 @@ export class TranscodeService {
   }
 
   /** Resolves the input dimensions so we never upscale a small master. */
-  private probe(input: string): Promise<{ height: number }> {
-    return new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(input, (err, data) => {
-        if (err) return reject(err);
-        const video = (data.streams ?? []).find((s) => s.codec_type === 'video');
-        resolve({ height: video?.height ?? 0 });
-      });
-    });
+  private async probe(input: string): Promise<{ height: number }> {
+    const { stdout } = await runExecutable('ffprobe', [
+      '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=height',
+      '-of', 'json', input,
+    ], PROCESS_OPTIONS);
+    const data = JSON.parse(stdout) as { streams?: Array<{ height?: number }> };
+    const height = data.streams?.[0]?.height;
+    if (!height || !Number.isFinite(height) || height <= 0) {
+      throw new Error('Master source must contain a video stream with a valid height');
+    }
+    return { height };
   }
 
-  private render(input: string, output: string, targetHeight: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      ffmpeg(input)
-        .videoFilters(
-          `scale=-2:'min(${targetHeight},ih)':force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2`,
-        )
-        .videoCodec('libx264')
-        .outputOptions(['-crf 23', '-preset veryfast', '-movflags +faststart'])
-        .audioCodec('aac')
-        .audioBitrate('128k')
-        .output(output)
-        .on('error', (err) => reject(err))
-        .on('end', () => resolve())
-        .run();
-    });
+  private async render(input: string, output: string, targetHeight: number): Promise<void> {
+    // Argument arrays bypass the shell, including for URLs and filenames with spaces.
+    await runExecutable('ffmpeg', [
+      '-nostdin', '-hide_banner', '-loglevel', 'error', '-y', '-i', input,
+      '-map', '0:v:0', '-map', '0:a:0?',
+      '-vf', `scale=-2:'min(${targetHeight},ih)':force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2`,
+      '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '128k', output,
+    ], PROCESS_OPTIONS);
   }
 }
