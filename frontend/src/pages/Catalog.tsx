@@ -6,13 +6,13 @@ import { mediaService } from '@/services/mediaService';
 import { MovieCard } from '@/components/MovieCard';
 import { Spinner } from '@/components/Spinner';
 import { EmptyState } from '@/components/EmptyState';
+import { AGE_RATINGS } from '@/utils/ageRatings';
 import type { CountryDto, GenreDto, MovieDto, MovieSort, Paginated } from '@/types';
 
 const PAGE_SIZE = 20;
-const AGE_RATINGS = ['0+', '6+', '12+', '16+', '18+'];
 
 const inputClass =
-  'w-full rounded-lg border border-cinema-border bg-cinema-panel px-3 py-2 text-sm text-slate-100 placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none';
+  'w-full rounded-lg border border-cinema-border bg-cinema-panel px-3 py-2 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none';
 
 export default function Catalog() {
   const { t } = useLanguage();
@@ -110,7 +110,7 @@ export default function Catalog() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-extrabold text-slate-100 sm:text-3xl">{t('catalog.title')}</h1>
+        <h1 className="text-2xl font-extrabold text-cinema-text sm:text-3xl">{t('catalog.title')}</h1>
         <p className="mt-1 text-sm text-cinema-muted">
           {data ? t('catalog.foundCount', { count: data.total }) : t('common.loading')}
         </p>
@@ -237,7 +237,7 @@ export default function Catalog() {
                 type="button"
                 disabled={page <= 1}
                 onClick={() => goPage(page - 1)}
-                className="cursor-pointer rounded-lg border border-cinema-border px-3 py-2 text-sm text-slate-200 transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-30"
+                className="cursor-pointer rounded-lg border border-cinema-border px-3 py-2 text-sm text-cinema-soft transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-30"
               >
                 ← {t('catalog.prev')}
               </button>
@@ -251,7 +251,7 @@ export default function Catalog() {
                       onClick={() => goPage(p)}
                       aria-current={p === page ? 'page' : undefined}
                       className={`h-9 w-9 cursor-pointer rounded-lg text-sm font-bold transition ${
-                        p === page ? 'bg-cinema-amber text-cinema-black' : 'border border-cinema-border text-slate-200 hover:border-cinema-amber/60'
+                        p === page ? 'bg-cinema-amber text-cinema-ink' : 'border border-cinema-border text-cinema-soft hover:border-cinema-amber/60'
                       }`}
                     >
                       {p}
@@ -262,7 +262,7 @@ export default function Catalog() {
                 type="button"
                 disabled={page >= totalPages}
                 onClick={() => goPage(page + 1)}
-                className="cursor-pointer rounded-lg border border-cinema-border px-3 py-2 text-sm text-slate-200 transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-30"
+                className="cursor-pointer rounded-lg border border-cinema-border px-3 py-2 text-sm text-cinema-soft transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-30"
               >
                 {t('catalog.next')} →
               </button>

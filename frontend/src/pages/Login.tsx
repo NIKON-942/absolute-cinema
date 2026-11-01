@@ -62,19 +62,19 @@ export default function Login() {
       footer={
         <>
           {t('auth.noAccount')}{' '}
-          <Link to="/register" className="font-semibold text-cinema-amber hover:underline">
+          <Link to="/register" className="font-semibold text-cinema-accent hover:underline">
             {t('nav.register')}
           </Link>
         </>
       }
     >
       {sessionExpired && (
-        <div className="mb-4 rounded-xl border border-cinema-amber/40 bg-cinema-amber/10 px-4 py-3 text-sm text-cinema-amber">
+        <div className="mb-4 rounded-xl border border-cinema-amber/40 bg-cinema-amber/10 px-4 py-3 text-sm text-cinema-accent">
           {t('auth.expiredNotice')}
         </div>
       )}
       {blocked && (
-        <div className="mb-4 rounded-xl border border-cinema-red/50 bg-cinema-red/10 px-4 py-3 text-sm text-red-200" role="alert">
+        <div className="mb-4 rounded-xl border border-cinema-red/50 bg-cinema-red/10 px-4 py-3 text-sm text-cinema-error" role="alert">
           {t('auth.blockedAccount')}
         </div>
       )}
@@ -102,7 +102,7 @@ export default function Login() {
             <label htmlFor="login-password" className={authLabelClass}>
               {t('auth.password')}
             </label>
-            <Link to="/forgot-password" className="mb-1.5 text-xs font-semibold text-cinema-muted transition hover:text-cinema-amber">
+            <Link to="/forgot-password" className="mb-1.5 text-xs font-semibold text-cinema-muted transition hover:text-cinema-accent">
               {t('auth.forgotLink')}
             </Link>
           </div>

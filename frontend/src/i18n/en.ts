@@ -1,5 +1,8 @@
 /** English dictionary. Flat dot-notation keys, `{param}` placeholders. */
 export const en: Record<string, string> = {
+  'theme.label': 'Theme',
+  'theme.light': 'Light theme',
+  'theme.dark': 'Dark theme',
   // ---- common ----
   'common.close': 'Close',
   'common.loading': 'Loading…',

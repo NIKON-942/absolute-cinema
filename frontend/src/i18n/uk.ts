@@ -1,5 +1,8 @@
 /** Український словник. Плоскі ключі з крапкою, плейсхолдери `{param}`. */
 export const uk: Record<string, string> = {
+  'theme.label': 'Тема',
+  'theme.light': 'Світла тема',
+  'theme.dark': 'Темна тема',
   // ---- загальні ----
   'common.close': 'Закрити',
   'common.loading': 'Завантаження…',

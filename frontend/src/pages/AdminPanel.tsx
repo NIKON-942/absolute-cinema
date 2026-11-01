@@ -5,6 +5,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
 import { useDebounce } from '@/hooks/useDebounce';
+import { AGE_RATINGS } from '@/utils/ageRatings';
 import { mediaService } from '@/services/mediaService';
 import type { MovieUpsertPayload } from '@/services/mediaService';
 import { usersService } from '@/services/usersService';
@@ -35,16 +36,15 @@ import type {
 } from '@/types';
 
 const PAGE_SIZE = 10;
-const AGE_RATINGS = ['0+', '6+', '12+', '16+', '18+'];
 const ANALYTICS_INTERVALS = [7, 30, 90, 365];
 
 const inputClass =
-  'w-full rounded-lg border border-cinema-border bg-cinema-black/60 px-3 py-2 text-sm text-slate-100 placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none';
+  'w-full rounded-lg border border-cinema-border bg-cinema-black/60 px-3 py-2 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none';
 const labelClass = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-cinema-muted';
 const primaryBtn =
-  'cursor-pointer rounded-lg bg-cinema-amber px-4 py-2 text-sm font-bold text-cinema-black transition hover:shadow-glow disabled:cursor-default disabled:opacity-60';
+  'cursor-pointer rounded-lg bg-cinema-amber px-4 py-2 text-sm font-bold text-cinema-ink transition hover:shadow-glow disabled:cursor-default disabled:opacity-60';
 const ghostBtn =
-  'cursor-pointer rounded-lg border border-cinema-border px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-60';
+  'cursor-pointer rounded-lg border border-cinema-border px-4 py-2 text-sm font-semibold text-cinema-soft transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-60';
 const dangerBtn =
   'cursor-pointer rounded-lg bg-cinema-red px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-red/85 disabled:cursor-default disabled:opacity-60';
 
@@ -58,7 +58,7 @@ export default function AdminPanel() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-extrabold text-slate-50 sm:text-3xl">{t('admin.title')}</h1>
+        <h1 className="text-2xl font-extrabold text-cinema-strong sm:text-3xl">{t('admin.title')}</h1>
       </header>
 
       <nav className="mb-6 flex gap-1 overflow-x-auto rounded-xl border border-cinema-border bg-cinema-panel/60 p-1" role="tablist">
@@ -70,7 +70,7 @@ export default function AdminPanel() {
             aria-selected={tab === key}
             onClick={() => setTab(key)}
             className={`shrink-0 cursor-pointer rounded-lg px-4 py-2 text-sm font-bold transition ${
-              tab === key ? 'bg-cinema-amber text-cinema-black shadow-glow' : 'text-slate-300 hover:bg-cinema-card hover:text-slate-100'
+              tab === key ? 'bg-cinema-amber text-cinema-ink shadow-glow' : 'text-cinema-soft hover:bg-cinema-card hover:text-cinema-text'
             }`}
           >
             {t(`admin.tab.${key}`)}
@@ -132,7 +132,7 @@ function ConfirmDialog({ state, onClose, busy }: { state: ConfirmState | null; o
         </>
       }
     >
-      <p className="text-sm leading-relaxed text-slate-200">{state?.message}</p>
+      <p className="text-sm leading-relaxed text-cinema-soft">{state?.message}</p>
     </Modal>
   );
 }
@@ -467,7 +467,7 @@ function MoviesTab() {
             ) : null}
           </div>
           <div className="min-w-0">
-            <p className="truncate font-semibold text-slate-100">{m.title}</p>
+            <p className="truncate font-semibold text-cinema-text">{m.title}</p>
             <p className="truncate text-xs text-cinema-muted">#{m.id}</p>
           </div>
         </div>
@@ -557,7 +557,7 @@ function MoviesTab() {
                   onClick={() => openEdit(m)}
                   disabled={saving}
                   aria-label={t('common.edit')}
-                  className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-slate-300 transition hover:border-cinema-amber/60 hover:text-cinema-amber"
+                  className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-cinema-soft transition hover:border-cinema-amber/60 hover:text-cinema-accent"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" strokeLinecap="round" strokeLinejoin="round" />
@@ -568,7 +568,7 @@ function MoviesTab() {
                   onClick={() => deleteMovie(m)}
                   disabled={saving || m.transcodeStatus === 'processing'}
                   aria-label={t('common.delete')}
-                  className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-slate-300 transition hover:border-cinema-red/60 hover:text-cinema-red"
+                  className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-cinema-soft transition hover:border-cinema-red/60 hover:text-cinema-red"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -620,9 +620,9 @@ function MoviesTab() {
         <form id="movie-form" onSubmit={submitForm} className="space-y-4">
           <fieldset disabled={saving || uploading} className="space-y-4">
           {formError && (
-            <p className="rounded-lg border border-cinema-red/50 bg-cinema-red/10 px-3 py-2 text-sm text-red-200">{formError}</p>
+            <p className="rounded-lg border border-cinema-red/50 bg-cinema-red/10 px-3 py-2 text-sm text-cinema-error">{formError}</p>
           )}
-          {uploadNotice && <p role="status" className="rounded-lg border border-cinema-amber/40 bg-cinema-amber/10 px-3 py-2 text-sm text-amber-200">{uploadNotice}</p>}
+          {uploadNotice && <p role="status" className="rounded-lg border border-cinema-amber/40 bg-cinema-amber/10 px-3 py-2 text-sm text-cinema-notice">{uploadNotice}</p>}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="mf-title" className={labelClass}>
@@ -748,8 +748,8 @@ function MoviesTab() {
                   aria-pressed={form.genreIds.includes(g.id)}
                   className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition ${
                     form.genreIds.includes(g.id)
-                      ? 'border-cinema-amber bg-cinema-amber/15 text-cinema-amber'
-                      : 'border-cinema-border text-slate-300 hover:border-cinema-amber/50'
+                      ? 'border-cinema-amber bg-cinema-amber/15 text-cinema-accent'
+                      : 'border-cinema-border text-cinema-soft hover:border-cinema-amber/50'
                   }`}
                 >
                   {g.name}
@@ -763,7 +763,7 @@ function MoviesTab() {
             <span className={labelClass}>{t('admin.movies.actors')}</span>
             <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-cinema-border bg-cinema-black/40 p-2">
               {actors.map((a) => (
-                <label key={a.id} className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-slate-200 transition hover:bg-cinema-card">
+                <label key={a.id} className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-cinema-soft transition hover:bg-cinema-card">
                   <input
                     type="checkbox"
                     checked={form.actorIds.includes(a.id)}
@@ -822,20 +822,20 @@ function MoviesTab() {
                 <ProgressBar label={t('admin.movies.uploadProgress')} progress={uploadProgress} />
                 {measurements && uploadSnapshot && (
                   <dl className="grid grid-cols-2 gap-2 text-xs text-cinema-muted sm:grid-cols-4" data-testid="upload-measurements">
-                    <div><dt>{t('admin.movies.uploadTransferred')}</dt><dd className="mt-1 text-slate-200">{formatBytes(uploadSnapshot.loaded, lang)}{uploadSnapshot.total !== null ? ` / ${formatBytes(uploadSnapshot.total, lang)}` : ''}</dd></div>
-                    <div><dt>{t('admin.movies.uploadSpeed')}</dt><dd className="mt-1 text-slate-200">{measurements.bytesPerSecond === null ? '—' : t('admin.movies.bytesPerSecond', { value: formatBytes(measurements.bytesPerSecond, lang) })}</dd></div>
-                    <div><dt>{t('admin.movies.uploadElapsed')}</dt><dd className="mt-1 tabular-nums text-slate-200">{formatDuration(measurements.elapsedSeconds)}</dd></div>
-                    <div><dt>{t('admin.movies.uploadRemaining')}</dt><dd className="mt-1 tabular-nums text-slate-200">{measurements.transferred ? '—' : measurements.remainingSeconds !== null ? `~${formatDuration(measurements.remainingSeconds)}` : t('admin.movies.uploadCalculating')}</dd></div>
+                    <div><dt>{t('admin.movies.uploadTransferred')}</dt><dd className="mt-1 text-cinema-soft">{formatBytes(uploadSnapshot.loaded, lang)}{uploadSnapshot.total !== null ? ` / ${formatBytes(uploadSnapshot.total, lang)}` : ''}</dd></div>
+                    <div><dt>{t('admin.movies.uploadSpeed')}</dt><dd className="mt-1 text-cinema-soft">{measurements.bytesPerSecond === null ? '—' : t('admin.movies.bytesPerSecond', { value: formatBytes(measurements.bytesPerSecond, lang) })}</dd></div>
+                    <div><dt>{t('admin.movies.uploadElapsed')}</dt><dd className="mt-1 tabular-nums text-cinema-soft">{formatDuration(measurements.elapsedSeconds)}</dd></div>
+                    <div><dt>{t('admin.movies.uploadRemaining')}</dt><dd className="mt-1 tabular-nums text-cinema-soft">{measurements.transferred ? '—' : measurements.remainingSeconds !== null ? `~${formatDuration(measurements.remainingSeconds)}` : t('admin.movies.uploadCalculating')}</dd></div>
                   </dl>
                 )}
-                {measurements?.stalled && <p className="text-xs text-amber-200">{t('admin.movies.uploadStalled')}</p>}
+                {measurements?.stalled && <p className="text-xs text-cinema-notice">{t('admin.movies.uploadStalled')}</p>}
                 <p className="text-xs text-cinema-muted">
                   {t(uploadProgress === 100 ? 'admin.movies.uploadReceiving' : 'admin.movies.uploadKeepOpen')}
                 </p>
               </div>
             )}
             {!uploading && completedUploadSeconds !== null && (
-              <p className="text-xs text-emerald-300">{t('admin.movies.uploadCompletedIn', { time: formatDuration(completedUploadSeconds) })}</p>
+              <p className="text-xs text-cinema-success">{t('admin.movies.uploadCompletedIn', { time: formatDuration(completedUploadSeconds) })}</p>
             )}
             <div
               role="button"
@@ -861,7 +861,7 @@ function MoviesTab() {
               } ${saving || conversionBusy ? 'opacity-60' : 'cursor-pointer hover:border-cinema-amber/60'}`}
             >
               <span className="text-2xl">🎬</span>
-              <p className="break-all text-sm font-semibold text-slate-200">{masterFile?.name ?? t('admin.movies.masterDropTitle')}</p>
+              <p className="break-all text-sm font-semibold text-cinema-soft">{masterFile?.name ?? t('admin.movies.masterDropTitle')}</p>
               <p className="text-xs text-cinema-muted">{t(uploading ? 'admin.movies.uploadKeepOpen' : masterFile ? 'admin.movies.videoSelected' : 'admin.movies.masterDropHint')}</p>
             </div>
             <input
@@ -1307,11 +1307,11 @@ function ActorsTab() {
           {a.photoUrl ? (
             <img src={resolveMediaUrl(a.photoUrl)} alt="" className="h-9 w-9 rounded-full border border-cinema-border object-cover" loading="lazy" />
           ) : (
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-black">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-ink">
               {a.name.charAt(0).toUpperCase()}
             </span>
           )}
-          <span className="font-semibold text-slate-100">{a.name}</span>
+          <span className="font-semibold text-cinema-text">{a.name}</span>
         </div>
       ),
     },
@@ -1485,15 +1485,15 @@ function UsersTab() {
           {u.avatarUrl ? (
             <img src={resolveMediaUrl(u.avatarUrl)} alt="" className="h-8 w-8 shrink-0 rounded-full border border-cinema-border object-cover" loading="lazy" />
           ) : (
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-black">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-ink">
               {u.name.charAt(0).toUpperCase()}
             </span>
           )}
           <div className="min-w-0">
-            <p className="truncate font-semibold text-slate-100">
+            <p className="truncate font-semibold text-cinema-text">
               {u.name}
               {me?.id === u.id && (
-                <span className="ml-2 rounded-full bg-cinema-card px-2 py-0.5 text-[10px] font-bold text-cinema-amber">{t('common.you')}</span>
+                <span className="ml-2 rounded-full bg-cinema-card px-2 py-0.5 text-[10px] font-bold text-cinema-accent">{t('common.you')}</span>
               )}
             </p>
             <p className="truncate text-xs text-cinema-muted">{u.email}</p>
@@ -1510,7 +1510,7 @@ function UsersTab() {
           disabled={me?.id === u.id}
           onChange={(e) => void changeRole(u, e.target.value as Role)}
           aria-label={t('admin.users.role')}
-          className="cursor-pointer rounded-md border border-cinema-border bg-cinema-black/60 px-2 py-1 text-xs font-semibold text-slate-200 accent-cinema-amber disabled:cursor-not-allowed disabled:opacity-50"
+          className="cursor-pointer rounded-md border border-cinema-border bg-cinema-black/60 px-2 py-1 text-xs font-semibold text-cinema-soft accent-cinema-amber disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value="viewer">{t('admin.users.roleViewer')}</option>
           <option value="admin">{t('admin.users.roleAdmin')}</option>
@@ -1523,7 +1523,7 @@ function UsersTab() {
       sortable: true,
       render: (u) => (
         <span
-          className={`rounded-full px-2.5 py-1 text-xs font-bold ${u.isBlocked ? 'bg-cinema-red/15 text-cinema-red' : 'bg-emerald-900/50 text-emerald-300'}`}
+          className={`rounded-full px-2.5 py-1 text-xs font-bold ${u.isBlocked ? 'bg-cinema-red/15 text-cinema-red' : 'bg-cinema-success-surface/50 text-cinema-success'}`}
         >
           {u.isBlocked ? t('admin.users.blocked') : t('admin.users.active')}
         </span>
@@ -1615,7 +1615,7 @@ function UsersTab() {
                   disabled={me?.id === u.id}
                   onClick={() => removeUser(u)}
                   aria-label={t('admin.users.delete')}
-                  className="cursor-pointer rounded-lg border border-cinema-border p-1.5 text-slate-300 transition hover:border-cinema-red/60 hover:text-cinema-red disabled:cursor-default disabled:opacity-30"
+                  className="cursor-pointer rounded-lg border border-cinema-border p-1.5 text-cinema-soft transition hover:border-cinema-red/60 hover:text-cinema-red disabled:cursor-default disabled:opacity-30"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -1691,7 +1691,7 @@ function AnalyticsTab() {
             type="button"
             onClick={() => setIntervalDays(d)}
             className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              intervalDays === d ? 'bg-cinema-amber text-cinema-black' : 'border border-cinema-border text-slate-300 hover:border-cinema-amber/60'
+              intervalDays === d ? 'bg-cinema-amber text-cinema-ink' : 'border border-cinema-border text-cinema-soft hover:border-cinema-amber/60'
             }`}
           >
             {t('admin.analytics.lastDays', { count: d })}
@@ -1707,14 +1707,14 @@ function AnalyticsTab() {
               <span className="text-xs font-bold uppercase tracking-wide text-cinema-muted">{t(`admin.analytics.${c.key}`)}</span>
               <span className="text-2xl">{c.icon}</span>
             </div>
-            <p className="text-3xl font-extrabold text-slate-50">{c.value?.toLocaleString() ?? '—'}</p>
+            <p className="text-3xl font-extrabold text-cinema-strong">{c.value?.toLocaleString() ?? '—'}</p>
           </div>
         ))}
       </div>
 
       {/* top movies */}
       <div>
-        <h2 className="mb-3 text-lg font-bold text-slate-100">{t('admin.analytics.topMovies')}</h2>
+        <h2 className="mb-3 text-lg font-bold text-cinema-text">{t('admin.analytics.topMovies')}</h2>
         <AdminTable
           columns={[
             { key: 'title', label: t('admin.analytics.movie') },
@@ -1729,7 +1729,7 @@ function AnalyticsTab() {
 
       {/* genre popularity (FR-44) */}
       <div>
-        <h2 className="mb-3 text-lg font-bold text-slate-100">{t('admin.analytics.genrePopularity')}</h2>
+        <h2 className="mb-3 text-lg font-bold text-cinema-text">{t('admin.analytics.genrePopularity')}</h2>
         <AdminTable
           columns={[
             { key: 'genre', label: t('admin.analytics.genre'), sortable: true },
@@ -1750,7 +1750,7 @@ function AnalyticsTab() {
 
       {/* revenue by month */}
       <div>
-        <h2 className="mb-3 text-lg font-bold text-slate-100">{t('admin.analytics.revenueByMonth')}</h2>
+        <h2 className="mb-3 text-lg font-bold text-cinema-text">{t('admin.analytics.revenueByMonth')}</h2>
         {data.revenueByMonth.length === 0 ? (
           <EmptyState icon="📉" title={t('admin.analytics.noRevenue')} />
         ) : (

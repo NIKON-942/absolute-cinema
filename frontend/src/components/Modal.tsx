@@ -43,12 +43,12 @@ export function Modal({ open, title, onClose, children, footer, wide }: ModalPro
         className={`my-8 flex max-h-[calc(100dvh-4rem)] w-full animate-popIn flex-col rounded-2xl border border-cinema-border bg-cinema-panel shadow-card ${wide ? 'max-w-3xl' : 'max-w-lg'}`}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-cinema-border px-6 py-4">
-          <h2 className="text-lg font-bold text-slate-100">{title}</h2>
+          <h2 className="text-lg font-bold text-cinema-text">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label={t('common.close')}
-            className="cursor-pointer rounded-md p-1 text-cinema-muted transition hover:bg-cinema-card hover:text-slate-100"
+            className="cursor-pointer rounded-md p-1 text-cinema-muted transition hover:bg-cinema-card hover:text-cinema-text"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />

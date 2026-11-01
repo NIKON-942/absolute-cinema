@@ -81,7 +81,7 @@ export default function MockCheckout() {
         <div className={`flex items-center gap-3 border-b border-cinema-border bg-gradient-to-r px-6 py-4 ${posterGradient(sessionId)}`}>
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-cinema-black/70 text-lg">💳</span>
           <div className="flex-1">
-            <h1 className="text-base font-extrabold text-slate-100">{t('checkout.title')}</h1>
+            <h1 className="text-base font-extrabold text-cinema-text">{t('checkout.title')}</h1>
             <p className="text-[11px] text-cinema-muted">{t('checkout.mockBadge')}</p>
           </div>
           <span className="rounded-full bg-cinema-black/60 px-2.5 py-1 font-mono text-[10px] text-cinema-muted">
@@ -91,15 +91,15 @@ export default function MockCheckout() {
 
         {phase === 'success' ? (
           <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
-            <span className="flex h-16 w-16 animate-popIn items-center justify-center rounded-full bg-emerald-500/20 text-3xl text-emerald-300">✓</span>
-            <h2 className="text-xl font-extrabold text-slate-50">{t('checkout.successTitle')}</h2>
+            <span className="flex h-16 w-16 animate-popIn items-center justify-center rounded-full bg-cinema-success/20 text-3xl text-cinema-success">✓</span>
+            <h2 className="text-xl font-extrabold text-cinema-strong">{t('checkout.successTitle')}</h2>
             <p className="text-sm text-cinema-muted">{t('checkout.successText')}</p>
             <Spinner size={5} />
           </div>
         ) : phase === 'cancelled' ? (
           <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
             <span className="flex h-16 w-16 animate-popIn items-center justify-center rounded-full bg-cinema-card text-3xl">🚫</span>
-            <h2 className="text-xl font-extrabold text-slate-50">{t('checkout.cancelledTitle')}</h2>
+            <h2 className="text-xl font-extrabold text-cinema-strong">{t('checkout.cancelledTitle')}</h2>
             <p className="text-sm text-cinema-muted">{t('checkout.cancelledText')}</p>
             <p className="text-xs text-cinema-muted">{t('checkout.cancelledRedirect')}</p>
           </div>
@@ -112,13 +112,13 @@ export default function MockCheckout() {
                 {state.tier && (
                   <div className="flex justify-between gap-4">
                     <dt className="text-cinema-muted">{t('checkout.plan')}</dt>
-                    <dd className="font-semibold text-slate-100">{t('tier.' + state.tier)}</dd>
+                    <dd className="font-semibold text-cinema-text">{t('tier.' + state.tier)}</dd>
                   </div>
                 )}
                 {state.period && (
                   <div className="flex justify-between gap-4">
                     <dt className="text-cinema-muted">{t('checkout.period')}</dt>
-                    <dd className="font-semibold text-slate-100">
+                    <dd className="font-semibold text-cinema-text">
                       {t('plans.' + state.period)}
                       {priceText && (
                         <span className="text-cinema-muted">
@@ -132,8 +132,8 @@ export default function MockCheckout() {
                 )}
                 {priceText && (
                   <div className="flex justify-between gap-4 border-t border-cinema-border pt-2">
-                    <dt className="font-bold text-slate-100">{t('checkout.total')}</dt>
-                    <dd className="text-lg font-extrabold text-cinema-amber">{priceText}</dd>
+                    <dt className="font-bold text-cinema-text">{t('checkout.total')}</dt>
+                    <dd className="text-lg font-extrabold text-cinema-accent">{priceText}</dd>
                   </div>
                 )}
               </dl>
@@ -152,7 +152,7 @@ export default function MockCheckout() {
                     type="text"
                     readOnly
                     value="4242 4242 4242 4242"
-                    className="w-full cursor-not-allowed rounded-xl border border-cinema-border bg-cinema-black/70 px-4 py-3 font-mono text-sm tracking-widest text-slate-300"
+                    className="w-full cursor-not-allowed rounded-xl border border-cinema-border bg-cinema-black/70 px-4 py-3 font-mono text-sm tracking-widest text-cinema-soft"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -165,7 +165,7 @@ export default function MockCheckout() {
                       type="text"
                       readOnly
                       value="12 / 34"
-                      className="w-full cursor-not-allowed rounded-xl border border-cinema-border bg-cinema-black/70 px-4 py-3 font-mono text-sm text-slate-300"
+                      className="w-full cursor-not-allowed rounded-xl border border-cinema-border bg-cinema-black/70 px-4 py-3 font-mono text-sm text-cinema-soft"
                     />
                   </div>
                   <div>
@@ -177,7 +177,7 @@ export default function MockCheckout() {
                       type="text"
                       readOnly
                       value="123"
-                      className="w-full cursor-not-allowed rounded-xl border border-cinema-border bg-cinema-black/70 px-4 py-3 font-mono text-sm text-slate-300"
+                      className="w-full cursor-not-allowed rounded-xl border border-cinema-border bg-cinema-black/70 px-4 py-3 font-mono text-sm text-cinema-soft"
                     />
                   </div>
                 </div>
@@ -190,7 +190,7 @@ export default function MockCheckout() {
                     type="text"
                     readOnly
                     value="TEST CARD / ABSOLUTECINEMA"
-                    className="w-full cursor-not-allowed rounded-xl border border-cinema-border bg-cinema-black/70 px-4 py-3 font-mono text-sm text-slate-300"
+                    className="w-full cursor-not-allowed rounded-xl border border-cinema-border bg-cinema-black/70 px-4 py-3 font-mono text-sm text-cinema-soft"
                   />
                 </div>
               </fieldset>
@@ -198,7 +198,7 @@ export default function MockCheckout() {
               <button
                 type="submit"
                 disabled={phase === 'paying'}
-                className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-cinema-amber px-4 py-3.5 font-bold text-cinema-black transition hover:shadow-glow disabled:cursor-default disabled:opacity-60"
+                className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-cinema-amber px-4 py-3.5 font-bold text-cinema-ink transition hover:shadow-glow disabled:cursor-default disabled:opacity-60"
               >
                 {phase === 'paying' && <Spinner size={4} />}
                 {phase === 'paying' ? t('checkout.processing') : `${t('checkout.payNow')}${priceText ? ` · ${priceText}` : ''}`}
@@ -215,7 +215,7 @@ export default function MockCheckout() {
             </form>
 
             <p className="mt-4 text-center text-[11px] leading-relaxed text-cinema-muted">
-              <Link to="/plans" className="underline transition hover:text-cinema-amber">
+              <Link to="/plans" className="underline transition hover:text-cinema-accent">
                 {t('nav.plans')}
               </Link>
             </p>

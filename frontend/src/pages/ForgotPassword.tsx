@@ -44,15 +44,15 @@ export default function ForgotPassword() {
       title={t('auth.forgot.title')}
       subtitle={t('auth.forgot.subtitle')}
       footer={
-        <Link to="/login" className="font-semibold text-cinema-amber hover:underline">
+        <Link to="/login" className="font-semibold text-cinema-accent hover:underline">
           ← {t('auth.forgot.backToLogin')}
         </Link>
       }
     >
       {sent ? (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-5 text-center" role="status">
+        <div className="rounded-xl border border-cinema-success/40 bg-cinema-success-surface/40 px-4 py-5 text-center" role="status">
           <span className="mb-2 block text-3xl">📧</span>
-          <p className="text-sm leading-relaxed text-emerald-100">{t('auth.forgot.sent')}</p>
+          <p className="text-sm leading-relaxed text-cinema-success">{t('auth.forgot.sent')}</p>
         </div>
       ) : (
         <form onSubmit={onSubmit} noValidate className="space-y-4">

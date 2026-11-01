@@ -4,7 +4,7 @@ import type { MovieDto, TranscodeJobDto } from '@/types';
 export function ProgressBar({ label, progress }: { label: string; progress: number | null }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex justify-between gap-3 text-xs text-slate-200">
+      <div className="flex justify-between gap-3 text-xs text-cinema-soft">
         <span>{label}</span>
         {progress !== null && <span className="tabular-nums">{progress}%</span>}
       </div>
@@ -28,14 +28,14 @@ export function TranscodeProgress({ movie, job, compact = false }: {
       {status === 'processing' ? (
         <ProgressBar label={t(`admin.movies.phase.${job?.phase ?? 'queued'}`)} progress={job?.progress ?? null} />
       ) : (
-        <p className={`text-xs ${status === 'failed' ? 'text-red-300' : status === 'ready' ? 'text-emerald-300' : 'text-cinema-muted'}`}>
+        <p className={`text-xs ${status === 'failed' ? 'text-cinema-error' : status === 'ready' ? 'text-cinema-success' : 'text-cinema-muted'}`}>
           {t(`admin.movies.transcode.${status}`)}{status === 'ready' ? ' · 100%' : ''}
         </p>
       )}
       {!compact && status !== 'none' && (
         <div className="flex flex-wrap gap-2 text-xs">
           {(job?.targetQualities.length ? job.targetQualities : qualities).map(q => (
-            <span key={q} className={qualities.includes(q) ? 'text-emerald-300' : 'text-cinema-muted'}>
+            <span key={q} className={qualities.includes(q) ? 'text-cinema-success' : 'text-cinema-muted'}>
               {q}: {t(qualities.includes(q) ? 'admin.movies.qualityReady' : job?.currentQuality === q ? 'admin.movies.qualityProcessing' : 'admin.movies.qualityWaiting')}
             </span>
           ))}

@@ -7,8 +7,9 @@ export function LanguageSwitcher() {
       <button
         type="button"
         onClick={() => setLang('en')}
+        aria-pressed={lang === 'en'}
         className={`cursor-pointer rounded-md px-2 py-1 transition ${
-          lang === 'en' ? 'bg-cinema-amber text-cinema-black' : 'text-cinema-muted hover:text-slate-100'
+          lang === 'en' ? 'bg-cinema-amber text-cinema-ink' : 'text-cinema-muted hover:text-cinema-text'
         }`}
       >
         EN
@@ -16,8 +17,9 @@ export function LanguageSwitcher() {
       <button
         type="button"
         onClick={() => setLang('uk')}
+        aria-pressed={lang === 'uk'}
         className={`cursor-pointer rounded-md px-2 py-1 transition ${
-          lang === 'uk' ? 'bg-cinema-amber text-cinema-black' : 'text-cinema-muted hover:text-slate-100'
+          lang === 'uk' ? 'bg-cinema-amber text-cinema-ink' : 'text-cinema-muted hover:text-cinema-text'
         }`}
       >
         UK

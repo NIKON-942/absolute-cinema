@@ -5,21 +5,31 @@ export default {
     extend: {
       colors: {
         cinema: {
-          black: '#0b0c10',
-          panel: '#12141d',
-          card: '#171a26',
-          border: '#232739',
-          muted: '#8b8fa3',
+          black: 'rgb(var(--cinema-background) / <alpha-value>)',
+          panel: 'rgb(var(--cinema-panel) / <alpha-value>)',
+          card: 'rgb(var(--cinema-card) / <alpha-value>)',
+          border: 'rgb(var(--cinema-border) / <alpha-value>)',
+          muted: 'rgb(var(--cinema-muted) / <alpha-value>)',
+          text: 'rgb(var(--cinema-text) / <alpha-value>)',
+          strong: 'rgb(var(--cinema-strong) / <alpha-value>)',
+          soft: 'rgb(var(--cinema-soft) / <alpha-value>)',
           amber: '#f5b942',
-          red: '#e63946',
+          accent: 'rgb(var(--cinema-accent) / <alpha-value>)',
+          ink: '#0b0c10',
+          red: 'rgb(var(--cinema-red) / <alpha-value>)',
+          success: 'rgb(var(--cinema-success) / <alpha-value>)',
+          error: 'rgb(var(--cinema-error) / <alpha-value>)',
+          notice: 'rgb(var(--cinema-notice) / <alpha-value>)',
+          'success-surface': 'rgb(var(--cinema-success-surface) / <alpha-value>)',
+          'error-surface': 'rgb(var(--cinema-error-surface) / <alpha-value>)',
         },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
       },
       boxShadow: {
-        glow: '0 0 24px rgba(245,185,66,0.25)',
-        card: '0 12px 32px rgba(0,0,0,0.45)',
+        glow: 'var(--cinema-glow)',
+        card: 'var(--cinema-shadow)',
       },
       keyframes: {
         fadeIn: {

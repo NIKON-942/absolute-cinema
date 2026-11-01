@@ -61,13 +61,13 @@ export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCar
               <rect x="3" y="4" width="18" height="16" rx="2" />
               <path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" />
             </svg>
-            <span className="line-clamp-3 text-xs font-semibold text-slate-200">{movie.title}</span>
+            <span className="line-clamp-3 text-xs font-semibold text-cinema-soft">{movie.title}</span>
           </div>
         )}
 
         {/* hover overlay */}
         <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/45 group-hover:opacity-100">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-cinema-amber text-cinema-black shadow-glow transition-transform group-hover:scale-100">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-cinema-amber text-cinema-ink shadow-glow transition-transform group-hover:scale-100">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path d="M8 5.14v14l11-7-11-7z" />
             </svg>
@@ -76,11 +76,11 @@ export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCar
 
         {/* rating badge */}
         {movie.averageRating > 0 && (
-          <span className="absolute left-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-xs font-bold text-cinema-amber backdrop-blur">
+          <span className="absolute left-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-xs font-bold text-cinema-accent backdrop-blur">
             ★ {movie.averageRating.toFixed(1)}
           </span>
         )}
-        <span className="absolute right-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300 backdrop-blur">
+        <span className="absolute right-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-cinema-soft backdrop-blur">
           {movie.ageRating}
         </span>
 
@@ -92,7 +92,7 @@ export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCar
           className={`absolute bottom-2 right-2 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full backdrop-blur transition ${
             movie.isFavorite
               ? 'bg-cinema-red/90 text-white opacity-100'
-              : 'bg-cinema-black/70 text-slate-300 opacity-0 hover:text-cinema-red group-hover:opacity-100'
+              : 'bg-cinema-black/70 text-cinema-soft opacity-0 hover:text-cinema-red group-hover:opacity-100'
           }`}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill={movie.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
@@ -112,7 +112,7 @@ export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCar
       </div>
 
       <div className="mt-2 px-0.5">
-        <h3 className="truncate text-sm font-semibold text-slate-100 transition group-hover:text-cinema-amber" title={movie.title}>
+        <h3 className="truncate text-sm font-semibold text-cinema-text transition group-hover:text-cinema-accent" title={movie.title}>
           {movie.title}
         </h3>
         <p className="text-xs text-cinema-muted">

@@ -49,7 +49,7 @@ export function RatingStars({ value, average, onRate, onClear, readOnly, size = 
         ))}
       </div>
       <div className="flex flex-col text-sm">
-        <span className="font-bold text-cinema-amber">{average > 0 ? average.toFixed(1) : '—'}/10</span>
+        <span className="font-bold text-cinema-accent">{average > 0 ? average.toFixed(1) : '—'}/10</span>
         <span className="text-xs text-cinema-muted">
           {value ? t('movie.yourRating', { value }) : t('movie.notRated')}
         </span>
