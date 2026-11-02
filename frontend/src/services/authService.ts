@@ -21,8 +21,10 @@ export const authService = {
   },
 
   /** Server-side token revocation (FR-36). */
-  logout(): Promise<MessageDto> {
-    return api.post('/auth/logout').then((r) => r.data);
+  logout(token: string | null): Promise<MessageDto> {
+    return api.post('/auth/logout', undefined, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then((r) => r.data);
   },
 
   forgotPassword(email: string): Promise<MessageDto> {

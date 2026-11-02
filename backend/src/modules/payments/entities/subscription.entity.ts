@@ -38,6 +38,12 @@ export class SubscriptionEntity {
   @Column({ type: 'timestamptz', nullable: true })
   endsAt: Date | null;
 
+  @Column({ type: 'varchar', nullable: true, unique: true })
+  stripeSubscriptionId: string | null;
+
+  @Column({ default: false })
+  cancelAtPeriodEnd: boolean;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

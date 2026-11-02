@@ -2,6 +2,9 @@ import { api } from './api';
 import type { CheckoutResponseDto, MessageDto, PlanDto, SubscriptionPeriod, SubscriptionTier } from '@/types';
 
 export const paymentsService = {
+  retry(sessionId: string): Promise<CheckoutResponseDto> {
+    return api.post(`/payments/retry/${sessionId}`).then(r => r.data);
+  },
   plans(): Promise<PlanDto[]> {
     return api.get('/payments/plans').then((r) => r.data);
   },

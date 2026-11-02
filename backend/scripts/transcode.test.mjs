@@ -14,6 +14,21 @@ const processing = require('../dist/modules/media/media-processing.js');
 const ffmpeg = args => execFileSync('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-y', ...args]);
 const probe = file => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', file]));
 
+test('restart recovers durable sources for URL and multipart jobs, without duplicating recovered uploads', async () => {
+  const updates = [], recovered = [];
+  const jobs = new TranscodeService({
+    find: async () => [{ id: 501, pendingMasterVideo: 'source.mp4' }, { id: 502, pendingMasterVideo: 'https://example.com/video.mp4' }, { id: 503, pendingMasterVideo: null }],
+    update: async (id, patch) => { updates.push({ id, patch }); return { affected: 1 }; },
+  });
+  jobs.run = async (id, source) => { recovered.push({ id, source }); };
+  await jobs.onModuleInit();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(recovered, [{ id: 501, source: 'source.mp4' }, { id: 502, source: 'https://example.com/video.mp4' }]);
+  assert.ok(updates.some(u => u.id === 503 && u.patch.transcodeStatus === 'failed'));
+  await jobs.onModuleInit();
+  assert.equal(recovered.length, 2);
+});
+
 test('direct FFmpeg preserves audio, dimensions and faststart; filenames bypass the shell', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'cinema transcode '));
   try {

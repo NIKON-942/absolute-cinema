@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
@@ -27,7 +27,8 @@ const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide t
 
 export default function Profile() {
   const { t, lang } = useLanguage();
-  const { user, setUser, refreshMe } = useAuth();
+  const { user, setUser, refreshMe, logout } = useAuth();
+  const navigate = useNavigate();
   const { success, error: errorToast } = useToast();
 
   const [name, setName] = useState(user?.name ?? '');
@@ -127,6 +128,10 @@ export default function Profile() {
       setPassword('');
       setCurrentPassword('');
       success(t('profile.account.saved'));
+      if (password) {
+        logout();
+        navigate('/login', { replace: true });
+      }
     } catch (err) {
       errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
     } finally {
@@ -269,7 +274,7 @@ export default function Profile() {
                 <dd className="text-right font-semibold text-cinema-soft">{formatDate(sub.endsAt)}</dd>
                 <dt className="text-cinema-muted">{t('profile.subscription.autoRenew')}</dt>
                 <dd className="text-right font-semibold text-cinema-soft">
-                  {sub.status === 'active' ? '✓' : '—'}
+                  {sub.autoRenew ? '✓' : '—'}
                 </dd>
               </dl>
               <div className="mt-6 flex flex-wrap gap-3">
@@ -279,7 +284,7 @@ export default function Profile() {
                 >
                   {t('plans.title')}
                 </Link>
-                {sub.status === 'active' && (
+                {sub.status === 'active' && !sub.cancelAtPeriodEnd && (
                   <button
                     type="button"
                     onClick={() => setCancelOpen(true)}

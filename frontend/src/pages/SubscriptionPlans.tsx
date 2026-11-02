@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
@@ -19,6 +19,19 @@ export default function SubscriptionPlans() {
   const { user, isAuthenticated } = useAuth();
   const { error: errorToast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const retryId = searchParams.get('retry');
+  const [retrying, setRetrying] = useState(false);
+  const retry = async () => {
+    if (!retryId) return;
+    setRetrying(true);
+    try {
+      const { checkoutUrl } = await paymentsService.retry(retryId);
+      if (checkoutUrl.startsWith('/')) navigate(checkoutUrl);
+      else window.location.assign(checkoutUrl);
+    } catch (err) { errorToast(extractServerMessage(err) ?? t(errorStatusKey(err))); }
+    finally { setRetrying(false); }
+  };
 
   const [plans, setPlans] = useState<PlanDto[] | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -67,6 +80,14 @@ export default function SubscriptionPlans() {
       </header>
 
       {/* current subscription notice */}
+      {retryId && isAuthenticated && (
+        <div className="mb-6 text-center">
+          <button type="button" onClick={() => void retry()} disabled={retrying}
+            className="rounded-xl border border-cinema-border px-5 py-3 font-bold disabled:opacity-50">
+            {t('checkout.retryPayment')}
+          </button>
+        </div>
+      )}
       {hasActive && activeSub && (
         <div className="mx-auto mb-8 flex max-w-2xl flex-col items-center gap-3 rounded-2xl border border-cinema-success/40 bg-cinema-success-surface/30 px-6 py-4 text-center sm:flex-row sm:text-left">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cinema-success/20 text-lg">✓</span>
@@ -75,7 +96,7 @@ export default function SubscriptionPlans() {
               {t('tier.' + activeSub.tier)} · {t('sub.period.' + activeSub.period)}
             </p>
             <p className="text-cinema-success">
-              {t('profile.subscription.endsAt')}: {formatDate(activeSub.endsAt)} · {t('profile.subscription.autoRenew')}
+              {t('profile.subscription.endsAt')}: {formatDate(activeSub.endsAt)} · {t(activeSub.autoRenew ? 'profile.subscription.autoRenew' : 'profile.subscription.noRenew')}
             </p>
           </div>
           <span className="rounded-full bg-cinema-success/20 px-3 py-1 text-xs font-bold text-cinema-success">

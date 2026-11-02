@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   ParseIntPipe,
+  NotFoundException,
   Patch,
   Post,
 
@@ -18,12 +19,14 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'fs';
+import { rm } from 'fs/promises';
 import { IsOptional, IsString } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { POSTERS_DIR, MASTERS_DIR, slugify } from './media.constants';
 import { MediaService } from './media.service';
+import { POSTER_MAX_BYTES, POSTER_TYPES, validatePoster } from './upload-validation';
 
 class GenreDto {
   @IsString()
@@ -40,16 +43,14 @@ class ActorDto {
 }
 
 const imageFilter = (_req: any, file: Express.Multer.File, cb: any) => {
-  if (/^image\//.test(file.mimetype)) cb(null, true);
-  else cb(new Error('Only image files are allowed'), false);
+  if (POSTER_TYPES[extname(file.originalname).toLowerCase()] === file.mimetype) cb(null, true);
+  else cb(new BadRequestException('Only JPG, PNG and WebP posters are allowed'), false);
 };
 
-/** FR-29: master video can be any container ffmpeg reads (H.264/H.265/WebM/MKV/MOV…). */
+/** ТЗ 4.5.1: MP4 (H.264/H.265 and AAC), or WebM. */
 const videoFilter = (_req: any, file: Express.Multer.File, cb: any) => {
-  const okMime = /^video\//.test(file.mimetype);
-  const okExt = /\.(mp4|webm|mkv|mov|m4v|avi)$/i.test(file.originalname);
-  if (okMime || okExt) cb(null, true);
-  else cb(new Error('Only video files are allowed'), false);
+  if (/\.(mp4|webm)$/i.test(file.originalname)) cb(null, true);
+  else cb(new BadRequestException('Only MP4 and WebM videos are allowed'), false);
 };
 
 @Controller('media')
@@ -65,14 +66,15 @@ export class AdminMediaController {
         destination: POSTERS_DIR,
         filename: (_req, file, cb) => {
           const title = String(_req.body?.title ?? 'poster');
-          cb(null, `${slugify(title)}-${Date.now()}${extname(file.originalname)}`);
+          cb(null, `${slugify(title)}-${randomUUID()}${extname(file.originalname).toLowerCase()}`);
         },
       }),
       fileFilter: imageFilter,
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: POSTER_MAX_BYTES },
     }),
   )
-  create(@UploadedFile() file: Express.Multer.File, @Body() body: Record<string, unknown>) {
+  async create(@UploadedFile() file: Express.Multer.File, @Body() body: Record<string, unknown>) {
+    await validatePoster(file);
     return this.mediaService.createMovie(body, file?.filename ?? null);
   }
 
@@ -84,23 +86,20 @@ export class AdminMediaController {
         destination: POSTERS_DIR,
         filename: (_req, file, cb) => {
           const title = String(_req.body?.title ?? 'poster');
-          cb(null, `${slugify(title)}-${Date.now()}${extname(file.originalname)}`);
+          cb(null, `${slugify(title)}-${randomUUID()}${extname(file.originalname).toLowerCase()}`);
         },
       }),
       fileFilter: imageFilter,
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: POSTER_MAX_BYTES },
     }),
   )
-  update(
+  async update(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() file: Express.Multer.File,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.mediaService.updateMovie(
-      id,
-      body,
-      file ? file.filename : undefined,
-    );
+    await validatePoster(file);
+    return this.mediaService.updateMovie(id, body, file?.filename);
   }
 
   /**
@@ -124,14 +123,23 @@ export class AdminMediaController {
       limits: { fileSize: 8 * 1024 * 1024 * 1024 },
     }),
   )
-  uploadMasterVideo(
+  async uploadMasterVideo(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
       throw new BadRequestException('Master video file is required');
     }
-    return this.mediaService.attachMasterVideo(id, file.filename);
+    try { return await this.mediaService.attachMasterVideo(id, file.filename); }
+    catch (error) {
+      // A failure serializing the response can happen after enqueue commits.
+      // Never remove a source already owned by a movie or a durable job.
+      const owned = await this.mediaService.getMovieEntity(id)
+        .then(movie => movie.masterVideo === file.filename || movie.pendingMasterVideo === file.filename)
+        .catch(failure => !(failure instanceof NotFoundException));
+      if (!owned) await rm(file.path, { force: true });
+      throw error;
+    }
   }
 
   /** Live transcode state for admin polling. */

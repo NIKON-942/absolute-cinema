@@ -39,6 +39,8 @@ export interface SubscriptionDto {
   status: SubscriptionStatus;
   startsAt: string | null;
   endsAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  autoRenew: boolean;
 }
 
 export interface MovieDto {

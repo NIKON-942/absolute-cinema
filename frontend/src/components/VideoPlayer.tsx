@@ -117,6 +117,7 @@ export function VideoPlayer({
   const lastTime = useRef(0);
   const wasPlaying = useRef(false);
   const restoreTime = useRef<number | null>(resumeAt > 0 ? resumeAt : null);
+  const resumeApplied = useRef(false);
   const seekBarRef = useRef<HTMLDivElement>(null);
 
   const [playing, setPlaying] = useState(false);
@@ -138,6 +139,19 @@ export function VideoPlayer({
   const [dragRatio, setDragRatio] = useState(0);
 
   const src = streamUrl(movieId, quality);
+
+  // History and metadata arrive independently. Restore once, without seeking
+  // backwards if the viewer has already started watching or seeking.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (resumeAt <= 0 || resumeApplied.current || lastTime.current > 1) return;
+    restoreTime.current = resumeAt;
+    if (video && video.readyState >= 1 && resumeAt < video.duration - 5) {
+      video.currentTime = resumeAt;
+      restoreTime.current = null;
+      resumeApplied.current = true;
+    }
+  }, [resumeAt]);
 
   // ---- keyboard shortcuts ----
   const togglePlay = useCallback(() => {
@@ -253,6 +267,7 @@ export function VideoPlayer({
     // restore position after a quality switch or initial resume
     if (restoreTime.current != null && restoreTime.current < (v.duration || 0) - 5) {
       v.currentTime = restoreTime.current;
+      resumeApplied.current = true;
     }
     restoreTime.current = null;
     if (wasPlaying.current) {

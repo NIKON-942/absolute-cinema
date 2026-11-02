@@ -19,6 +19,8 @@ const config = { get: key => ({
 const saved = [];
 const repository = { update: async () => ({ affected: 1 }), create: value => value,
   save: async value => { saved.push(value); return { id: 1, ...value }; } };
+repository.manager = { transaction: callback => callback({ query: async () => [], find: async () => [],
+  update: repository.update, create: (_entity, value) => value, save: (_entity, value) => repository.save(value) }) };
 const payments = new PaymentsService(config, {}, {
   findOne: async () => ({ monthlyPrice: '9.99', yearlyPrice: '99.99', currency: 'usd' }),
 }, repository, repository);

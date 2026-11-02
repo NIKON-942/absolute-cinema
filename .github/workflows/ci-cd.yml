@@ -58,6 +58,8 @@ jobs:
       - uses: docker/setup-buildx-action@v4
       - name: Check upload timing calculations
         run: npm --prefix frontend run test:upload
+      - name: Check frontend authentication regressions
+        run: npm --prefix frontend ci --no-audit --no-fund && npm --prefix frontend run test:auth
       - name: Build API runtime
         uses: docker/build-push-action@v7
         with:
@@ -119,6 +121,15 @@ jobs:
             backend node --test scripts/uploads.test.mjs
           dc run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true \
             -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-stripe.mjs
+      - name: Check auth and payment regressions on a separate database
+        shell: bash
+        run: |
+          set -euo pipefail
+          dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
+          dc exec -T postgres createdb -U cinema cinema_review
+          dc run --rm --no-deps -e DB_NAME=cinema_review backend node dist/database/run-migrations.js
+          dc run --rm --no-deps -e DB_NAME=cinema_review -e ALLOW_SMOKE_FIXTURES=true \
+            -v "$PWD/backend/scripts:/app/scripts:ro" backend node --test scripts/review-regressions.test.mjs
       - name: Show container state on failure
         if: failure()
         run: |

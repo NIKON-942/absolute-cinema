@@ -12,18 +12,20 @@ const DEBOUNCE_MS = 1_500; // coalesce rapid timeupdate bursts into one request
  */
 export function useVideoProgress(movieId: number, enabled: boolean) {
   const [resumeAt, setResumeAt] = useState(0);
-  const [checkpoint, setCheckpoint] = useState<{ position: number; duration: number }>({
+  const [checkpoint, setCheckpoint] = useState<{ movieId: number; position: number; duration: number }>({
+    movieId,
     position: 0,
     duration: 0,
   });
   const debouncedCheckpoint = useDebounce(checkpoint, DEBOUNCE_MS);
   const lastSavedAt = useRef(0);
-  const pending = useRef<{ position: number; duration: number }>({ position: 0, duration: 0 });
+  const pending = useRef({ movieId, position: 0, duration: 0 });
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
 
   // Fetch the saved position once so playback can resume.
   useEffect(() => {
+    setResumeAt(0);
     if (!enabled) return;
     let cancelled = false;
     mediaService
@@ -56,16 +58,16 @@ export function useVideoProgress(movieId: number, enabled: boolean) {
 
   // Debounced persistence of periodic checkpoints.
   useEffect(() => {
-    if (debouncedCheckpoint.duration > 0) {
+    if (debouncedCheckpoint.movieId === movieId && debouncedCheckpoint.duration > 0) {
       void save(debouncedCheckpoint.position, debouncedCheckpoint.duration);
     }
-  }, [debouncedCheckpoint, save]);
+  }, [debouncedCheckpoint, save, movieId]);
 
   // Flush whatever is pending when leaving the page.
   useEffect(() => {
     return () => {
       const p = pending.current;
-      if (enabledRef.current && p.duration > 0) {
+      if (enabledRef.current && p.movieId === movieId && p.duration > 0) {
         void mediaService.saveProgress(movieId, Math.floor(p.position), Math.floor(p.duration));
       }
     };
@@ -73,18 +75,18 @@ export function useVideoProgress(movieId: number, enabled: boolean) {
 
   /** Called from the player on every timeupdate. */
   const report = useCallback((position: number, duration: number) => {
-    pending.current = { position, duration };
+    pending.current = { movieId, position, duration };
     if (Date.now() - lastSavedAt.current >= SAVE_INTERVAL_MS) {
-      setCheckpoint({ position, duration });
+      setCheckpoint({ movieId, position, duration });
       lastSavedAt.current = Date.now(); // don't queue another checkpoint before this one lands
     }
-  }, []);
+  }, [movieId]);
 
   /** Immediate save (used on pause / before quality switch). */
   const flush = useCallback(() => {
     const p = pending.current;
-    if (p.duration > 0) void save(p.position, p.duration);
-  }, [save]);
+    if (p.movieId === movieId && p.duration > 0) void save(p.position, p.duration);
+  }, [save, movieId]);
 
   return { resumeAt, report, flush };
 }

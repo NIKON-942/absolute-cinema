@@ -17,6 +17,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { currentUserId } from '../../common/helpers/request-user';
 import { UsersService } from './users.service';
+import { IsPassword } from '../../common/validators/password';
 
 class UpdateMeDto {
   @IsOptional()
@@ -29,7 +30,7 @@ class UpdateMeDto {
 
   @IsOptional()
   @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @IsPassword()
   password?: string;
 
   /** Required when `password` is set. */

@@ -34,11 +34,11 @@ const login = await (await request('/auth/login', {
   body: JSON.stringify({ email: process.env.INITIAL_ADMIN_EMAIL, password: process.env.INITIAL_ADMIN_PASSWORD }),
 })).json();
 const headers = { Authorization: `Bearer ${login.accessToken}` };
-const poster = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+const poster = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8qkAAAAASUVORK5CYII=', 'base64');
 const create = new FormData();
 create.set('title', 'CI Dependency Upload');
 create.set('year', '2026');
-create.set('file', new Blob([poster], { type: 'image/svg+xml' }), 'poster.svg');
+create.set('file', new Blob([poster], { type: 'image/png' }), 'poster.png');
 const movie = await (await request('/media', { method: 'POST', headers, body: create })).json();
 assert.ok(movie.id);
 const initialJob = await (await request(`/media/${movie.id}/transcode`, { headers })).json();

@@ -7,7 +7,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { existsSync, statSync } from 'fs';
 import * as fs from 'fs';
-import { join } from 'path';
+import { basename, join } from 'path';
+import { rm } from 'fs/promises';
 import { Repository } from 'typeorm';
 import { Request, Response } from 'express';
 import { ActorEntity } from './entities/actor.entity';
@@ -24,6 +25,7 @@ import {
 } from './media.constants';
 import { QUALITY_RANK } from '../payments/plan-limits.service';
 import { TranscodeService } from './transcode.service';
+import { validateUploadedVideo } from './upload-validation';
 
 const QUALITY_COLUMNS: Record<VideoQuality, keyof MovieEntity> = {
   '480p': 'video480',
@@ -89,7 +91,7 @@ export class MediaService {
     sort?: string;
     page: number;
     limit: number;
-  }) {
+  }, userId?: number) {
     const qb = this.moviesRepo
       .createQueryBuilder('movie')
       .leftJoinAndSelect('movie.genres', 'genre')
@@ -133,7 +135,7 @@ export class MediaService {
 
     switch (filters.sort) {
       case 'rating':
-        qb.orderBy(`${avg} DESC`);
+        qb.addSelect(avg, 'catalog_rating').orderBy('catalog_rating', 'DESC');
         break;
       case 'newest':
         qb.orderBy('movie.createdAt', 'DESC');
@@ -143,10 +145,11 @@ export class MediaService {
         qb.orderBy('movie.viewCount', 'DESC');
     }
 
+    qb.addOrderBy('movie.id', 'ASC');
     qb.skip((filters.page - 1) * filters.limit).take(filters.limit);
     const [items, total] = await qb.getManyAndCount();
     return {
-      items: await Promise.all(items.map((m) => this.toDto(m))),
+      items: await Promise.all(items.map((m) => this.toDto(m, userId))),
       total,
       page: filters.page,
       limit: filters.limit,
@@ -313,7 +316,7 @@ export class MediaService {
       year: r.movie.year,
       genres: (r.movie.genres ?? []).map((g) => ({ id: g.id, name: g.name })),
       posterUrl: r.movie.posterPath
-        ? `/api/media/posters/${r.movie.posterPath}`
+        ? /^https?:\/\//i.test(r.movie.posterPath) ? r.movie.posterPath : `/api/media/posters/${r.movie.posterPath}`
         : '',
       positionSeconds: r.positionSeconds,
       durationSeconds: r.durationSeconds,
@@ -599,6 +602,12 @@ export class MediaService {
    */
   async attachMasterVideo(id: number, masterFilename: string): Promise<MovieDto> {
     const movie = await this.getMovieEntity(id);
+    try {
+      validateUploadedVideo(await this.transcodeService.probe(join(MASTERS_DIR, masterFilename)), masterFilename);
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException('Uploaded file is not a valid MP4 or WebM video');
+    }
     await this.transcodeService.enqueue(movie.id, masterFilename);
     return this.getMovie(id);
   }
@@ -681,6 +690,10 @@ export class MediaService {
     if (masterUrl && !/^https?:\/\//i.test(masterUrl)) {
       throw new BadRequestException('masterVideoUrl must be an http(s) URL');
     }
+    if (!movie.title.trim() || !Number.isInteger(movie.year) || movie.year <= 0
+      || (movie.runtimeMinutes !== null && (!Number.isInteger(movie.runtimeMinutes) || movie.runtimeMinutes <= 0))) {
+      throw new BadRequestException('Title, year and runtime must contain valid values');
+    }
     await this.moviesRepo.save(movie);
     if (masterUrl) {
       await this.setMasterVideoUrl(id, masterUrl);
@@ -689,16 +702,24 @@ export class MediaService {
   }
 
   async removeMovie(id: number) {
-    // Clear dependent rows first — progress/ratings/favorites would otherwise
-    // violate their foreign keys when a watched movie is deleted.
-    await this.progressRepo.delete({ movieId: id });
-    await this.ratingsRepo.delete({ movieId: id });
-    await this.moviesRepo.query(
-      'DELETE FROM user_favorites WHERE movies_id = $1',
-      [id],
-    );
-    const result = await this.moviesRepo.delete(id);
-    if (result.affected === 0) throw new NotFoundException('Movie not found');
+    const movie = await this.moviesRepo.manager.transaction(async em => {
+      const movie = await em.findOne(MovieEntity, { where: { id }, lock: { mode: 'pessimistic_write' }, loadEagerRelations: false });
+      if (!movie) throw new NotFoundException('Movie not found');
+      if (movie.transcodeStatus === 'processing') throw new ConflictException('Wait for video conversion before deleting this movie');
+      await em.delete(WatchProgressEntity, { movieId: id });
+      await em.delete(RatingEntity, { movieId: id });
+      await em.query('DELETE FROM user_favorites WHERE movies_id = $1', [id]);
+      await em.delete(MovieEntity, id);
+      return movie;
+    });
+    // Delete only owned local basenames, and only after the DB commit.
+    const files = [[MASTERS_DIR, movie.masterVideo], [POSTERS_DIR, movie.posterPath],
+      ...[movie.video480, movie.video720, movie.video1080].map(file => [VIDEOS_DIR, file])];
+    for (const [directory, file] of files) {
+      if (directory && file && basename(file) === file && !['.', '..'].includes(file)) {
+        await rm(join(directory, file), { force: true }).catch(() => undefined);
+      }
+    }
   }
 
   // ---------- genres / actors ----------

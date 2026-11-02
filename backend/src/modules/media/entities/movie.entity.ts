@@ -59,6 +59,9 @@ export class MovieEntity {
   @Column({ type: 'varchar', nullable: true })
   masterVideo: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  pendingMasterVideo: string | null;
+
   /** Lifecycle of the background 480p/720p/1080p transcode job. */
   @Column({
     type: 'enum',

@@ -284,7 +284,7 @@ function MoviesTab() {
   }, [requestedMovie, location.key, openEdit, setSearchParams, errorToast, t]);
 
   const selectMaster = (file: File | null) => {
-    if (file && !/^video\//.test(file.type) && !/\.(mp4|webm|mkv|mov|m4v|avi)$/i.test(file.name)) {
+    if (file && !/\.(mp4|webm)$/i.test(file.name)) {
       errorToast(t('admin.movies.videoUnsupported'));
       return;
     }
@@ -299,6 +299,10 @@ function MoviesTab() {
 
   const submitForm = async (e: FormEvent) => {
     e.preventDefault();
+    if (form.file && (form.file.size > 5 * 1024 * 1024 || !/\.(jpe?g|png|webp)$/i.test(form.file.name))) {
+      setFormError(t('admin.movies.posterHint'));
+      return;
+    }
     const year = Number(form.year);
     if (!form.title.trim() || !form.description.trim() || !form.year || !Number.isInteger(year) || year < 1890 || year > 2100) {
       setFormError(t('admin.movies.fillRequired'));
@@ -808,7 +812,7 @@ function MoviesTab() {
             <input
               id="master-file-input"
               type="file"
-              accept="video/*,.mkv,.avi,.m4v"
+              accept="video/mp4,video/webm,.mp4,.webm"
               className="sr-only"
               disabled={saving || conversionBusy}
               onChange={(e) => { selectMaster(e.target.files?.[0] ?? null); e.target.value = ''; }}

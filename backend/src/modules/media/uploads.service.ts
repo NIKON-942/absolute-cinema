@@ -8,6 +8,7 @@ import type { Request } from 'express';
 import { MASTERS_DIR } from './media.constants';
 import { MediaService } from './media.service';
 import { TranscodeService } from './transcode.service';
+import { validateUploadedVideo } from './upload-validation';
 
 export const UPLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
 export const MAX_UPLOAD_SIZE = 8 * 1024 ** 3;
@@ -90,7 +91,7 @@ export class UploadsService implements OnModuleInit {
   async create(movieId: number, ownerId: number, input: { filename: string; size: number; sha256: string; chunks: string[] }) {
     return this.locked(`movie-${movieId}`, async () => {
       const movie = await this.media.getMovie(movieId);
-      if (!input || typeof input.filename !== 'string' || input.filename.length > 255 || !/\.(mp4|webm|mkv|mov|m4v|avi)$/i.test(input.filename)
+      if (!input || typeof input.filename !== 'string' || input.filename.length > 255 || !/\.(mp4|webm)$/i.test(input.filename)
         || !Number.isSafeInteger(input.size) || input.size <= 0 || input.size > MAX_UPLOAD_SIZE
         || !HASH.test(input.sha256) || !Array.isArray(input.chunks)
         || input.chunks.length !== Math.ceil(input.size / UPLOAD_CHUNK_SIZE) || input.chunks.some(h => typeof h !== 'string' || !HASH.test(h))) {
@@ -193,6 +194,9 @@ export class UploadsService implements OnModuleInit {
         const movie = await this.media.getMovieEntity(u.movieId);
         // Recover a crash between publishing a video and saving the upload state.
         if (movie.masterVideo === this.source(u) && movie.transcodeStatus === 'ready') { u.state = 'ready'; await this.save(u); return; }
+        if (movie.pendingMasterVideo === this.source(u) && this.transcode.jobInfo?.(u.movieId)?.status === 'processing') {
+          u.state = 'processing'; await this.save(u); return;
+        }
         const hash = createHash('sha256');
         for await (const bytes of createReadStream(this.data(u))) hash.update(bytes);
         if ((await stat(this.data(u))).size !== u.size || hash.digest('hex') !== u.sha256) {
@@ -218,6 +222,7 @@ export class UploadsService implements OnModuleInit {
           throw new Error('Full-file SHA-256 mismatch; start a new upload');
         }
         const meta = await this.transcode.probe(this.data(u));
+        validateUploadedVideo(meta, u.filename);
         if (meta.height < 480) throw new Error('Master video must be at least 480 pixels high');
         await this.media.attachMasterVideo(u.movieId, this.source(u));
         u.state = 'processing'; delete u.error; await this.save(u);

@@ -8,12 +8,13 @@ export interface MediaProbe {
   videoIndex?: number;
   startTime?: number;
   codec?: string; pixelFormat?: string; profile?: string; level?: number;
+  format?: string;
   frameRate?: number; aspect?: string; fieldOrder?: string; rotation?: number;
   audio?: { index: number; codec: string; profile?: string; channels: number; sampleRate: number; language?: string; startTime?: number };
 }
 
 export async function probeMedia(input: string): Promise<MediaProbe> {
-  const { stdout } = await exec('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', input],
+  const { stdout } = await exec('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-show_streams', '-show_format', '-of', 'json', input],
     { encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 60_000, windowsHide: true });
   const data = JSON.parse(stdout);
   const video = data.streams?.find((s: { codec_type: string; disposition?: { attached_pic?: number } }) => s.codec_type === 'video' && !s.disposition?.attached_pic);
@@ -25,6 +26,7 @@ export async function probeMedia(input: string): Promise<MediaProbe> {
   return {
     width: video.width, height: video.height, videoIndex: video.index, duration: Number.isFinite(duration) && duration > 0 ? duration : null,
     codec: video.codec_name, pixelFormat: video.pix_fmt, profile: video.profile, level: video.level,
+    format: data.format?.format_name,
     startTime: Number(data.format?.start_time) || 0,
     frameRate: denominator > 0 ? numerator / denominator : undefined, aspect: video.sample_aspect_ratio,
     fieldOrder: video.field_order, rotation: Number(video.side_data_list?.find((s: { rotation?: number }) => s.rotation !== undefined)?.rotation ?? video.tags?.rotate ?? 0),
@@ -78,8 +80,10 @@ export async function renderWebVideo(input: string, output: string, height: numb
 /** Every subprocess bypasses the shell, including user-controlled filenames. */
 export function runFfmpeg(args: string[], progress?: ProcessingProgress): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', '-y', ...args],
+    const safeArgs = args.flatMap(arg => arg === '-i' ? ['-protocol_whitelist', 'file,pipe', '-i'] : [arg]);
+    const child = spawn('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', '-y', ...safeArgs],
       { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const timeout = setTimeout(() => child.kill('SIGKILL'), 4 * 60 * 60 * 1000);
     let buffer = ''; let stderr = ''; let seconds = 0;
     const parse = (line: string) => {
       if (line.startsWith('out_time_us=')) {
@@ -92,8 +96,9 @@ export function runFfmpeg(args: string[], progress?: ProcessingProgress): Promis
       buffer += chunk; const lines = buffer.split('\n'); buffer = lines.pop() ?? ''; lines.forEach(parse);
     });
     child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-8192); });
-    child.once('error', reject);
+    child.once('error', error => { clearTimeout(timeout); reject(error); });
     child.once('close', (code, signal) => {
+      clearTimeout(timeout);
       if (buffer) parse(buffer);
       if (code === 0) resolve(); else reject(new Error(`FFmpeg failed (${signal ?? code}): ${stderr.trim()}`));
     });
