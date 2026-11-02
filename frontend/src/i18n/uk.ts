@@ -155,6 +155,7 @@ export const uk: Record<string, string> = {
   'player.forward10': 'Вперед на 10 секунд',
   'player.mute': 'Вимкнути звук',
   'player.volume': 'Гучність',
+  'player.settings': 'Налаштування плеєра',
   'player.quality': 'Якість відео',
   'player.speed': 'Швидкість відтворення',
   'player.fullscreen': 'На весь екран',

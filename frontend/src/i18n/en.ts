@@ -155,6 +155,7 @@ export const en: Record<string, string> = {
   'player.forward10': 'Forward 10 seconds',
   'player.mute': 'Mute',
   'player.volume': 'Volume',
+  'player.settings': 'Player settings',
   'player.quality': 'Video quality',
   'player.speed': 'Playback speed',
   'player.fullscreen': 'Fullscreen',

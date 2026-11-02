@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
-import { useToast } from '@/context/ToastContext';
 import { mediaService } from '@/services/mediaService';
 import { devicesService } from '@/services/devicesService';
 import { useVideoProgress } from '@/hooks/useVideoProgress';
@@ -12,7 +11,6 @@ import { EmptyState } from '@/components/EmptyState';
 import { Modal } from '@/components/Modal';
 import { errorStatusKey } from '@/services/api';
 import { streamUrl } from '@/utils/url';
-import { formatDuration } from '@/utils/format';
 import { getDeviceId, limitsForTier, qualityRank } from '@/utils/plans';
 import type { MovieDto, Quality } from '@/types';
 
@@ -29,7 +27,6 @@ export default function Watch() {
   const movieId = Number(id);
   const { t } = useLanguage();
   const { user, isAuthenticated } = useAuth();
-  const { info } = useToast();
 
   const [movie, setMovie] = useState<MovieDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,13 +57,6 @@ export default function Watch() {
   }, [allowedQualities, quality]);
 
   const { resumeAt, report, flush } = useVideoProgress(movieId, isAuthenticated);
-  const resumeToastShown = useRef(false);
-  useEffect(() => {
-    if (resumeAt > 0 && !resumeToastShown.current) {
-      resumeToastShown.current = true;
-      info(t('watch.resumed', { time: formatDuration(resumeAt) }));
-    }
-  }, [resumeAt, t, info]);
 
   // fetch movie metadata
   useEffect(() => {
