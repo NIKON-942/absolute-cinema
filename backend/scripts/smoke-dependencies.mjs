@@ -46,6 +46,71 @@ assert.equal(initialJob.status, 'none');
 assert.equal(initialJob.progress, null);
 console.log('PASS NestJS multipart poster upload with Multer 2');
 
+// Image attachments must work for ordinary viewers as well as admin actors.
+const viewerEmail = `image-${Date.now()}@example.com`;
+const viewer = await (await request('/auth/register', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: viewerEmail, name: 'Image Viewer', password: 'image-password' }),
+})).json();
+const viewerHeaders = { Authorization: `Bearer ${viewer.accessToken}` };
+const imageForm = (fields = {}, bytes = poster, filename = 'photo.png', type = 'image/png') => {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.set(key, value);
+  form.set('file', new Blob([bytes], { type }), filename);
+  return form;
+};
+assert.equal((await fetch(`${base}/users/me`, { method: 'PATCH', body: imageForm() })).status, 401);
+const uploadedAvatar = await (await request('/users/me', { method: 'PATCH', headers: viewerHeaders,
+  body: imageForm({ name: 'Viewer with photo', avatarUrl: 'https://example.com/ignored.png' }),
+})).json();
+assert.match(uploadedAvatar.avatarUrl, /^\/api\/media\/posters\/avatar-[a-f0-9-]+\.png$/);
+assert.equal(uploadedAvatar.name, 'Viewer with photo');
+assert.deepEqual(Buffer.from(await (await request(uploadedAvatar.avatarUrl.replace(/^\/api/, ''))).arrayBuffer()), poster);
+const persisted = await (await request('/users/me', { headers: viewerHeaders })).json();
+assert.equal(persisted.avatarUrl, uploadedAvatar.avatarUrl);
+const withoutPhotoChange = await (await request('/users/me', { method: 'PATCH',
+  headers: { ...viewerHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Same photo' }),
+})).json();
+assert.equal(withoutPhotoChange.avatarUrl, uploadedAvatar.avatarUrl);
+assert.equal((await fetch(`${base}/users/me`, { method: 'PATCH', headers: viewerHeaders,
+  body: imageForm({}, '<svg/>'),
+})).status, 400);
+assert.equal((await fetch(`${base}/users/me`, { method: 'PATCH', headers: viewerHeaders,
+  body: imageForm({}, Buffer.alloc(5 * 1024 * 1024 + 1)),
+})).status, 413);
+const linkedAvatar = await (await request('/users/me', { method: 'PATCH',
+  headers: { ...viewerHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ avatarUrl: 'https://example.com/avatar.png' }),
+})).json();
+assert.equal(linkedAvatar.avatarUrl, 'https://example.com/avatar.png');
+const noAvatar = await (await request('/users/me', { method: 'PATCH',
+  headers: { ...viewerHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ avatarUrl: null }),
+})).json();
+assert.equal(noAvatar.avatarUrl, null);
+console.log('PASS viewer avatar attachment, persistence, public image, file precedence, validation and optional URL');
+
+assert.equal((await fetch(`${base}/media/actors`, { method: 'POST', headers: viewerHeaders,
+  body: imageForm({ name: 'Forbidden actor' }),
+})).status, 403);
+const actor = await (await request('/media/actors', { method: 'POST', headers, body: imageForm({ name: 'CI Photo Actor' }) })).json();
+try {
+  assert.match(actor.photoUrl, /^\/api\/media\/posters\/actor-[a-f0-9-]+\.png$/);
+  assert.deepEqual(Buffer.from(await (await request(actor.photoUrl.replace(/^\/api/, ''))).arrayBuffer()), poster);
+  const replacement = await (await request(`/media/actors/${actor.id}`, { method: 'PATCH', headers, body: imageForm({ name: 'CI Updated Actor' }) })).json();
+  assert.notEqual(replacement.photoUrl, actor.photoUrl);
+  const link = await (await request(`/media/actors/${actor.id}`, { method: 'PATCH',
+    headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Linked Actor', photoUrl: 'https://example.com/actor.png' }),
+  })).json();
+  assert.equal(link.photoUrl, 'https://example.com/actor.png');
+  const cleared = await (await request(`/media/actors/${actor.id}`, { method: 'PATCH',
+    headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'No photo', photoUrl: '' }),
+  })).json();
+  assert.equal(cleared.photoUrl, null);
+} finally { await request(`/media/actors/${actor.id}`, { method: 'DELETE', headers }); }
+const noPoster = new FormData(); noPoster.set('posterUrl', '');
+const clearedPoster = await (await request(`/media/${movie.id}`, { method: 'PATCH', headers, body: noPoster })).json();
+assert.equal(clearedPoster.posterUrl, '');
+console.log('PASS actor photo attachment/replacement/URL/removal, role enforcement and poster removal');
+
 const temporaryDirectory = await mkdtemp(join(tmpdir(), 'cinema-smoke-'));
 try {
   const master = join(temporaryDirectory, 'master.mp4');

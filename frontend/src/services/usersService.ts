@@ -15,7 +15,16 @@ export const usersService = {
     password?: string;
     currentPassword?: string;
     avatarUrl?: string | null;
+    file?: File | null;
   }): Promise<UserDto> {
+    if (payload.file) {
+      const form = new FormData();
+      form.append('file', payload.file);
+      for (const [key, value] of Object.entries(payload)) {
+        if (key !== 'file' && value !== undefined) form.append(key, value === null ? '' : String(value));
+      }
+      return api.patch('/users/me', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data);
+    }
     return api.patch('/users/me', payload).then((r) => r.data);
   },
 

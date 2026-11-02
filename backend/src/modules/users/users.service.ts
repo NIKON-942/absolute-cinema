@@ -8,6 +8,7 @@ import {
   UserRoleEnum,
 } from './user.entity';
 import { SubscriptionEntity } from '../payments/entities/subscription.entity';
+import { imageReference } from '../media/image-upload';
 
 export interface UserWithSubscription {
   user: UserEntity;
@@ -132,7 +133,7 @@ export class UsersService {
   ) {
     const update: Partial<UserEntity> = {};
     if (data.name !== undefined) update.name = data.name;
-    if (data.avatarUrl !== undefined) update.avatarUrl = data.avatarUrl;
+    if (data.avatarUrl !== undefined) update.avatarUrl = imageReference(data.avatarUrl);
     if (data.password !== undefined) {
       // Changing the password requires proving possession of the current one.
       const user = await this.usersRepo.findOne({ where: { id: userId } });

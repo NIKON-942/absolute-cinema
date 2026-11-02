@@ -178,7 +178,7 @@ test('upload validation checks poster bytes and video codecs, not only MIME name
   await mkdir('.tmp', { recursive: true });
   const path = join('.tmp', `${randomUUID()}.png`);
   await writeFile(path, '<html>fake image</html>');
-  await assert.rejects(validatePoster({ path, originalname: 'poster.png', size: 23 }), /Poster must/);
+  await assert.rejects(validatePoster({ path, originalname: 'poster.png', size: 23 }), /Image must/);
   await assert.rejects(stat(path), { code: 'ENOENT' });
   await writeFile(path, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   try { await validatePoster({ path, originalname: 'poster.png', size: 8 }); }

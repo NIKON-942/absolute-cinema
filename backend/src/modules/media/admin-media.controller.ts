@@ -27,6 +27,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { POSTERS_DIR, MASTERS_DIR, slugify } from './media.constants';
 import { MediaService } from './media.service';
 import { POSTER_MAX_BYTES, POSTER_TYPES, validatePoster } from './upload-validation';
+import { discardImage, imageUploadOptions, storeImage } from './image-upload';
 
 class GenreDto {
   @IsString()
@@ -175,14 +176,20 @@ export class AdminMediaController {
 
   @Post('actors')
   @Roles('admin')
-  createActor(@Body() dto: ActorDto) {
-    return this.mediaService.createActor(dto.name, dto.photoUrl);
+  @UseInterceptors(FileInterceptor('file', imageUploadOptions))
+  async createActor(@Body() dto: ActorDto, @UploadedFile() file?: Express.Multer.File) {
+    const photoUrl = await storeImage(file, 'actor');
+    try { return await this.mediaService.createActor(dto.name, photoUrl ?? dto.photoUrl); }
+    catch (error) { await discardImage(file); throw error; }
   }
 
   @Patch('actors/:id')
   @Roles('admin')
-  updateActor(@Param('id', ParseIntPipe) id: number, @Body() dto: ActorDto) {
-    return this.mediaService.updateActor(id, dto.name, dto.photoUrl);
+  @UseInterceptors(FileInterceptor('file', imageUploadOptions))
+  async updateActor(@Param('id', ParseIntPipe) id: number, @Body() dto: ActorDto, @UploadedFile() file?: Express.Multer.File) {
+    const photoUrl = await storeImage(file, 'actor');
+    try { return await this.mediaService.updateActor(id, dto.name, photoUrl ?? dto.photoUrl); }
+    catch (error) { await discardImage(file); throw error; }
   }
 
   @Delete('actors/:id')

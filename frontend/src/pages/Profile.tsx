@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { Spinner } from '@/components/Spinner';
 import { FieldError } from '@/components/AuthShell';
 import { Modal } from '@/components/Modal';
+import { ImageField } from '@/components/ImageField';
 import { formatDate, formatDuration } from '@/utils/format';
 import { resolveMediaUrl } from '@/utils/url';
 import { posterGradient } from '@/utils/format';
@@ -33,6 +34,7 @@ export default function Profile() {
 
   const [name, setName] = useState(user?.name ?? '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl ?? '');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [password, setPassword] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [errors, setErrors] = useState<{
@@ -113,7 +115,7 @@ export default function Profile() {
     else if (name.trim().length < 2) next.name = t('auth.validation.nameMin');
     if (password && !isValidPassword(password)) next.password = t('auth.validation.passwordPattern');
     if (password && !currentPassword) next.currentPassword = t('profile.account.currentPasswordRequired');
-    if (avatarUrl.trim() && !/^https?:\/\/.+/i.test(avatarUrl.trim())) next.avatarUrl = t('profile.account.avatarUrlInvalid');
+    if (!avatarFile && avatarUrl.trim() && avatarUrl !== user.avatarUrl && !/^https?:\/\/.+/i.test(avatarUrl.trim())) next.avatarUrl = t('profile.account.avatarUrlInvalid');
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
@@ -121,10 +123,13 @@ export default function Profile() {
     try {
       const updated = await usersService.updateMe({
         name: name.trim(),
+        file: avatarFile,
         ...(avatarUrl.trim() !== (user.avatarUrl ?? '') ? { avatarUrl: avatarUrl.trim() || null } : {}),
         ...(password ? { password, currentPassword } : {}),
       });
       setUser(updated);
+      setAvatarUrl(updated.avatarUrl ?? '');
+      setAvatarFile(null);
       setPassword('');
       setCurrentPassword('');
       success(t('profile.account.saved'));
@@ -188,18 +193,8 @@ export default function Profile() {
               <input type="email" value={user.email} readOnly className={`${inputClass} cursor-not-allowed opacity-60`} />
             </div>
             <div>
-              <label htmlFor="profile-avatar" className={labelClass}>
-                {t('profile.account.avatarUrl')}
-              </label>
-              <input
-                id="profile-avatar"
-                type="url"
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                placeholder="https://…"
-                className={inputClass}
-                aria-invalid={Boolean(errors.avatarUrl)}
-              />
+              <ImageField id="profile-avatar" label={t('profile.account.avatar')}
+                value={avatarUrl} file={avatarFile} onFileChange={setAvatarFile} onUrlChange={setAvatarUrl} disabled={saving} />
               <FieldError message={errors.avatarUrl} />
             </div>
             <div>

@@ -134,7 +134,7 @@ Password rules (РГР2 FR-2): at least 8 Unicode code points, at most 72 UTF-8 
 |---|---|---|---|---|
 | GET | `/users` | admin | `?page=1&limit=20&search=` | `{ items: UserDto[], total, page, limit }` |
 | GET | `/users/me` | Bearer | — | `UserDto` |
-| PATCH | `/users/me` | Bearer | `{ name?, avatarUrl?, password?, currentPassword? }` (`currentPassword` required for a password change) | `UserDto` |
+| PATCH | `/users/me` | Bearer | JSON `{ name?, avatarUrl?, password?, currentPassword? }` or multipart with the same fields plus `file?` (avatar image). `currentPassword` required for a password change. | `UserDto` |
 | PATCH | `/users/:id/role` | admin | `{ role: 'viewer'|'admin' }` | `UserDto` |
 | PATCH | `/users/:id/block` | admin | `{ isBlocked: boolean }` | `UserDto` |
 | DELETE | `/users/:id` | admin | — | 204 |
@@ -170,7 +170,7 @@ Blocked users: login returns 403 `Account is blocked`.
 | POST | `/media/:id/master-video` | multipart: `file` (single master video, any ffmpeg-readable container) → `MovieDto` with `transcodeStatus: 'processing'`; the server renders 480p/720p/1080p H.264/AAC variants in the background and links them to the movie |
 | GET | `/media/:id/transcode` | `{ movieId, status: none|processing|ready|failed, qualities: string[], error? }` — live background-job state for polling |
 | POST | `/media/genres` / PATCH `/media/genres/:id` / DELETE | `{ name }` |
-| POST | `/media/actors` / PATCH `/media/actors/:id` / DELETE | `{ name, photoUrl? }` |
+| POST | `/media/actors` / PATCH `/media/actors/:id` / DELETE | JSON `{ name, photoUrl? }` or multipart `{ name, photoUrl?, file? }` (actor image) |
 | POST | `/media/countries` / PATCH `/media/countries/:id` / DELETE | `{ name }` (FR-38) |
 | POST | `/media/directors` / PATCH `/media/directors/:id` / DELETE | `{ name }` (FR-39) |
 
@@ -214,6 +214,10 @@ Concurrent-device enforcement. The SPA generates a persistent `deviceId` (localS
 | Method | Path | Returns |
 |---|---|---|
 | GET | `/admin/analytics?days=30` | `{ totalUsers, totalMovies, activeSubscriptions, intervalDays, newUsersInPeriod, topMovies: { id, title, viewCount, averageRating }[], genrePopularity: { genre, views, movies, averageRating }[], revenueByMonth: { month, total }[] }` — revenue/new-users are filtered to the interval; genre popularity covers all time (FR-43/44) |
+
+## Image attachments
+
+Profile avatars, actor photos and movie posters use file attachments as the primary UI action, with external URLs available in a secondary disclosure. Accepted files: JPG/JPEG, PNG and WebP up to 5 MiB, validated by MIME/extension and byte signature. Uploaded files are stored in the existing persistent media volume and served through `/api/media/posters/:filename`; the saved avatar/photo/poster URL remains valid after reload and deployment. A file takes precedence over a supplied URL. Empty image URL clears the image (`null` also supported for avatars). User avatars require authentication; actor/poster changes require admin access. No database migration is required for image attachment support.
 
 ## Mail
 

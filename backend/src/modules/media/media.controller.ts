@@ -111,7 +111,7 @@ export class MediaController {
       });
       return;
     }
-    res.sendFile(filePath);
+    res.sendFile(safe, { root: POSTERS_DIR });
   }
 
   @Post(':id/favorites')

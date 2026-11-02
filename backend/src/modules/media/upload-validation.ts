@@ -9,17 +9,21 @@ export const POSTER_TYPES: Record<string, string> = { '.jpg': 'image/jpeg', '.jp
 /** MIME headers are untrusted; inspect stored bytes before publishing a poster. */
 export async function validatePoster(file?: Express.Multer.File): Promise<void> {
   if (!file) return;
-  const handle = await open(file.path, 'r');
+  const handle = file.buffer ? undefined : await open(file.path, 'r');
   let valid = false;
   try {
-    const bytes = Buffer.alloc(12); const { bytesRead } = await handle.read(bytes, 0, 12, 0);
+    const bytes = file.buffer?.subarray(0, 12) ?? Buffer.alloc(12);
+    const bytesRead = handle ? (await handle.read(bytes, 0, 12, 0)).bytesRead : bytes.length;
     const ext = extname(file.originalname).toLowerCase();
     valid = file.size <= POSTER_MAX_BYTES && (
       (['.jpg', '.jpeg'].includes(ext) && bytesRead >= 3 && bytes.subarray(0, 3).equals(Buffer.from([255, 216, 255])))
       || (ext === '.png' && bytesRead >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
       || (ext === '.webp' && bytesRead >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP'));
-  } finally { await handle.close(); }
-  if (!valid) { await rm(file.path, { force: true }); throw new BadRequestException('Poster must be a JPG, PNG or WebP image up to 5 MiB'); }
+  } finally { await handle?.close(); }
+  if (!valid) {
+    if (file.path) await rm(file.path, { force: true });
+    throw new BadRequestException('Image must be a JPG, PNG or WebP file up to 5 MiB');
+  }
 }
 
 export function validateUploadedVideo(meta: MediaProbe, filename: string): void {

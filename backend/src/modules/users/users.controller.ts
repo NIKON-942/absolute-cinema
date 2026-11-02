@@ -9,6 +9,8 @@ import {
   Query,
   Req,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { IsBoolean, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
@@ -18,6 +20,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { currentUserId } from '../../common/helpers/request-user';
 import { UsersService } from './users.service';
 import { IsPassword } from '../../common/validators/password';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { discardImage, imageUploadOptions, storeImage } from '../media/image-upload';
 
 class UpdateMeDto {
   @IsOptional()
@@ -64,10 +68,16 @@ export class UsersController {
   }
 
   @Patch('me')
-  async updateMe(@Req() req: Request, @Body() dto: UpdateMeDto) {
-    return this.usersService.serialize(
-      await this.usersService.updateMe(currentUserId(req), dto),
-    );
+  @UseInterceptors(FileInterceptor('file', imageUploadOptions))
+  async updateMe(@Req() req: Request, @Body() dto: UpdateMeDto, @UploadedFile() file?: Express.Multer.File) {
+    const avatarUrl = await storeImage(file, 'avatar');
+    let updated;
+    try {
+      updated = await this.usersService.updateMe(currentUserId(req), {
+        ...dto, ...(avatarUrl ? { avatarUrl } : {}),
+      });
+    } catch (error) { await discardImage(file); throw error; }
+    return this.usersService.serialize(updated);
   }
 
   @Get()

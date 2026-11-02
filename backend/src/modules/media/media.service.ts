@@ -26,6 +26,7 @@ import {
 import { QUALITY_RANK } from '../payments/plan-limits.service';
 import { TranscodeService } from './transcode.service';
 import { validateUploadedVideo } from './upload-validation';
+import { imageReference } from './image-upload';
 
 const QUALITY_COLUMNS: Record<VideoQuality, keyof MovieEntity> = {
   '480p': 'video480',
@@ -667,7 +668,7 @@ export class MediaService {
       movie.posterPath = posterPath;
     } else if (body.posterUrl !== undefined) {
       const url = String(body.posterUrl).trim();
-      movie.posterPath = /^https?:\/\//i.test(url) ? url : movie.posterPath;
+      movie.posterPath = url ? imageReference(url) ?? null : null;
     }
     if (body.keywords !== undefined) {
       movie.keywords = String(body.keywords)
@@ -741,13 +742,13 @@ export class MediaService {
   }
 
   async createActor(name: string, photoUrl?: string) {
-    return this.actorsRepo.save({ name: name.trim(), photoUrl: photoUrl ?? null });
+    return this.actorsRepo.save({ name: name.trim(), photoUrl: imageReference(photoUrl) ?? null });
   }
 
   async updateActor(id: number, name: string, photoUrl?: string) {
     await this.actorsRepo.update(id, {
       name: name.trim(),
-      ...(photoUrl !== undefined ? { photoUrl } : {}),
+      ...(photoUrl !== undefined ? { photoUrl: imageReference(photoUrl) } : {}),
     });
     const actor = await this.actorsRepo.findOne({ where: { id } });
     if (!actor) throw new NotFoundException('Actor not found');
