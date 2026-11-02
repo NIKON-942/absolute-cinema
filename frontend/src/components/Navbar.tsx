@@ -58,10 +58,8 @@ export function Navbar() {
     <header className="sticky top-0 z-40 border-b border-cinema-border bg-cinema-black/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:gap-5">
         {/* logo */}
-        <Link to="/" className="flex shrink-0 items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cinema-amber to-cinema-red font-black text-cinema-ink">
-            A
-          </span>
+        <Link to="/" aria-label="AbsoluteCinema" className="flex shrink-0 items-center gap-2">
+          <img src="/brand/frog-head.png" alt="" width={40} height={40} className="h-10 w-10 shrink-0 object-contain" />
           <span className="hidden text-lg font-extrabold tracking-tight text-cinema-text sm:block">
             Absolute<span className="text-cinema-accent">Cinema</span>
           </span>
