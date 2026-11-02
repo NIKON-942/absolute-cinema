@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useDebounce } from '@/hooks/useDebounce';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { BrandIcon } from '@/components/BrandIcon';
 import { resolveMediaUrl } from '@/utils/url';
 
 export function Navbar() {
@@ -59,7 +60,7 @@ export function Navbar() {
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:gap-5">
         {/* logo */}
         <Link to="/" aria-label="AbsoluteCinema" className="flex shrink-0 items-center gap-2">
-          <img src="/brand/frog-head.png" alt="" width={40} height={40} className="h-10 w-10 shrink-0 object-contain" />
+          <BrandIcon />
           <span className="hidden text-lg font-extrabold tracking-tight text-cinema-text sm:block">
             Absolute<span className="text-cinema-accent">Cinema</span>
           </span>

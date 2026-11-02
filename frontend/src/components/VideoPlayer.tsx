@@ -353,6 +353,7 @@ export function VideoPlayer({
 
   const displayRatio = duration > 0 ? (dragging ? dragRatio : currentTime / duration) : 0;
   const displayTime = dragging && duration ? dragRatio * duration : currentTime;
+  const controlsVisible = showControls || !playing;
 
   const changeSpeed = (s: number) => {
     setSpeed(s);
@@ -407,22 +408,24 @@ export function VideoPlayer({
 
       {/* big play button when paused */}
       {!playing && !waiting && (
-        <button
-          type="button"
-          onClick={togglePlay}
-          aria-label={t('player.play')}
-          className="absolute inset-0 m-auto flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-cinema-amber/95 text-cinema-ink shadow-glow transition hover:scale-105"
-        >
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5.14v14l11-7-11-7z" />
-          </svg>
-        </button>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={togglePlay}
+            aria-label={t('player.play')}
+            className="pointer-events-auto flex h-14 w-14 shrink-0 cursor-pointer items-center justify-center rounded-full bg-cinema-amber/95 text-cinema-ink shadow-glow transition hover:scale-105 sm:h-16 sm:w-16"
+          >
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5.14v14l11-7-11-7z" />
+            </svg>
+          </button>
+        </div>
       )}
 
       {/* control bar */}
       <div
-        className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent px-3 pb-2 pt-8 transition-opacity duration-300 sm:px-4 ${
-          showControls || !playing ? 'opacity-100' : 'pointer-events-none opacity-0'
+        className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent px-3 pb-2 pt-8 transition-opacity duration-300 sm:px-4 ${
+          controlsVisible ? 'opacity-100' : 'opacity-0'
         }`}
       >
         {/* seek bar */}
@@ -434,7 +437,7 @@ export function VideoPlayer({
           aria-valuemax={Math.round(duration)}
           aria-valuenow={Math.round(displayTime)}
           tabIndex={-1}
-          className="group/bar relative mb-2 h-4 cursor-pointer"
+          className={`group/bar relative mb-2 h-4 cursor-pointer ${controlsVisible ? 'pointer-events-auto' : ''}`}
           onPointerDown={onSeekBarPointerDown}
           onPointerMove={onSeekBarPointerMove}
           onPointerUp={onSeekBarPointerUp}
@@ -449,7 +452,7 @@ export function VideoPlayer({
           />
         </div>
 
-        <div className="flex items-center gap-0 text-cinema-text sm:gap-3">
+        <div className={`flex items-center gap-0 text-cinema-text sm:gap-3 ${controlsVisible ? 'pointer-events-auto' : ''}`}>
           {/* play/pause */}
           <button type="button" onClick={togglePlay} aria-label={playing ? t('player.pause') : t('player.play')} className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded transition hover:text-cinema-accent sm:h-auto sm:w-auto sm:p-1">
             {playing ? (
