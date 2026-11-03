@@ -535,7 +535,7 @@ export const uk: Record<string, string> = {
   'notfound.title': '404 — сторінку не знайдено',
   'notfound.text': 'Схоже, цю сцену вирізали при монтажі.',
   'notfound.back': 'На головну',
-  'footer.tagline': 'Тисячі фільмів. Одна підписка.',
+  'footer.tagline': 'Онлайн-кінотеатр: каталог фільмів, рекомендації та перегляд за підпискою.',
   'footer.copyright': '© {year} AbsoluteCinema. Навчальний проєкт.',
   'catalog.selectedGenres': 'Обрано: {count}',
   'catalog.genresHint': 'Фільми хоча б з одним обраним жанром.',
@@ -551,4 +551,7 @@ export const uk: Record<string, string> = {
   'auth.google.linked': "Google-акаунт прив’язано",
   'auth.google.linkHint': "Прив’яжіть Google, щоб входити без введення пароля.",
   'auth.google.link': "Прив’язати Google-акаунт",
+  'privacy.link': 'Політика конфіденційності',
+  'terms.link': 'Умови користування',
+  'privacy.links': 'Інформація про сайт',
 };

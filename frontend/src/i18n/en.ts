@@ -535,7 +535,7 @@ export const en: Record<string, string> = {
   'notfound.title': '404 — page not found',
   'notfound.text': 'Looks like this page got cut from the final edit.',
   'notfound.back': 'Go home',
-  'footer.tagline': 'Thousands of movies. One subscription.',
+  'footer.tagline': 'Online cinema: movie catalog, recommendations and subscription-based viewing.',
   'footer.copyright': '© {year} AbsoluteCinema. Educational project.',
   'catalog.selectedGenres': 'Selected: {count}',
   'catalog.genresHint': 'Matches at least one selected genre.',
@@ -551,4 +551,7 @@ export const en: Record<string, string> = {
   'auth.google.linked': "Google account linked",
   'auth.google.linkHint': "Link Google to sign in without entering your password.",
   'auth.google.link': "Link Google account",
+  'privacy.link': 'Privacy policy',
+  'terms.link': 'Terms of use',
+  'privacy.links': 'Site information',
 };

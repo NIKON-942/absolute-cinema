@@ -145,6 +145,7 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent http://localhost/login | grep -q '<div id="root">'
+          node frontend/scripts/check-public-pages.mjs http://localhost
           node backend/scripts/smoke-plans.mjs
       - name: Check password, mail and tracing dependencies
         if: needs.changes.outputs.dependencies == 'true'

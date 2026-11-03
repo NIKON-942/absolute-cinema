@@ -156,3 +156,26 @@ On Oracle set `SITE_ADDRESS=absolutecine.duckdns.org`, `CLIENT_URL=https://absol
 Migration `1793780000000-GoogleOAuthFlows` adds unique Google identities and short-lived OAuth flows. Existing duplicate non-null Google IDs must be reviewed before migrating; accounts are never merged automatically. State is bound to an HttpOnly SameSite=Lax cookie and consumed once. The callback passes a one-minute exchange code in the URL fragment; exchange requires the same browser cookie and consumes the code atomically. JWTs are no longer accepted from callback URLs. Expired flows are cleaned periodically and when starting sign-in.
 
 New Google users get a viewer account. Existing Google identities sign in by Google ID. Existing password users must first sign in normally, then choose **Link Google account** in their profile; matching email alone never links accounts. Linking checks the initiating session version again at callback. Profile DTOs expose only `googleLinked`, not the provider ID. Sign-in returns to a validated internal destination and handles cancellation, expired state, configuration errors and account conflicts on the normal authentication UI.
+
+## Public Google OAuth branding and policies
+
+Public URLs after deploying this change:
+
+| Google Auth Platform field | Value |
+| --- | --- |
+| Application name | AbsoluteCinema |
+| Application home page | https://absolutecine.duckdns.org/ |
+| Application privacy policy | https://absolutecine.duckdns.org/privacy |
+| Application terms of service | https://absolutecine.duckdns.org/terms |
+| Authorized domain | absolutecine.duckdns.org |
+| Audience | External |
+| Publishing status | In production, once the public pages are deployed and verified |
+| Data Access | openid, userinfo.email, userinfo.profile only |
+
+The confirmed project/privacy contact is Микита Губін (Mykyta Hubin), hubin.mykyta_ip42@edu.kpi.ua. Google’s User support email dropdown only permits eligible signed-in accounts or managed groups: select a monitored address available there. A privacy contact on the site does not automatically make that address selectable in Google Console.
+
+Deploy first, then open the home, privacy and terms URLs signed out. In Google Auth Platform, verify the domain if requested, update Branding, use **Verify Branding** / **Publish branding** when shown, and set Audience to **In production** through **Publish app**. Publishing the audience and verifying branding are separate actions. This repository does not change Google Console settings; project-owner access is required. Scope verification and Google Workspace administrator restrictions may still apply independently.
+
+Policy text lives in `frontend/src/content/privacy.json` and `terms.json`. Keep the text and revision date consistent with actual operation; update recipients and retention disclosures when server configuration changes. The same text is rendered by the SPA and emitted as bilingual, script-free HTML for direct requests. Caddy explicitly serves both public routes with revalidation. The homepage includes legal links and a service description even without JavaScript. The frontend scripts explicitly select `vite.config.ts` so generated local `vite.config.js` files cannot bypass the static-page build plugin.
+
+The existing CI smoke job runs `node frontend/scripts/check-public-pages.mjs http://localhost` to verify the public documents, both language versions, contact links, canonical URLs, cache headers and homepage links through Caddy.

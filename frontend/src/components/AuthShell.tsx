@@ -29,9 +29,15 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
         </div>
         {children}
         {footer && <div className="mt-6 text-center text-sm text-cinema-muted">{footer}</div>}
+        <PrivacyLink />
       </div>
     </div>
   );
+}
+
+function PrivacyLink() {
+  const { t } = useLanguage();
+  return <p className="mt-4 text-center text-xs"><Link to="/privacy" className="text-cinema-accent hover:underline">{t('privacy.link')}</Link></p>;
 }
 
 /** Google OAuth button — navigates the browser to the backend OAuth entry point. */
