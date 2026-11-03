@@ -149,8 +149,8 @@ export default function MovieDetails() {
                   onClick={handleFavorite}
                   className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-6 py-3 font-semibold transition ${
                     movie.isFavorite
-                      ? 'border-cinema-red/60 bg-cinema-red/15 text-cinema-red'
-                      : 'border-cinema-border bg-cinema-panel text-cinema-soft hover:border-cinema-red/50 hover:text-cinema-red'
+                      ? 'border-cinema-amber/60 bg-cinema-amber/15 text-cinema-accent'
+                      : 'border-cinema-border bg-cinema-panel text-cinema-soft hover:border-cinema-amber/50 hover:text-cinema-accent'
                   }`}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill={movie.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
@@ -249,7 +249,7 @@ export default function MovieDetails() {
                         {a.photoUrl ? (
                           <img src={resolveMediaUrl(a.photoUrl)} alt={a.name} className="h-8 w-8 rounded-full object-cover" />
                         ) : (
-                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-ink">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-gold/70 text-xs font-bold text-cinema-ink">
                             {a.name.charAt(0).toUpperCase()}
                           </span>
                         )}

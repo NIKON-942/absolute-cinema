@@ -57,7 +57,7 @@ export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCar
           <div
             className={`flex aspect-[2/3] w-full flex-col items-center justify-center gap-2 bg-gradient-to-br p-3 text-center ${posterGradient(movie.id)}`}
           >
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#f5b942" strokeWidth="1.4" className="opacity-70">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" className="text-cinema-accent opacity-70">
               <rect x="3" y="4" width="18" height="16" rx="2" />
               <path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" />
             </svg>
@@ -76,11 +76,11 @@ export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCar
 
         {/* rating badge */}
         {movie.averageRating > 0 && (
-          <span className="absolute left-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-xs font-bold text-cinema-accent backdrop-blur">
+          <span className="media-surface absolute left-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-xs font-bold text-cinema-accent backdrop-blur">
             ★ {movie.averageRating.toFixed(1)}
           </span>
         )}
-        <span className="absolute right-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-cinema-soft backdrop-blur">
+        <span className="media-surface absolute right-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-cinema-soft backdrop-blur">
           {movie.ageRating}
         </span>
 
@@ -91,8 +91,8 @@ export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCar
           aria-label={t('favorites.toggle')}
           className={`absolute bottom-2 right-2 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full backdrop-blur transition ${
             movie.isFavorite
-              ? 'bg-cinema-red/90 text-white opacity-100'
-              : 'bg-cinema-black/70 text-cinema-soft opacity-0 hover:text-cinema-red group-hover:opacity-100'
+              ? 'bg-cinema-amber text-cinema-ink opacity-100'
+              : 'bg-cinema-black/70 text-cinema-soft opacity-0 hover:text-cinema-accent group-hover:opacity-100'
           }`}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill={movie.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
@@ -104,7 +104,7 @@ export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCar
         {progressPercent != null && progressPercent > 0 && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/60">
             <div
-              className="h-full bg-cinema-red"
+              className="h-full bg-cinema-amber"
               style={{ width: `${Math.min(100, progressPercent)}%` }}
             />
           </div>

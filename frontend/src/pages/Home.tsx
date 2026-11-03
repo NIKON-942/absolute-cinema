@@ -130,7 +130,7 @@ export default function Home() {
     <div className="pb-10">
       {/* hero banner */}
       {hero ? (
-        <section className="relative mb-10 overflow-hidden">
+        <section className="media-surface relative mb-10 overflow-hidden bg-cinema-black text-cinema-text">
           <div className="absolute inset-0">
             {hero.posterUrl ? (
               <img
@@ -167,7 +167,7 @@ export default function Home() {
               <div className="flex flex-wrap gap-3">
                 <Link
                   to={`/movie/${hero.id}`}
-                  className="flex items-center gap-2 rounded-lg bg-cinema-red px-6 py-3 font-bold text-white transition hover:bg-cinema-red/85 hover:shadow-glow"
+                  className="flex items-center gap-2 rounded-lg bg-cinema-amber px-6 py-3 font-bold text-cinema-ink transition hover:bg-cinema-amber/90 hover:shadow-glow"
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v14l11-7-11-7z" /></svg>
                   {t('home.watchNow')}

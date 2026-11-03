@@ -46,7 +46,7 @@ const primaryBtn =
 const ghostBtn =
   'cursor-pointer rounded-lg border border-cinema-border px-4 py-2 text-sm font-semibold text-cinema-soft transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-60';
 const dangerBtn =
-  'cursor-pointer rounded-lg bg-cinema-red px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-red/85 disabled:cursor-default disabled:opacity-60';
+  'cursor-pointer rounded-lg bg-cinema-danger px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-danger/90 disabled:cursor-default disabled:opacity-60';
 
 type Tab = 'movies' | 'genres' | 'actors' | 'countries' | 'directors' | 'users' | 'analytics';
 const TABS: Tab[] = ['movies', 'genres', 'actors', 'countries', 'directors', 'users', 'analytics'];
@@ -1235,7 +1235,7 @@ function ActorsTab() {
           {a.photoUrl ? (
             <img src={resolveMediaUrl(a.photoUrl)} alt="" className="h-9 w-9 rounded-full border border-cinema-border object-cover" loading="lazy" />
           ) : (
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-ink">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-gold/70 text-xs font-bold text-cinema-ink">
               {a.name.charAt(0).toUpperCase()}
             </span>
           )}
@@ -1409,7 +1409,7 @@ function UsersTab() {
           {u.avatarUrl ? (
             <img src={resolveMediaUrl(u.avatarUrl)} alt="" className="h-8 w-8 shrink-0 rounded-full border border-cinema-border object-cover" loading="lazy" />
           ) : (
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-ink">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-gold/70 text-xs font-bold text-cinema-ink">
               {u.name.charAt(0).toUpperCase()}
             </span>
           )}

@@ -39,8 +39,9 @@ export function RatingStars({ value, average, onRate, onClear, readOnly, size = 
               width={size}
               height={size}
               viewBox="0 0 24 24"
-              fill={n <= shown ? '#f5b942' : 'none'}
-              stroke={n <= shown ? '#f5b942' : '#4b5069'}
+              fill={n <= shown ? 'currentColor' : 'none'}
+              stroke="currentColor"
+              className={n <= shown ? 'text-cinema-accent' : 'text-cinema-muted'}
               strokeWidth="1.6"
             >
               <path d="M12 2.5l2.95 5.98 6.6.96-4.78 4.65 1.13 6.58L12 17.57l-5.9 3.1 1.13-6.58L2.45 9.44l6.6-.96L12 2.5z" />

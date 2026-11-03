@@ -64,10 +64,11 @@ export function Carousel({ title, subtitle, action, children }: CarouselProps) {
           </div>
         </div>
       </div>
+      {/* Scroll containers clip vertical overflow too; leave room for card lift and glow. */}
       <div
         ref={trackRef}
         onScroll={updateArrows}
-        className="no-scrollbar flex snap-x gap-4 overflow-x-auto scroll-smooth pb-2"
+        className="no-scrollbar -mx-4 flex snap-x gap-4 overflow-x-auto scroll-smooth px-4 pb-4 pt-4"
       >
         {children}
       </div>

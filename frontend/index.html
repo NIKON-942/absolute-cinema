@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="/brand/frog-head.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="AbsoluteCinema — online cinema: thousands of movies, one subscription." />
-    <meta name="theme-color" content="#0b0c10" />
+    <meta name="theme-color" content="#0f1115" />
     <script>
       (() => {
         let saved;
@@ -14,14 +14,14 @@
           ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
-        document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f7f8fc' : '#0b0c10';
+        document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f7f4ed' : '#0f1115';
       })();
     </script>
     <title>AbsoluteCinema</title>
     <style>
       /* Match the initial theme before the stylesheet loads. */
-      html, body { margin: 0; background: #0b0c10; }
-      html[data-theme="light"], html[data-theme="light"] body { background: #f7f8fc; }
+      html, body { margin: 0; background: #0f1115; }
+      html[data-theme="light"], html[data-theme="light"] body { background: #f7f4ed; }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

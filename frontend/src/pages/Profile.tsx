@@ -156,7 +156,7 @@ export default function Profile() {
         {user.avatarUrl ? (
           <img src={resolveMediaUrl(user.avatarUrl)} alt={user.name} className="h-16 w-16 rounded-2xl border border-cinema-border object-cover" />
         ) : (
-          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-cinema-amber to-cinema-red text-2xl font-black text-cinema-ink">
+          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-cinema-amber to-cinema-gold text-2xl font-black text-cinema-ink">
             {user.name.charAt(0).toUpperCase()}
           </span>
         )}
@@ -415,7 +415,7 @@ export default function Profile() {
                       </p>
                       <div className="mt-auto">
                         <div className="mb-1 h-1.5 overflow-hidden rounded-full bg-cinema-card">
-                          <div className="h-full rounded-full bg-cinema-red" style={{ width: `${percent}%` }} />
+                          <div className="h-full rounded-full bg-cinema-amber" style={{ width: `${percent}%` }} />
                         </div>
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-cinema-muted">{t('profile.continue.left', { time: formatDuration(left) })}</span>
@@ -469,7 +469,7 @@ export default function Profile() {
             <button
               type="button"
               onClick={() => void onCancelSubscription()}
-              className="cursor-pointer rounded-lg bg-cinema-red px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-red/85 disabled:opacity-60"
+              className="cursor-pointer rounded-lg bg-cinema-danger px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-danger/90 disabled:opacity-60"
               disabled={cancelling}
             >
               {cancelling ? t('common.loading') : t('common.confirm')}

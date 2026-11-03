@@ -5,44 +5,50 @@
 @layer base {
   :root,
   .media-surface {
-    --cinema-background: 11 12 16;
-    --cinema-panel: 18 20 29;
-    --cinema-card: 23 26 38;
-    --cinema-border: 35 39 57;
-    --cinema-muted: 139 143 163;
-    --cinema-text: 241 245 249;
-    --cinema-strong: 248 250 252;
-    --cinema-soft: 203 213 225;
-    --cinema-accent: 245 185 66;
-    --cinema-red: 230 57 70;
-    --cinema-success: 110 231 183;
-    --cinema-error: 252 165 165;
-    --cinema-notice: 253 230 138;
-    --cinema-success-surface: 6 50 38;
-    --cinema-error-surface: 69 10 10;
-    --cinema-glow: 0 0 24px rgb(245 185 66 / 0.25);
-    --cinema-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+    /* Graphite + amber: shared by the dark theme and cinematic surfaces. */
+    --cinema-background: 15 17 21;
+    --cinema-panel: 25 29 37;
+    --cinema-card: 32 37 46;
+    --cinema-border: 49 55 66;
+    --cinema-muted: 167 173 184;
+    --cinema-text: 244 243 239;
+    --cinema-strong: 250 249 246;
+    --cinema-soft: 207 210 215;
+    --cinema-amber: 242 184 75;
+    --cinema-gold: 213 147 53;
+    --cinema-ink: 23 19 11;
+    --cinema-accent: 242 184 75;
+    --cinema-red: 241 121 133;
+    --cinema-danger: 191 52 69;
+    --cinema-success: 137 208 167;
+    --cinema-error: 244 164 173;
+    --cinema-notice: 242 207 141;
+    --cinema-success-surface: 20 49 35;
+    --cinema-error-surface: 62 25 31;
+    --cinema-glow: 0 0 24px rgb(242 184 75 / 0.18);
+    --cinema-shadow: 0 12px 32px rgb(0 0 0 / 0.32);
     color-scheme: dark;
   }
 
   :root[data-theme='light'] {
-    --cinema-background: 247 248 252;
+    --cinema-background: 247 244 237;
     --cinema-panel: 255 255 255;
-    --cinema-card: 237 240 247;
-    --cinema-border: 203 210 224;
-    --cinema-muted: 87 99 120;
-    --cinema-text: 30 41 59;
-    --cinema-strong: 15 23 42;
-    --cinema-soft: 51 65 85;
-    --cinema-accent: 146 77 8;
-    --cinema-red: 190 28 47;
-    --cinema-success: 4 120 87;
-    --cinema-error: 185 28 28;
-    --cinema-notice: 146 64 14;
-    --cinema-success-surface: 220 252 231;
-    --cinema-error-surface: 254 226 226;
-    --cinema-glow: 0 0 24px rgb(245 185 66 / 0.18);
-    --cinema-shadow: 0 8px 28px rgb(30 41 59 / 0.09);
+    --cinema-card: 239 235 226;
+    --cinema-border: 213 207 195;
+    --cinema-muted: 98 104 115;
+    --cinema-text: 32 36 43;
+    --cinema-strong: 24 28 33;
+    --cinema-soft: 75 80 88;
+    /* Darker amber keeps small links readable on the warm light surfaces. */
+    --cinema-accent: 138 89 0;
+    --cinema-red: 181 44 63;
+    --cinema-success: 34 108 68;
+    --cinema-error: 169 39 57;
+    --cinema-notice: 138 89 0;
+    --cinema-success-surface: 231 242 232;
+    --cinema-error-surface: 251 232 233;
+    --cinema-glow: 0 0 24px rgb(242 184 75 / 0.15);
+    --cinema-shadow: 0 8px 28px rgb(49 41 24 / 0.08);
     color-scheme: light;
   }
 

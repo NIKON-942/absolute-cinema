@@ -451,7 +451,7 @@ export function VideoPlayer({
         >
           <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/20">
             <div className="absolute h-full rounded-full bg-white/30" style={{ width: `${buffered * 100}%` }} />
-            <div className="absolute h-full rounded-full bg-cinema-red" style={{ width: `${displayRatio * 100}%` }} />
+            <div className="absolute h-full rounded-full bg-cinema-amber" style={{ width: `${displayRatio * 100}%` }} />
           </div>
           <div
             className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-cinema-amber shadow-glow transition-transform group-hover/bar:scale-125"

@@ -253,7 +253,7 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
           type="button"
           onClick={() => setStarted(true)}
           aria-label={t('movie.watch')}
-          className="group relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-cinema-border bg-cinema-black"
+          className="media-surface group relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-cinema-border bg-cinema-black"
         >
           {movie.posterUrl && <img src={resolveMediaUrl(movie.posterUrl)} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
           <span className="relative flex flex-col items-center gap-3 text-white">

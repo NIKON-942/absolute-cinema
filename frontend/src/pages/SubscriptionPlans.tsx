@@ -187,7 +187,7 @@ export default function SubscriptionPlans() {
                 <ul className="mb-8 flex-1 space-y-3">
                   {Array.from({ length: FEATURE_COUNT }, (_, i) => i + 1).map((n) => (
                     <li key={n} className="flex items-start gap-2.5 text-sm text-cinema-soft">
-                      <svg className="mt-0.5 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b942" strokeWidth="2.6">
+                      <svg className="mt-0.5 shrink-0 text-cinema-accent" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
                         <path d="M20 6 9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                       {t(`plans.features.${tier}.${n}`)}
