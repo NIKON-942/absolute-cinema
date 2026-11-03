@@ -148,9 +148,9 @@ interface MovieFormState {
   originalTitle: string;
   description: string;
   year: string;
-  country: string;
+  countryId: string;
   ageRating: string;
-  director: string;
+  directorId: string;
   runtimeMinutes: string;
   trailerUrl: string;
   posterUrl: string;
@@ -166,9 +166,9 @@ const emptyMovieForm: MovieFormState = {
   originalTitle: '',
   description: '',
   year: '',
-  country: '',
-  ageRating: '',
-  director: '',
+  countryId: '',
+  ageRating: '16+',
+  directorId: '',
   runtimeMinutes: '',
   trailerUrl: '',
   posterUrl: '',
@@ -248,9 +248,9 @@ function MoviesTab() {
       originalTitle: movie.originalTitle,
       description: movie.description,
       year: String(movie.year || ''),
-      country: movie.country,
+      countryId: movie.countryId == null ? '' : String(movie.countryId),
       ageRating: movie.ageRating,
-      director: movie.director,
+      directorId: movie.directorId == null ? '' : String(movie.directorId),
       runtimeMinutes: movie.runtimeMinutes ? String(movie.runtimeMinutes) : '',
       trailerUrl: movie.trailerUrl ?? '',
       posterUrl: movie.posterUrl,
@@ -309,6 +309,21 @@ function MoviesTab() {
       setFormError(t('admin.movies.fillRequired'));
       return;
     }
+    const validUrl = (value: string) => {
+      if (!value.trim()) return true;
+      try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && value.length <= 2048; } catch { return false; }
+    };
+    if (form.title.trim().length > 255 || form.originalTitle.trim().length > 255 || form.description.trim().length > 20000
+      || (form.runtimeMinutes && (!Number.isInteger(Number(form.runtimeMinutes)) || Number(form.runtimeMinutes) < 1 || Number(form.runtimeMinutes) > 600))
+      || !AGE_RATINGS.includes(form.ageRating as typeof AGE_RATINGS[number])
+      || !validUrl(form.trailerUrl) || !validUrl(form.masterVideoUrl)
+      || (form.countryId && !countries.some(c => c.id === Number(form.countryId)))
+      || (form.directorId && !directors.some(d => d.id === Number(form.directorId)))
+      || form.genreIds.some(id => !genres.some(g => g.id === id)) || form.actorIds.some(id => !actors.some(a => a.id === id))
+      || form.keywords.split(',').length > 50 || form.keywords.split(',').some(k => k.trim().length > 100)) {
+      setFormError(t('admin.movies.invalidMetadata'));
+      return;
+    }
     setFormError(null);
     setSaving(true);
     let savedMovie: MovieDto | null = null;
@@ -318,9 +333,9 @@ function MoviesTab() {
         originalTitle: form.originalTitle.trim(),
         description: form.description.trim(),
         year,
-        country: form.country.trim(),
+        countryId: form.countryId ? Number(form.countryId) : null,
         ageRating: form.ageRating,
-        director: form.director.trim(),
+        directorId: form.directorId ? Number(form.directorId) : null,
         runtimeMinutes: form.runtimeMinutes ? Number(form.runtimeMinutes) : '',
         trailerUrl: form.trailerUrl.trim(),
         posterUrl: form.posterUrl.trim(),
@@ -594,13 +609,13 @@ function MoviesTab() {
               <label htmlFor="mf-title" className={labelClass}>
                 {t('admin.movies.title')} *
               </label>
-              <input id="mf-title" type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={inputClass} required />
+              <input id="mf-title" type="text" maxLength={255} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={inputClass} required />
             </div>
             <div>
               <label htmlFor="mf-orig" className={labelClass}>
                 {t('admin.movies.originalTitle')}
               </label>
-              <input id="mf-orig" type="text" value={form.originalTitle} onChange={(e) => setForm({ ...form, originalTitle: e.target.value })} className={inputClass} />
+              <input id="mf-orig" type="text" maxLength={255} value={form.originalTitle} onChange={(e) => setForm({ ...form, originalTitle: e.target.value })} className={inputClass} />
             </div>
           </div>
           <div>
@@ -609,7 +624,7 @@ function MoviesTab() {
             </label>
             <AutoTextarea
               id="mf-desc"
-              value={form.description}
+              maxLength={20000} value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               minRows={3}
               className={inputClass}
@@ -627,10 +642,10 @@ function MoviesTab() {
               <label htmlFor="mf-country" className={labelClass}>
                 {t('admin.movies.country')}
               </label>
-              <select id="mf-country" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} className={inputClass}>
+              <select id="mf-country" value={form.countryId} onChange={(e) => setForm({ ...form, countryId: e.target.value })} className={inputClass}>
                 <option value="">—</option>
                 {countries.map((c) => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
@@ -666,19 +681,10 @@ function MoviesTab() {
               <label htmlFor="mf-director" className={labelClass}>
                 {t('admin.movies.director')}
               </label>
-              <input
-                id="mf-director"
-                type="text"
-                list="mf-director-options"
-                value={form.director}
-                onChange={(e) => setForm({ ...form, director: e.target.value })}
-                className={inputClass}
-              />
-              <datalist id="mf-director-options">
-                {directors.map((d) => (
-                  <option key={d.id} value={d.name} />
-                ))}
-              </datalist>
+              <select id="mf-director" value={form.directorId} onChange={(e) => setForm({ ...form, directorId: e.target.value })} className={inputClass}>
+                <option value="">—</option>
+                {directors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
             </div>
             <div>
               <label htmlFor="mf-trailer" className={labelClass}>
@@ -971,7 +977,7 @@ function GenresTab() {
           <label htmlFor="genre-name" className={labelClass}>
             {t('admin.genres.name')}
           </label>
-          <input id="genre-name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
+          <input id="genre-name" type="text" maxLength={255} value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
         </form>
       </Modal>
 
@@ -1138,7 +1144,7 @@ function DictionaryTab({
           <label htmlFor="dict-name" className={labelClass}>
             {t(`${i18nPrefix}.name`)}
           </label>
-          <input id="dict-name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
+          <input id="dict-name" type="text" maxLength={255} value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
         </form>
       </Modal>
 
@@ -1311,7 +1317,7 @@ function ActorsTab() {
             <label htmlFor="actor-name" className={labelClass}>
               {t('admin.actors.name')}
             </label>
-            <input id="actor-name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
+            <input id="actor-name" type="text" maxLength={255} value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
           </div>
           <ImageField id="actor-photo" label={t('admin.actors.photo')} value={photoUrl} file={photoFile}
             onFileChange={setPhotoFile} onUrlChange={setPhotoUrl} disabled={saving} />
@@ -1591,6 +1597,8 @@ function AnalyticsTab() {
       { key: 'totalMovies', icon: '🎬', value: data?.totalMovies },
       { key: 'activeSubscriptions', icon: '💳', value: data?.activeSubscriptions },
       { key: 'newUsersInPeriod', icon: '✨', value: data?.newUsersInPeriod },
+      { key: 'viewsInPeriod', icon: '▶', value: data?.viewsInPeriod },
+      { key: 'averageRatingInPeriod', icon: '★', value: data?.averageRatingInPeriod },
     ],
     [data],
   );
@@ -1616,6 +1624,8 @@ function AnalyticsTab() {
           </button>
         ))}
       </div>
+
+      <p className="text-sm text-cinema-muted">{t('admin.analytics.periodHint')}</p>
 
       {/* stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

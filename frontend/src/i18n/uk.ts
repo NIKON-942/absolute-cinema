@@ -537,4 +537,10 @@ export const uk: Record<string, string> = {
   'notfound.back': 'На головну',
   'footer.tagline': 'Тисячі фільмів. Одна підписка.',
   'footer.copyright': '© {year} AbsoluteCinema. Навчальний проєкт.',
+  'catalog.selectedGenres': 'Обрано: {count}',
+  'catalog.genresHint': 'Фільми хоча б з одним обраним жанром.',
+  'admin.analytics.viewsInPeriod': 'Перегляди за період',
+  'admin.analytics.averageRatingInPeriod': 'Середня оцінка за період',
+  'admin.analytics.periodHint': 'Перегляди й оцінки враховують події після оновлення аналітики. Для кожного глядача береться остання дія з оцінкою у вибраному періоді; скинуті оцінки виключаються. Загальна кількість користувачів, фільмів і активних підписок відображає поточний стан.',
+  'admin.movies.invalidMetadata': 'Перевірте довжину полів, тривалість (1–600 хвилин), посилання та вибір із довідників.',
 };

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThan, Repository } from 'typeorm';
 import { MovieEntity } from '../media/entities/movie.entity';
 import { SubscriptionEntity } from '../payments/entities/subscription.entity';
 import { PaymentTransactionEntity } from '../payments/entities/payment-transaction.entity';
@@ -20,50 +20,63 @@ export class AdminService {
   ) {}
 
   async analytics(days = 30) {
-    const interval = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const periodTo = new Date();
+    const interval = new Date(periodTo.getTime() - days * 24 * 60 * 60 * 1000);
 
     const [totalUsers, totalMovies, activeSubscriptions] = await Promise.all([
       this.usersService.countUsers(),
       this.moviesRepo.count(),
-      this.subsRepo.count({ where: { status: SubscriptionStatusEnum.ACTIVE } }),
+      this.subsRepo.count({ where: { status: SubscriptionStatusEnum.ACTIVE, endsAt: MoreThan(periodTo) } }),
     ]);
 
-    const topRows = await this.moviesRepo.query(`
-      SELECT m.id, m.title, m.view_count AS "viewCount",
-             COALESCE((SELECT ROUND(AVG(r.value)::numeric, 1)
-                         FROM ratings r WHERE r.movie_id = m.id), 0) AS "averageRating"
-        FROM movies m
-       ORDER BY m.view_count DESC
-       LIMIT 10
-    `);
+    // Aggregate each source before joining: multiple genres/ratings must not
+    // multiply playback counts. One latest rating action per user/movie in the window.
+    const periodStats = `
+      WITH views AS (
+        SELECT movie_id, COUNT(*)::int AS views FROM playback_events
+        WHERE created_at >= $1 AND created_at < $2 GROUP BY movie_id
+      ), latest_ratings AS (
+        SELECT DISTINCT ON (movie_id, user_id) movie_id, user_id, value
+        FROM rating_events WHERE created_at >= $1 AND created_at < $2
+        ORDER BY movie_id, user_id, created_at DESC, id DESC
+      ), ratings AS (
+        SELECT movie_id, SUM(value) AS rating_sum, COUNT(value) AS rating_count
+        FROM latest_ratings GROUP BY movie_id
+      ), stats AS (
+        SELECT m.id, m.title, COALESCE(v.views, 0) AS views,
+          COALESCE(r.rating_sum, 0) AS rating_sum, COALESCE(r.rating_count, 0) AS rating_count
+        FROM movies m LEFT JOIN views v ON v.movie_id = m.id LEFT JOIN ratings r ON r.movie_id = m.id
+      )`;
+    const topRows = await this.moviesRepo.query(periodStats + `
+      SELECT id, title, views AS "viewCount",
+        COALESCE(ROUND(rating_sum::numeric / NULLIF(rating_count, 0), 1), 0) AS "averageRating"
+      FROM stats WHERE views > 0 OR rating_count > 0
+      ORDER BY views DESC, "averageRating" DESC, id ASC LIMIT 10
+    `, [interval, periodTo]);
+    const summary = await this.moviesRepo.query(periodStats + `
+      SELECT COALESCE(SUM(views), 0)::int AS views,
+        COALESCE(ROUND(SUM(rating_sum)::numeric / NULLIF(SUM(rating_count), 0), 1), 0) AS rating
+      FROM stats
+    `, [interval, periodTo]);
 
     const revenueRows = await this.txRepo.query(
       `
       SELECT TO_CHAR(DATE_TRUNC('month', updated_at), 'YYYY-MM') AS month,
              SUM(amount)::float AS total
         FROM payment_transactions
-       WHERE status = 'paid' AND updated_at >= $1
+       WHERE status = 'paid' AND updated_at >= $1 AND updated_at < $2
        GROUP BY 1
        ORDER BY 1 DESC
-       LIMIT 12
     `,
-      [interval],
+      [interval, periodTo],
     );
 
-    // FR-44: genre popularity (aggregate views + average audience rating)
-    const genreRows = await this.moviesRepo.query(`
-      SELECT g.name AS genre,
-             COALESCE(SUM(m.view_count), 0)::int AS views,
-             COUNT(m.id)::int AS movies,
-             COALESCE(ROUND(AVG(
-               (SELECT AVG(r.value) FROM ratings r WHERE r.movie_id = m.id)
-             )::numeric, 1), 0) AS "averageRating"
-        FROM genres g
-        JOIN movie_genres mg ON mg.genres_id = g.id
-        JOIN movies m ON m.id = mg.movies_id
-       GROUP BY g.name
-       ORDER BY views DESC
-    `);
+    const genreRows = await this.moviesRepo.query(periodStats + `
+      SELECT g.name AS genre, SUM(s.views)::int AS views, COUNT(s.id)::int AS movies,
+        COALESCE(ROUND(SUM(s.rating_sum)::numeric / NULLIF(SUM(s.rating_count), 0), 1), 0) AS "averageRating"
+      FROM genres g JOIN movie_genres mg ON mg.genres_id = g.id JOIN stats s ON s.id = mg.movies_id
+      GROUP BY g.id, g.name ORDER BY views DESC, g.name ASC
+    `, [interval, periodTo]);
 
     const newUsersRow = await this.usersService.countUsersSince(interval);
 
@@ -72,6 +85,10 @@ export class AdminService {
       totalMovies,
       activeSubscriptions,
       intervalDays: days,
+      periodFrom: interval.toISOString(),
+      periodTo: periodTo.toISOString(),
+      viewsInPeriod: Number(summary[0].views),
+      averageRatingInPeriod: Number(summary[0].rating),
       newUsersInPeriod: newUsersRow,
       topMovies: topRows.map((m: { id: number; title: string; viewCount: number; averageRating: number }) => ({
         id: Number(m.id),

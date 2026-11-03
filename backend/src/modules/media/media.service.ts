@@ -9,7 +9,7 @@ import { existsSync, statSync } from 'fs';
 import * as fs from 'fs';
 import { basename, join } from 'path';
 import { rm } from 'fs/promises';
-import { Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { Request, Response } from 'express';
 import { ActorEntity } from './entities/actor.entity';
 import { GenreEntity } from './entities/genre.entity';
@@ -27,6 +27,7 @@ import { QUALITY_RANK } from '../payments/plan-limits.service';
 import { TranscodeService } from './transcode.service';
 import { validateUploadedVideo } from './upload-validation';
 import { imageReference } from './image-upload';
+import { movieInput, MovieInput, text, integer } from './media-input';
 
 const QUALITY_COLUMNS: Record<VideoQuality, keyof MovieEntity> = {
   '480p': 'video480',
@@ -41,8 +42,10 @@ export interface MovieDto {
   description: string;
   year: number;
   country: string;
+  countryId: number | null;
   ageRating: string;
   director: string;
+  directorId: number | null;
   runtimeMinutes: number | null;
   trailerUrl: string | null;
   keywords: string[];
@@ -84,6 +87,7 @@ export class MediaService {
   async listMovies(filters: {
     search?: string;
     genre?: string;
+    genreIds?: number[];
     year?: string;
     yearFrom?: string;
     yearTo?: string;
@@ -96,7 +100,9 @@ export class MediaService {
     const qb = this.moviesRepo
       .createQueryBuilder('movie')
       .leftJoinAndSelect('movie.genres', 'genre')
-      .leftJoinAndSelect('movie.actors', 'actor');
+      .leftJoinAndSelect('movie.actors', 'actor')
+      .leftJoinAndSelect('movie.countryRecord', 'countryRecord')
+      .leftJoinAndSelect('movie.directorRecord', 'directorRecord');
 
     if (filters.search) {
       qb.andWhere(
@@ -104,8 +110,11 @@ export class MediaService {
         { s: `%${filters.search}%` },
       );
     }
-    if (filters.genre) {
-      qb.andWhere('genre.name = :genre', { genre: filters.genre });
+    if (filters.genreIds?.length) {
+      // EXISTS filters the movie without trimming its loaded genre collection.
+      qb.andWhere(`EXISTS (SELECT 1 FROM movie_genres mg WHERE mg.movies_id = movie.id AND mg.genres_id IN (:...genreIds))`, { genreIds: filters.genreIds });
+    } else if (filters.genre) {
+      qb.andWhere('EXISTS (SELECT 1 FROM movie_genres mg JOIN genres g ON g.id = mg.genres_id WHERE mg.movies_id = movie.id AND g.name = :genre)', { genre: filters.genre });
     }
     if (filters.year && /^\d{4}$/.test(filters.year)) {
       qb.andWhere('movie.year = :year', { year: parseInt(filters.year, 10) });
@@ -121,7 +130,7 @@ export class MediaService {
       });
     }
     if (filters.country) {
-      qb.andWhere('movie.country ILIKE :c', { c: `%${filters.country}%` });
+      qb.andWhere('countryRecord.name ILIKE :c', { c: `%${filters.country}%` });
     }
     if (filters.ageRating) {
       qb.andWhere('movie.ageRating = :ar', { ar: filters.ageRating });
@@ -201,6 +210,8 @@ export class MediaService {
       .createQueryBuilder('movie')
       .leftJoinAndSelect('movie.genres', 'genre')
       .leftJoinAndSelect('movie.actors', 'actor')
+      .leftJoinAndSelect('movie.countryRecord', 'countryRecord')
+      .leftJoinAndSelect('movie.directorRecord', 'directorRecord')
       .where('movie.id != :id', { id: movieId });
 
     if (genreIds.length > 0) {
@@ -214,8 +225,8 @@ export class MediaService {
         'shared_genres',
       );
       qb.orderBy('shared_genres', 'DESC');
-    } else if (base.director) {
-      qb.andWhere('movie.director = :director', { director: base.director });
+    } else if (base.directorId) {
+      qb.andWhere('movie.directorId = :directorId', { directorId: base.directorId });
     }
 
     qb.addOrderBy('movie.viewCount', 'DESC').take(8);
@@ -257,6 +268,8 @@ export class MediaService {
       .where('uf.users_id = :userId', { userId })
       .leftJoinAndSelect('movie.genres', 'genre')
       .leftJoinAndSelect('movie.actors', 'actor')
+      .leftJoinAndSelect('movie.countryRecord', 'countryRecord')
+      .leftJoinAndSelect('movie.directorRecord', 'directorRecord')
       .getMany();
     return Promise.all(movies.map((m) => this.toDto(m, userId)));
   }
@@ -264,15 +277,12 @@ export class MediaService {
   async setRating(movieId: number, userId: number, value: number) {
     const movie = await this.moviesRepo.findOne({ where: { id: movieId } });
     if (!movie) throw new NotFoundException('Movie not found');
-    let rating = await this.ratingsRepo.findOne({
-      where: { movieId, userId },
+    integer(value, 'rating', 1, 10);
+    await this.moviesRepo.manager.transaction(async em => {
+      await em.query('SELECT pg_advisory_xact_lock($1, $2)', [movieId, userId]);
+      await em.upsert(RatingEntity, { movieId, userId, value }, ['movieId', 'userId']);
+      await em.query('INSERT INTO rating_events (movie_id, user_id, value, created_at) VALUES ($1, $2, $3, clock_timestamp())', [movieId, userId, value]);
     });
-    if (rating) {
-      rating.value = value;
-    } else {
-      rating = this.ratingsRepo.create({ movieId, userId, value });
-    }
-    await this.ratingsRepo.save(rating);
     return {
       averageRating: await this.averageRating(movieId),
       userRating: value,
@@ -280,7 +290,12 @@ export class MediaService {
   }
 
   async deleteRating(movieId: number, userId: number) {
-    await this.ratingsRepo.delete({ movieId, userId });
+    await this.moviesRepo.manager.transaction(async em => {
+      // Serialize updates and removals of the same user's rating.
+      await em.query('SELECT pg_advisory_xact_lock($1, $2)', [movieId, userId]);
+      const removed = await em.delete(RatingEntity, { movieId, userId });
+      if (removed.affected) await em.query('INSERT INTO rating_events (movie_id, user_id, value, created_at) VALUES ($1, $2, NULL, clock_timestamp())', [movieId, userId]);
+    });
     return {
       averageRating: await this.averageRating(movieId),
       userRating: null,
@@ -385,7 +400,6 @@ export class MediaService {
 
     if (/^https?:\/\//i.test(filePath)) {
       // remote asset configured by URL (FR-29) — let the client fetch it
-      this.bumpViews(movie);
       res.redirect(filePath);
       return;
     }
@@ -429,10 +443,6 @@ export class MediaService {
       partial = true;
     }
 
-    if (start === 0) {
-      this.bumpViews(movie);
-    }
-
     res.status(partial ? 206 : 200);
     res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
     res.setHeader('Content-Length', end - start + 1);
@@ -465,11 +475,18 @@ export class MediaService {
     res.status(200).end();
   }
 
-  /** Counts a playback session once per stream start. */
-  private bumpViews(movie: MovieEntity): void {
-    this.moviesRepo
-      .increment({ id: movie.id }, 'viewCount', 1)
-      .catch(() => undefined);
+  /** The client reports an actual Play event. Range requests never count views. */
+  async recordPlayback(movieId: number, userId: number, playbackId: string) {
+    if (typeof playbackId !== 'string' || !/^[a-zA-Z0-9_-]{16,100}$/.test(playbackId)) {
+      throw new BadRequestException('playbackId must contain 16–100 letters, digits, underscores or hyphens');
+    }
+    await this.getMovieEntity(movieId);
+    await this.moviesRepo.manager.transaction(async em => {
+      const rows = await em.query(`INSERT INTO playback_events (movie_id, user_id, playback_id)
+        VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING id`, [movieId, userId, playbackId]);
+      if (rows.length) await em.increment(MovieEntity, { id: movieId }, 'viewCount', 1);
+    });
+    return { message: 'Playback recorded' };
   }
 
   async averageRating(movieId: number): Promise<number> {
@@ -508,8 +525,10 @@ export class MediaService {
       description: movie.description,
       year: movie.year,
       country: movie.country,
+      countryId: movie.countryId ?? null,
       ageRating: movie.ageRating,
       director: movie.director,
+      directorId: movie.directorId ?? null,
       runtimeMinutes: movie.runtimeMinutes ?? null,
       trailerUrl: movie.trailerUrl ?? null,
       keywords: movie.keywords ?? [],
@@ -541,58 +560,49 @@ export class MediaService {
 
   // ---------- admin CRUD ----------
 
-  private parseIdList(value: unknown): number[] {
-    if (Array.isArray(value)) {
-      return value.map((v) => parseInt(String(v), 10)).filter(Number.isFinite);
+  private async references(input: MovieInput, em: EntityManager): Promise<Partial<MovieEntity>> {
+    const patch: Partial<MovieEntity> = {};
+    for (const [field, entity] of [['country', CountryEntity], ['director', DirectorEntity]] as const) {
+      const key = `${field}Id` as 'countryId' | 'directorId';
+      if (input[key] !== undefined || input[field] !== undefined) {
+        const id = input[key];
+        const name = input[field];
+        if (id === null || name === '') { patch[key] = null; continue; }
+        const row = await em.findOne(entity as typeof CountryEntity, {
+          where: id !== undefined ? { id } : { name }, lock: { mode: 'pessimistic_read' },
+        });
+        if (!row) throw new BadRequestException(`${field}: referenced record does not exist`);
+        patch[key] = row.id;
+      }
     }
-    if (typeof value === 'string' && value.trim()) {
-      return value
-        .split(',')
-        .map((v) => parseInt(v.trim(), 10))
-        .filter(Number.isFinite);
+    for (const [key, field, entity] of [['genreIds', 'genres', GenreEntity], ['actorIds', 'actors', ActorEntity]] as const) {
+      const ids = input[key];
+      if (ids === undefined) continue;
+      const rows = ids.length ? await em.find(entity as typeof GenreEntity, { where: { id: In(ids) }, lock: { mode: 'pessimistic_read' } }) : [];
+      if (rows.length !== ids.length) throw new BadRequestException(`${key}: one or more referenced records do not exist`);
+      if (field === 'genres') patch.genres = rows;
+      else patch.actors = rows as ActorEntity[];
     }
-    return [];
+    return patch;
+  }
+
+  private metadata(input: MovieInput): Partial<MovieEntity> {
+    const { country, director, genreIds, actorIds, posterUrl, masterVideoUrl, ...fields } = input;
+    return { ...fields, ...(posterUrl !== undefined ? { posterPath: posterUrl } : {}) };
+  }
+
+  async posterIsUsed(filename: string): Promise<boolean> {
+    return await this.moviesRepo.countBy({ posterPath: filename }) > 0;
   }
 
   async createMovie(body: Record<string, unknown>, posterPath?: string | null) {
-    const posterFromBody = String(body.posterUrl ?? '').trim();
-    const poster = posterPath ?? (/^https?:\/\//i.test(posterFromBody) ? posterFromBody : null);
-    const movie = this.moviesRepo.create({
-      title: String(body.title ?? '').trim(),
-      originalTitle: String(body.originalTitle ?? ''),
-      description: String(body.description ?? ''),
-      year: parseInt(String(body.year ?? '0'), 10),
-      country: String(body.country ?? ''),
-      ageRating: String(body.ageRating ?? '16+'),
-      director: String(body.director ?? ''),
-      runtimeMinutes: body.runtimeMinutes ? parseInt(String(body.runtimeMinutes), 10) : null,
-      trailerUrl: String(body.trailerUrl ?? '').trim() || null,
-      keywords: String(body.keywords ?? '')
-        .split(',')
-        .map((k) => k.trim())
-        .filter(Boolean),
-      posterPath: poster,
+    const input = movieInput(body, true);
+    const saved = await this.moviesRepo.manager.transaction(async em => {
+      const movie = em.create(MovieEntity, { ...this.metadata(input), ...await this.references(input, em),
+        ...(posterPath ? { posterPath } : {}) });
+      return em.save(movie);
     });
-    if (!movie.title || !Number.isFinite(movie.year) || movie.year <= 0) {
-      throw new BadRequestException('Title and a valid year are required');
-    }
-    const genreIds = this.parseIdList(body.genreIds);
-    const actorIds = this.parseIdList(body.actorIds);
-    if (genreIds.length > 0) {
-      movie.genres = await this.genresRepo.findByIds(genreIds);
-    }
-    if (actorIds.length > 0) {
-      movie.actors = await this.actorsRepo.findByIds(actorIds);
-    }
-    // Validate before saving — a bad URL must not leave a half-created movie.
-    const masterUrl = String(body.masterVideoUrl ?? '').trim();
-    if (masterUrl && !/^https?:\/\//i.test(masterUrl)) {
-      throw new BadRequestException('masterVideoUrl must be an http(s) URL');
-    }
-    const saved = await this.moviesRepo.save(movie);
-    if (masterUrl) {
-      await this.setMasterVideoUrl(saved.id, masterUrl);
-    }
+    if (input.masterVideoUrl) await this.setMasterVideoUrl(saved.id, input.masterVideoUrl);
     return this.getMovie(saved.id);
   }
 
@@ -640,65 +650,14 @@ export class MediaService {
     body: Record<string, unknown>,
     posterPath?: string | null,
   ) {
-    const movie = await this.moviesRepo.findOne({
-      where: { id },
-      relations: ['genres', 'actors'],
+    const input = movieInput(body, false);
+    await this.moviesRepo.manager.transaction(async em => {
+      const movie = await em.findOne(MovieEntity, { where: { id }, lock: { mode: 'pessimistic_write' }, loadEagerRelations: false });
+      if (!movie) throw new NotFoundException('Movie not found');
+      Object.assign(movie, this.metadata(input), await this.references(input, em), posterPath ? { posterPath } : {});
+      await em.save(movie);
     });
-    if (!movie) throw new NotFoundException('Movie not found');
-
-    if (body.title !== undefined) movie.title = String(body.title);
-    if (body.originalTitle !== undefined)
-      movie.originalTitle = String(body.originalTitle);
-    if (body.description !== undefined)
-      movie.description = String(body.description);
-    if (body.year !== undefined) movie.year = parseInt(String(body.year), 10);
-    if (body.country !== undefined) movie.country = String(body.country);
-    if (body.ageRating !== undefined)
-      movie.ageRating = String(body.ageRating);
-    if (body.director !== undefined) movie.director = String(body.director);
-    if (body.runtimeMinutes !== undefined) {
-      movie.runtimeMinutes = body.runtimeMinutes
-        ? parseInt(String(body.runtimeMinutes), 10)
-        : null;
-    }
-    if (body.trailerUrl !== undefined) {
-      movie.trailerUrl = String(body.trailerUrl).trim() || null;
-    }
-    if (posterPath) {
-      movie.posterPath = posterPath;
-    } else if (body.posterUrl !== undefined) {
-      const url = String(body.posterUrl).trim();
-      movie.posterPath = url ? imageReference(url) ?? null : null;
-    }
-    if (body.keywords !== undefined) {
-      movie.keywords = String(body.keywords)
-        .split(',')
-        .map((k) => k.trim())
-        .filter(Boolean);
-    }
-    if (body.genreIds !== undefined) {
-      movie.genres = await this.genresRepo.findByIds(
-        this.parseIdList(body.genreIds),
-      );
-    }
-    if (body.actorIds !== undefined) {
-      movie.actors = await this.actorsRepo.findByIds(
-        this.parseIdList(body.actorIds),
-      );
-    }
-    // Validate before saving so a bad URL doesn't half-apply the update.
-    const masterUrl = String(body.masterVideoUrl ?? '').trim();
-    if (masterUrl && !/^https?:\/\//i.test(masterUrl)) {
-      throw new BadRequestException('masterVideoUrl must be an http(s) URL');
-    }
-    if (!movie.title.trim() || !Number.isInteger(movie.year) || movie.year <= 0
-      || (movie.runtimeMinutes !== null && (!Number.isInteger(movie.runtimeMinutes) || movie.runtimeMinutes <= 0))) {
-      throw new BadRequestException('Title, year and runtime must contain valid values');
-    }
-    await this.moviesRepo.save(movie);
-    if (masterUrl) {
-      await this.setMasterVideoUrl(id, masterUrl);
-    }
+    if (input.masterVideoUrl) await this.setMasterVideoUrl(id, input.masterVideoUrl);
     return this.getMovie(id);
   }
 
@@ -725,73 +684,48 @@ export class MediaService {
 
   // ---------- genres / actors ----------
 
-  async createGenre(name: string) {
-    return this.genresRepo.save({ name: name.trim() });
+  private async saveDictionary<T extends GenreEntity>(repo: Repository<T>, name: string, id?: number, extra: Record<string, unknown> = {}) {
+    const cleaned = text(name, 'name', 255, true);
+    try {
+      if (id !== undefined) {
+        const result = await repo.update(id, { name: cleaned, ...extra } as any);
+        if (!result.affected) throw new NotFoundException('Dictionary record not found');
+        return repo.findOneByOrFail({ id } as any);
+      }
+      return await repo.save(repo.create({ name: cleaned, ...extra } as any));
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') throw new ConflictException('A record with this name already exists');
+      throw error;
+    }
   }
 
-  async updateGenre(id: number, name: string) {
-    await this.genresRepo.update(id, { name: name.trim() });
-    const genre = await this.genresRepo.findOne({ where: { id } });
-    if (!genre) throw new NotFoundException('Genre not found');
-    return genre;
+  private async deleteDictionary(entity: typeof GenreEntity | typeof ActorEntity | typeof CountryEntity | typeof DirectorEntity, id: number, join?: { table: string; column: string }) {
+    try {
+      await this.moviesRepo.manager.transaction(async em => {
+        const row = await em.findOne(entity as typeof GenreEntity, { where: { id }, lock: { mode: 'pessimistic_write' } });
+        if (!row) throw new NotFoundException('Dictionary record not found');
+        if (join) {
+          const used = await em.query(`SELECT 1 FROM ${join.table} WHERE ${join.column} = $1 LIMIT 1`, [id]);
+          if (used.length) throw new ConflictException('This record is used by movies. Reassign those movies before deleting it.');
+        }
+        await em.delete(entity, id);
+      });
+    } catch (error) {
+      if ((error as { code?: string }).code === '23503') throw new ConflictException('This record is used by movies. Reassign those movies before deleting it.');
+      throw error;
+    }
   }
 
-  async deleteGenre(id: number) {
-    const result = await this.genresRepo.delete(id);
-    if (result.affected === 0) throw new NotFoundException('Genre not found');
-  }
-
-  async createActor(name: string, photoUrl?: string) {
-    return this.actorsRepo.save({ name: name.trim(), photoUrl: imageReference(photoUrl) ?? null });
-  }
-
-  async updateActor(id: number, name: string, photoUrl?: string) {
-    await this.actorsRepo.update(id, {
-      name: name.trim(),
-      ...(photoUrl !== undefined ? { photoUrl: imageReference(photoUrl) } : {}),
-    });
-    const actor = await this.actorsRepo.findOne({ where: { id } });
-    if (!actor) throw new NotFoundException('Actor not found');
-    return actor;
-  }
-
-  async deleteActor(id: number) {
-    const result = await this.actorsRepo.delete(id);
-    if (result.affected === 0) throw new NotFoundException('Actor not found');
-  }
-
-  // ---------- countries / directors (FR-38, FR-39) ----------
-
-  async createCountry(name: string) {
-    return this.countriesRepo.save({ name: name.trim() });
-  }
-
-  async updateCountry(id: number, name: string) {
-    await this.countriesRepo.update(id, { name: name.trim() });
-    const country = await this.countriesRepo.findOne({ where: { id } });
-    if (!country) throw new NotFoundException('Country not found');
-    return country;
-  }
-
-  async deleteCountry(id: number) {
-    const result = await this.countriesRepo.delete(id);
-    if (result.affected === 0) throw new NotFoundException('Country not found');
-  }
-
-  async createDirector(name: string) {
-    return this.directorsRepo.save({ name: name.trim() });
-  }
-
-  async updateDirector(id: number, name: string) {
-    await this.directorsRepo.update(id, { name: name.trim() });
-    const director = await this.directorsRepo.findOne({ where: { id } });
-    if (!director) throw new NotFoundException('Director not found');
-    return director;
-  }
-
-  async deleteDirector(id: number) {
-    const result = await this.directorsRepo.delete(id);
-    if (result.affected === 0)
-      throw new NotFoundException('Director not found');
-  }
+  createGenre(name: string) { return this.saveDictionary(this.genresRepo, name); }
+  updateGenre(id: number, name: string) { return this.saveDictionary(this.genresRepo, name, id); }
+  deleteGenre(id: number) { return this.deleteDictionary(GenreEntity, id, { table: 'movie_genres', column: 'genres_id' }); }
+  createActor(name: string, photoUrl?: string) { return this.saveDictionary(this.actorsRepo, name, undefined, { photoUrl: imageReference(photoUrl) ?? null }); }
+  updateActor(id: number, name: string, photoUrl?: string) { return this.saveDictionary(this.actorsRepo, name, id, photoUrl !== undefined ? { photoUrl: imageReference(photoUrl) } : {}); }
+  deleteActor(id: number) { return this.deleteDictionary(ActorEntity, id, { table: 'movie_actors', column: 'actors_id' }); }
+  createCountry(name: string) { return this.saveDictionary(this.countriesRepo, name); }
+  updateCountry(id: number, name: string) { return this.saveDictionary(this.countriesRepo, name, id); }
+  deleteCountry(id: number) { return this.deleteDictionary(CountryEntity, id); }
+  createDirector(name: string) { return this.saveDictionary(this.directorsRepo, name); }
+  updateDirector(id: number, name: string) { return this.saveDictionary(this.directorsRepo, name, id); }
+  deleteDirector(id: number) { return this.deleteDictionary(DirectorEntity, id); }
 }

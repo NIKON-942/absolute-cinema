@@ -537,4 +537,10 @@ export const en: Record<string, string> = {
   'notfound.back': 'Go home',
   'footer.tagline': 'Thousands of movies. One subscription.',
   'footer.copyright': '© {year} AbsoluteCinema. Educational project.',
+  'catalog.selectedGenres': 'Selected: {count}',
+  'catalog.genresHint': 'Matches at least one selected genre.',
+  'admin.analytics.viewsInPeriod': 'Views in period',
+  'admin.analytics.averageRatingInPeriod': 'Average rating in period',
+  'admin.analytics.periodHint': 'Views and ratings use events recorded since the analytics update. Ratings use each viewer’s latest rating action within the selected period; cleared ratings are excluded. User, movie and subscription totals show the current state.',
+  'admin.movies.invalidMetadata': 'Check field lengths, runtime (1–600 minutes), URLs and dictionary selections.',
 };

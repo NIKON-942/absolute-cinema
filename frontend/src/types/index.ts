@@ -50,8 +50,10 @@ export interface MovieDto {
   description: string;
   year: number;
   country: string;
+  countryId: number | null;
   ageRating: string;
   director: string;
+  directorId: number | null;
   runtimeMinutes: number | null;
   trailerUrl: string | null;
   keywords: string[];
@@ -149,6 +151,10 @@ export interface AnalyticsDto {
   totalMovies: number;
   activeSubscriptions: number;
   intervalDays: number;
+  periodFrom: string;
+  periodTo: string;
+  viewsInPeriod: number;
+  averageRatingInPeriod: number;
   newUsersInPeriod: number;
   topMovies: TopMovieDto[];
   genrePopularity: GenrePopularityDto[];
@@ -199,6 +205,7 @@ export interface CheckoutResponseDto {
 export interface MovieFilters {
   search?: string;
   genre?: string;
+  genreIds?: number[];
   year?: number | '';
   yearFrom?: number | '';
   yearTo?: number | '';

@@ -41,8 +41,10 @@ interface MovieDto {
   description: string;
   year: number;
   country: string;
+  countryId: number | null;
   ageRating: string;   // e.g. "12+", "16+", "18+"
   director: string;
+  directorId: number | null;
   runtimeMinutes: number | null; // FR-33
   trailerUrl: string | null;     // FR-33
   keywords: string[];  // tags array
@@ -145,7 +147,7 @@ Blocked users: login returns 403 `Account is blocked`.
 
 | Method | Path | Auth | Body/Query | Returns |
 |---|---|---|---|---|
-| GET | `/media` | — | `?search=&genre=<name>&year=&yearFrom=&yearTo=&country=&ageRating=&sort=popularity|rating|newest&page=1&limit=20` | `{ items: MovieDto[], total, page, limit }` |
+| GET | `/media` | — | `?search=&genre=<legacy-name>&genreIds=1,2&year=&yearFrom=&yearTo=&country=&ageRating=&sort=popularity|rating|newest&page=1&limit=20` | `{ items: MovieDto[], total, page, limit }` |
 | GET | `/media/:id` | — (isFavorite/userRating only when auth) | — | `MovieDto` |
 | GET | `/media/:id/similar` | — | — | `MovieDto[]` (up to 8, ranked by shared genres, FR-33) |
 | GET | `/media/genres` | — | — | `GenreDto[]` |
@@ -154,6 +156,7 @@ Blocked users: login returns 403 `Account is blocked`.
 | GET | `/media/directors` | — | — | `DirectorDto[]` (FR-39) |
 | GET | `/media/posters/:filename` | — | — | image file |
 | GET | `/media/:id/stream` | Bearer + active subscription | `?quality=480p|720p|1080p&deviceId=<uuid>`, Range header supported | `206 Partial Content` video/mp4 stream (`Accept-Ranges: bytes`). If the requested quality is not ready yet (transcoding in progress) the best ready quality **within the plan cap** is served instead; `409` only when no rendition is ready. Plan enforcement: `?quality` above the tier's cap → `402` `{ code: 'UPGRADE_REQUIRED', requestedQuality, maxQuality }`; `deviceId` identifies the streaming device (see `/devices`) and a not-yet-registered device beyond the tier's `maxDevices` → `409` `{ code: 'DEVICE_LIMIT', maxDevices, activeDevices }` |
+| POST | `/media/:id/playback` | Bearer + active subscription | `{ playbackId: string }` (16–100 letters/digits/underscores/hyphens) | `{ message }`; idempotent per user/movie/session |
 | POST | `/media/:id/favorites` | Bearer | — | `{ isFavorite: true }` (toggle) |
 | GET | `/media/favorites` | Bearer | — | `MovieDto[]` |
 | PUT | `/media/:id/rating` | Bearer | `{ value: 1..10 }` | `{ averageRating, userRating }` |
@@ -164,7 +167,7 @@ Blocked users: login returns 403 `Account is blocked`.
 ### Admin media CRUD (role: admin)
 | Method | Path | Body (JSON unless noted) |
 |---|---|---|
-| POST | `/media` | multipart/form-data: `file?` (poster image), plus fields `title, originalTitle?, description, year, country, ageRating, director, runtimeMinutes?, trailerUrl?, keywords? (comma string), posterUrl? (http URL alternative), masterVideoUrl? (http master video URL — transcoded server-side), genreIds: number[], actorIds?: number[]` → `MovieDto` |
+| POST | `/media` | multipart/form-data: `file?` (poster image), plus fields `title, originalTitle?, description, year, countryId?, ageRating?, directorId?, runtimeMinutes?, trailerUrl?, keywords? (comma string), posterUrl? (http URL alternative), masterVideoUrl? (http master video URL — transcoded server-side), genreIds: number[], actorIds?: number[]` → `MovieDto` |
 | PATCH | `/media/:id` | same multipart shape (all optional) |
 | DELETE | `/media/:id` | 204 |
 | POST | `/media/:id/master-video` | multipart: `file` (single master video, any ffmpeg-readable container) → `MovieDto` with `transcodeStatus: 'processing'`; the server renders 480p/720p/1080p H.264/AAC variants in the background and links them to the movie |
@@ -213,7 +216,7 @@ Concurrent-device enforcement. The SPA generates a persistent `deviceId` (localS
 
 | Method | Path | Returns |
 |---|---|---|
-| GET | `/admin/analytics?days=30` | `{ totalUsers, totalMovies, activeSubscriptions, intervalDays, newUsersInPeriod, topMovies: { id, title, viewCount, averageRating }[], genrePopularity: { genre, views, movies, averageRating }[], revenueByMonth: { month, total }[] }` — revenue/new-users are filtered to the interval; genre popularity covers all time (FR-43/44) |
+| GET | `/admin/analytics?days=30` | `{ totalUsers, totalMovies, activeSubscriptions, intervalDays, periodFrom, periodTo, viewsInPeriod, averageRatingInPeriod, newUsersInPeriod, topMovies: { id, title, viewCount, averageRating }[], genrePopularity: { genre, views, movies, averageRating }[], revenueByMonth: { month, total }[] }` — views, audience ratings, genre popularity, revenue and new users use the selected period; global totals show the current state (FR-43/44) |
 
 ## Image attachments
 
@@ -227,3 +230,11 @@ Transactional emails via SMTP (Mailpit at http://localhost:8025 in dev): welcome
 - CORS enabled for `CLIENT_URL`.
 - Video streaming endpoint requires `Range` support (`206`, `Content-Range`, `Accept-Ranges: bytes`).
 - Seeded accounts: `admin@cinema.local` / `Admin12345` (admin), `viewer@cinema.local` / `Viewer12345` (viewer).
+
+### Media filter, dictionary and analytics semantics
+
+- `genreIds` is a comma-separated list of positive IDs (ANY: at least one selected genre). It combines with all other filters. All genres of each matched movie are returned. The legacy single `genre=<name>` remains supported; non-empty `genreIds` takes precedence.
+- Movie writes accept existing `countryId` and `directorId`; null/empty clears the relation. Legacy `country`/`director` names resolve existing dictionary entries; do not provide both the name and ID for a field. Renames are reflected through relations. Deleting a dictionary record used by a movie returns 409; missing records return 404.
+- Create/PATCH accept JSON or multipart metadata. Relation lists accept JSON arrays (the frontend uses this format) or legacy comma-separated values. Invalid or unknown IDs return 400; omitted PATCH fields remain unchanged and empty lists clear relations. Unknown metadata fields return 400. Title/name: 1–255 trimmed characters; year: integer 1890–2100; runtime: integer 1–600 minutes or empty/null; age rating: 0+/6+/12+/16+/18+/21+; description: up to 20000 characters; URLs: HTTP(S), up to 2048 characters; up to 50 tags of at most 100 characters.
+- Playback events are reported after actual Play, once per player session. Retry with the same playbackId does not increment views. Pauses, quality changes and Range/HEAD requests do not count additional views. Lifetime counters are preserved; period reports use only recorded events since migration.
+- Period bounds are `[periodFrom, periodTo)`. For each user/movie, the latest rating action within the period is counted once; a clear action excludes that rating. Genre averages weight individual ratings equally. Multi-genre views contribute to every associated genre and must not be summed as unique global views. Deleting the user/movie cascades to their event history.

@@ -72,6 +72,8 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
   const deviceId = getDeviceId();
   const heartbeatTimer = useRef<number | null>(null);
   const deviceLimitHit = useRef(false);
+  const playbackId = useRef(`play-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
+  const playbackRecorded = useRef(false);
 
   const stopHeartbeat = useCallback(() => {
     if (!started) return;
@@ -88,20 +90,24 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
     (playing: boolean) => {
       if (playing) {
         if (deviceLimitHit.current || heartbeatTimer.current != null) return;
-        const beat = () =>
-          devicesService.heartbeat(deviceId).catch((err) => {
-            if (err?.response?.status === 409) {
-              deviceLimitHit.current = true;
-              setDeviceLimit(true);
-            }
-          });
+        const beat = () => devicesService.heartbeat(deviceId).then(() => {
+          if (!playbackRecorded.current) {
+            playbackRecorded.current = true;
+            void mediaService.recordPlayback(movieId, playbackId.current).catch(() => { playbackRecorded.current = false; });
+          }
+        }).catch((err) => {
+          if (err?.response?.status === 409) {
+            deviceLimitHit.current = true;
+            setDeviceLimit(true);
+          }
+        });
         beat();
         heartbeatTimer.current = window.setInterval(beat, 60_000);
       } else {
         stopHeartbeat();
       }
     },
-    [deviceId, stopHeartbeat],
+    [deviceId, stopHeartbeat, movieId],
   );
 
   // free the device slot when playback is cut off (panel replaces the player)

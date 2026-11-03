@@ -23,6 +23,7 @@ export default function Catalog() {
   const debouncedSearch = useDebounce(search, 400);
 
   const genre = searchParams.get('genre') ?? '';
+  const genreIdsParam = searchParams.get('genreIds') ?? '';
   const year = searchParams.get('year') ?? '';
   const yearFrom = searchParams.get('yearFrom') ?? '';
   const yearTo = searchParams.get('yearTo') ?? '';
@@ -42,11 +43,16 @@ export default function Catalog() {
     mediaService.countries().then(setCountries).catch(() => setCountries([]));
   }, []);
 
+  const selectedGenreIds = useMemo(() => genreIdsParam
+    ? genreIdsParam.split(',').filter(id => /^\d+$/.test(id)).map(Number)
+    : genres.filter(g => g.name === genre).map(g => g.id), [genreIdsParam, genre, genres]);
+
   // keep URL in sync (shareable filter state)
   useEffect(() => {
     const next = new URLSearchParams();
     if (debouncedSearch.trim()) next.set('search', debouncedSearch.trim());
-    if (genre) next.set('genre', genre);
+    if (genreIdsParam) next.set('genreIds', genreIdsParam);
+    else if (genre) next.set('genre', genre);
     if (year) next.set('year', year);
     if (yearFrom) next.set('yearFrom', yearFrom);
     if (yearTo) next.set('yearTo', yearTo);
@@ -56,7 +62,7 @@ export default function Catalog() {
     if (page > 1) next.set('page', String(page));
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, genre, year, yearFrom, yearTo, country, ageRating, sort, page]);
+  }, [debouncedSearch, genre, genreIdsParam, year, yearFrom, yearTo, country, ageRating, sort, page]);
 
   // fetch movies
   useEffect(() => {
@@ -67,6 +73,7 @@ export default function Catalog() {
       .list({
         search: debouncedSearch.trim() || undefined,
         genre: genre || undefined,
+        genreIds: genreIdsParam ? selectedGenreIds : undefined,
         year: year ? Number(year) : undefined,
         yearFrom: yearFrom ? Number(yearFrom) : undefined,
         yearTo: yearTo ? Number(yearTo) : undefined,
@@ -88,7 +95,7 @@ export default function Catalog() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, genre, year, yearFrom, yearTo, country, ageRating, sort, page]);
+  }, [debouncedSearch, genre, genreIdsParam, year, yearFrom, yearTo, country, ageRating, sort, page]);
 
   const totalPages = useMemo(() => (data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1), [data]);
 
@@ -97,6 +104,7 @@ export default function Catalog() {
     if (value) next.set(key, value);
     else next.delete(key);
     if (key !== 'page') next.delete('page');
+    if (key === 'genreIds') next.delete('genre');
     setSearchParams(next);
   };
 
@@ -105,7 +113,7 @@ export default function Catalog() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const hasFilters = Boolean(debouncedSearch.trim() || genre || year || yearFrom || yearTo || country.trim() || ageRating);
+  const hasFilters = Boolean(debouncedSearch.trim() || genre || genreIdsParam || year || yearFrom || yearTo || country.trim() || ageRating);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
@@ -135,12 +143,19 @@ export default function Catalog() {
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold text-cinema-muted">{t('catalog.genre')}</label>
-          <select value={genre} onChange={(e) => setParam('genre', e.target.value)} className={inputClass}>
-            <option value="">{t('catalog.allGenres')}</option>
-            {genres.map((g) => (
-              <option key={g.id} value={g.name}>{g.name}</option>
-            ))}
-          </select>
+          <details className="relative">
+            <summary className={`${inputClass} cursor-pointer`}>{selectedGenreIds.length ? t('catalog.selectedGenres', { count: selectedGenreIds.length }) : t('catalog.allGenres')}</summary>
+            <div className="absolute left-0 top-full z-20 mt-2 max-h-72 w-64 overflow-auto rounded-xl border border-cinema-border bg-cinema-panel p-3 shadow-card">
+              <p className="mb-2 text-xs text-cinema-muted">{t('catalog.genresHint')}</p>
+              {genres.map(g => (
+                <label key={g.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm text-cinema-text hover:bg-cinema-card">
+                  <input type="checkbox" checked={selectedGenreIds.includes(g.id)} onChange={() => setParam('genreIds', (selectedGenreIds.includes(g.id) ? selectedGenreIds.filter(id => id !== g.id) : [...selectedGenreIds, g.id]).join(','))} />
+                  {g.name}
+                </label>
+              ))}
+              {selectedGenreIds.length > 0 && <button type="button" onClick={() => setParam('genreIds', '')} className="mt-2 text-xs font-semibold text-cinema-accent">{t('catalog.reset')}</button>}
+            </div>
+          </details>
         </div>
         <div className="col-span-2 grid grid-cols-2 gap-2">
           <div>
@@ -197,7 +212,7 @@ export default function Catalog() {
             {hasFilters && (
               <button
                 type="button"
-                onClick={() => setSearchParams({})}
+                onClick={() => { setSearch(''); setSearchParams({}); }}
                 className="shrink-0 cursor-pointer rounded-lg border border-cinema-border px-3 text-xs font-semibold text-cinema-muted transition hover:border-cinema-red/50 hover:text-cinema-red"
               >
                 {t('catalog.reset')}

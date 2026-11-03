@@ -64,9 +64,11 @@ test('client accepts the same Unicode passwords and bcrypt byte limit as the ser
   assert.equal(isValidPassword('😀'.repeat(20)), false);
 });
 
-function playbackHost(user, movieOverrides = {}) {
+function playbackHost(user, movieOverrides = {}, services = {}) {
   const states = [];
+  const refs = [];
   let cursor = 0;
+  let refCursor = 0;
   const movie = { id: 7, availableQualities: ['480p', '720p'], transcodeStatus: 'ready', ...movieOverrides };
   const { MoviePlayback } = evaluate('../src/components/MoviePlayback.tsx', {
     react: {
@@ -75,14 +77,14 @@ function playbackHost(user, movieOverrides = {}) {
         if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
         return [states[index], value => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
       },
-      useEffect: () => {}, useMemo: fn => fn(), useCallback: fn => fn, useRef: value => ({ current: value }),
+      useEffect: () => {}, useMemo: fn => fn(), useCallback: fn => fn, useRef: value => refs[refCursor++] ??= { current: value },
     },
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) },
     'react-router-dom': { Link: 'Link' },
     '@/context/LanguageContext': { useLanguage: () => ({ t: key => key }) },
     '@/hooks/useAuth': { useAuth: () => ({ user, isAuthenticated: Boolean(user) }) },
-    '@/services/mediaService': { mediaService: {} },
-    '@/services/devicesService': { devicesService: {} },
+    '@/services/mediaService': { mediaService: services.mediaService ?? {} },
+    '@/services/devicesService': { devicesService: services.devicesService ?? {} },
     '@/hooks/useVideoProgress': { useVideoProgress: () => ({ resumeAt: 42 }) },
     '@/components/VideoPlayer': { VideoPlayer: 'VideoPlayer' },
     '@/components/Spinner': { Spinner: 'Spinner' },
@@ -91,7 +93,7 @@ function playbackHost(user, movieOverrides = {}) {
     '@/utils/url': { resolveMediaUrl: url => url, streamUrl: () => { throw new Error('No stream may be requested while rendering'); } },
     '@/utils/plans': { getDeviceId: () => 'device', limitsForTier: () => ({ maxQuality: '720p' }), qualityRank: q => parseInt(q) },
   });
-  return () => { cursor = 0; return MoviePlayback({ initialMovie: movie }); };
+  return () => { cursor = 0; refCursor = 0; return MoviePlayback({ initialMovie: movie }); };
 }
 
 function elements(tree, predicate) {
@@ -141,4 +143,49 @@ test('legacy watch links redirect to the public movie page and preserve search a
     'react-router-dom': { Navigate: 'Navigate', useParams: () => ({ id: '17' }), useLocation: () => ({ search: '?source=history', hash: '#movie-player' }) },
   });
   assert.deepEqual(Watch(), { type: 'Navigate', props: { to: '/movie/17?source=history#movie-player', replace: true } });
+});
+
+
+test('pause, quality changes and replay retain one playback session after the device check', async () => {
+  const previous = globalThis.window;
+  globalThis.window = { setInterval: () => 1, clearInterval: () => {} };
+  const recorded = [];
+  let beats = 0;
+  try {
+    const render = playbackHost({ id: 1, hasActiveSubscription: true }, {}, {
+      mediaService: { recordPlayback: async (...args) => recorded.push(args) },
+      devicesService: { heartbeat: async () => { beats++; }, end: () => {} },
+    });
+    const preview = render();
+    assert.equal(recorded.length, 0);
+    elements(preview, node => node.type === 'button' && node.props['aria-label'] === 'movie.watch')[0].props.onClick();
+    let player = elements(render(), node => node.type === 'VideoPlayer')[0];
+    player.props.onPlayStateChange(true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(recorded.length, 1); assert.equal(beats, 1);
+    player.props.onPlayStateChange(false);
+    player.props.onQualityChange('480p');
+    player = elements(render(), node => node.type === 'VideoPlayer')[0];
+    player.props.onPlayStateChange(true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(beats, 2); assert.equal(recorded.length, 1);
+    assert.equal(recorded[0][0], 7); assert.match(recorded[0][1], /^[a-zA-Z0-9_-]{16,100}$/);
+  } finally {
+    if (previous === undefined) delete globalThis.window;
+    else globalThis.window = previous;
+  }
+});
+
+test('multipart metadata retains JSON relation lists and explicit clears; multi-genre query uses comma-separated IDs', async () => {
+  let form, params;
+  const { mediaService } = evaluate('../src/services/mediaService.ts', { './api': { api: {
+    patch: async (_path, body) => { form = body; return { data: {} }; },
+    get: async (_path, options) => { params = options.params; return { data: {} }; },
+  } } });
+  await mediaService.updateMovie(7, { countryId: null, directorId: null, genreIds: [1,2], actorIds: [], trailerUrl: '', runtimeMinutes: '', originalTitle: '' });
+  assert.equal(form.get('countryId'), ''); assert.equal(form.get('directorId'), '');
+  assert.equal(form.get('genreIds'), '[1,2]'); assert.equal(form.get('actorIds'), '[]');
+  assert.equal(form.get('trailerUrl'), ''); assert.equal(form.get('runtimeMinutes'), ''); assert.equal(form.get('originalTitle'), '');
+  await mediaService.list({ genreIds: [1,2], yearFrom: 2025 });
+  assert.equal(params.genreIds, '1,2'); assert.equal(params.yearFrom, 2025);
 });

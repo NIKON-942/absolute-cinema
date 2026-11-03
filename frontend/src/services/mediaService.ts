@@ -19,9 +19,9 @@ export interface MovieUpsertPayload {
   originalTitle?: string;
   description?: string;
   year?: number;
-  country?: string;
+  countryId?: number | null;
   ageRating?: string;
-  director?: string;
+  directorId?: number | null;
   runtimeMinutes?: number | '';
   trailerUrl?: string;
   keywords?: string; // comma-separated
@@ -46,9 +46,9 @@ function toForm(payload: MovieUpsertPayload): FormData {
     ['originalTitle', payload.originalTitle],
     ['description', payload.description],
     ['year', payload.year],
-    ['country', payload.country],
+    ['countryId', payload.countryId],
     ['ageRating', payload.ageRating],
-    ['director', payload.director],
+    ['directorId', payload.directorId],
     ['runtimeMinutes', payload.runtimeMinutes],
     ['trailerUrl', payload.trailerUrl],
     ['keywords', payload.keywords],
@@ -56,7 +56,7 @@ function toForm(payload: MovieUpsertPayload): FormData {
     ['masterVideoUrl', payload.masterVideoUrl],
   ];
   for (const [key, value] of entries) {
-    if (value !== undefined && value !== null && (value !== '' || key === 'posterUrl')) form.append(key, String(value));
+    if (value !== undefined) form.append(key, value === null ? '' : String(value));
   }
   if (payload.genreIds) form.append('genreIds', JSON.stringify(payload.genreIds));
   if (payload.actorIds) form.append('actorIds', JSON.stringify(payload.actorIds));
@@ -65,7 +65,7 @@ function toForm(payload: MovieUpsertPayload): FormData {
 
 export const mediaService = {
   list(filters: MovieFilters): Promise<Paginated<MovieDto>> {
-    return api.get('/media', { params: filters }).then((r) => r.data);
+    return api.get('/media', { params: { ...filters, genreIds: filters.genreIds?.join(',') } }).then((r) => r.data);
   },
 
   getById(id: number): Promise<MovieDto> {
@@ -163,6 +163,10 @@ export const mediaService = {
 
   removeRating(id: number): Promise<RatingResultDto> {
     return api.delete(`/media/${id}/rating`).then((r) => r.data);
+  },
+
+  recordPlayback(id: number, playbackId: string): Promise<MessageDto> {
+    return api.post(`/media/${id}/playback`, { playbackId }).then(r => r.data);
   },
 
   saveProgress(id: number, positionSeconds: number, durationSeconds: number): Promise<MessageDto> {

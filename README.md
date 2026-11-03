@@ -77,15 +77,27 @@ Business rules implemented per `docs/6`: pending orders time out after **20 minu
 ## Feature map
 
 - **Auth** — email/password (bcrypt, ≥8 chars), JWT sessions, Google OAuth 2.0, password reset with 24h single-use tokens.
-- **Catalog** — search & filters (title, genre, year, country, age rating), sorting, pagination, favorites, 1–10 ratings.
+- **Catalog** — search & filters (title, multiple genres with ANY matching, year, country, age rating), sorting, pagination, favorites, 1–10 ratings.
 - **Movie page** — `/movie/:id` combines playback, metadata, trailer, cast, ratings, favorites and link sharing. Related movies appear beside the player on desktop and below the details on mobile. Guests can read the page; full-video access requires sign-in and an active subscription. Video loading starts only after pressing Play. Legacy `/watch/:id` links redirect to the movie page.
 - **Streaming** — HTTP Range requests (206 Partial Content), 480p/720p/1080p quality selection, saved watch progress, subscription-gated access. Renditions become watchable progressively while higher qualities are still transcoding — the movie page live-polls availability, plays the best ready quality, and disables not-yet-processed ones; stream requests for a missing quality degrade to the best ready rendition. Admins upload **one master video** (drag-and-drop file or URL); a background FFmpeg/ffprobe job transcodes it into every target resolution (never upscaling) and links the variants to the movie automatically.
 - **Plan enforcement** — limits are strict and server-side: Basic streams on **1 device** at up to **720p**, Plus on **2 devices** at up to **1080p**, Premium on **4 devices** (1080p, priority support). The SPA heartbeats a per-browser `deviceId` while playing; a stream request for a quality above the plan returns `402 UPGRADE_REQUIRED` (the UI shows an upgrade prompt), and one more device than allowed returns `409 DEVICE_LIMIT` (with a device manager on the profile page; idle slots auto-release after 5 minutes).
 - **Recommendations** — content-based filtering over genres/director/actors/keywords weighted by your ratings & history; popular/new fallback for cold start.
 - **Subscriptions** — Basic/Plus/Premium, monthly/yearly billing, automated access control with per-tier device-count and quality ceilings.
-- **Admin** — movies/genres/actors CRUD with poster & video uploads, user moderation (roles, blocking), analytics dashboard.
+- **Admin** — movie and dictionary CRUD with poster & video uploads, user moderation (roles, blocking), period-based analytics. Movies reference country/director dictionary IDs; used dictionary records cannot be deleted until reassigned. Metadata and all relation IDs are validated before saving.
 - **i18n** — English / Ukrainian with instant switching.
 - **Observability** — OpenTelemetry tracing to Jaeger.
+
+## Media requirements update
+
+Migration `1793700000000-MediaRequirements` moves existing movie country/director names into dictionaries and adds foreign keys. Non-empty legacy names missing from a dictionary are preserved as new records; blank references become null. The API still returns display names together with `countryId`/`directorId`. Admin forms submit IDs. Legacy name inputs resolve only existing records. Optional fields can be explicitly cleared in PATCH requests.
+
+The same migration adds playback and rating event tables. A view is one player session reported after Play and a successful device heartbeat, deduplicated by user/movie/playback ID. Pauses, quality changes, metadata preloading, HEAD and Range requests do not add views. Reloading or reopening the movie creates a new session. Lifetime view counts are preserved; historical events with unknown dates are not invented.
+
+Analytics over the selected trailing period count the new playback events and use each viewer's latest rating action for each movie within that period. Clearing a rating excludes that viewer's rating from that window; editing it replaces their earlier value. Genre averages are weighted by individual ratings, not by movie averages. A movie belonging to multiple genres contributes to each genre, so genre totals are not additive. User/movie/subscription totals show the current state. Deleting a user or movie also deletes their related event rows.
+
+Apply migrations before starting the new backend: `npm --prefix backend run migration:run` for local environments, or the compiled migration runner in deployment. The standard `npm run dev` startup and Oracle deployment already run pending migrations. The previous backend requires reverting this migration before it can use the normalized schema again; deployment does not automatically reverse migrations.
+
+Regression coverage is part of `backend/scripts/review-regressions.test.mjs` and `frontend/scripts/auth-regressions.test.mjs`. The separate `backend/scripts/requirements-migration.mjs` checks legacy backfill, repeatability and rollback, and refuses to run unless `ALLOW_SMOKE_FIXTURES=true`, `DB_NAME=cinema_review` and the database is fresh and disposable.
 
 ## Project layout
 
