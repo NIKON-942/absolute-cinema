@@ -394,7 +394,7 @@ export default function Profile() {
               return (
                 <li key={p.movieId}>
                   <Link
-                    to={`/watch/${p.movieId}`}
+                    to={`/movie/${p.movieId}`}
                     className="group flex gap-4 rounded-2xl border border-cinema-border bg-cinema-panel/60 p-3 transition hover:border-cinema-amber/50 hover:bg-cinema-panel"
                   >
                     <div className="w-20 shrink-0 overflow-hidden rounded-lg border border-cinema-border">

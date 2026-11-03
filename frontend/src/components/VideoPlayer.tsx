@@ -65,6 +65,8 @@ function LockIcon() {
 
 interface VideoPlayerProps {
   movieId: number;
+  /** Requested only after the user explicitly starts playback. */
+  autoPlay?: boolean;
   quality: Quality;
   onQualityChange: (quality: Quality) => void;
   qualities: Quality[];
@@ -96,6 +98,7 @@ interface VideoPlayerProps {
  */
 export function VideoPlayer({
   movieId,
+  autoPlay = false,
   quality,
   qualities,
   onQualityChange,
@@ -116,6 +119,7 @@ export function VideoPlayer({
   const hideTimer = useRef<number | null>(null);
   const lastTime = useRef(0);
   const wasPlaying = useRef(false);
+  const initialPlayRequested = useRef(autoPlay);
   const restoreTime = useRef<number | null>(resumeAt > 0 ? resumeAt : null);
   const resumeApplied = useRef(false);
   const seekBarRef = useRef<HTMLDivElement>(null);
@@ -270,7 +274,10 @@ export function VideoPlayer({
       resumeApplied.current = true;
     }
     restoreTime.current = null;
-    if (wasPlaying.current) {
+    // Start once after the user's Play request; later quality changes retain
+    // the paused/playing state rather than starting a paused video again.
+    if (wasPlaying.current || initialPlayRequested.current) {
+      initialPlayRequested.current = false;
       void v.play().catch(() => undefined);
     }
   };

@@ -141,6 +141,10 @@ export const en: Record<string, string> = {
   'movie.notRated': 'Not rated yet',
   'movie.clearRating': 'Clear rating',
 
+  'movie.share': 'Share',
+  'movie.linkCopied': 'Movie link copied',
+  'movie.shareError': 'Could not copy the link. Copy the address from your browser.',
+
   // ---- favorites ----
   'favorites.toggle': 'Toggle favorite',
   'favorites.added': 'Added to favorites',

@@ -141,6 +141,10 @@ export const uk: Record<string, string> = {
   'movie.notRated': 'Ще не оцінено',
   'movie.clearRating': 'Скинути оцінку',
 
+  'movie.share': 'Поділитися',
+  'movie.linkCopied': 'Посилання на фільм скопійовано',
+  'movie.shareError': 'Не вдалося скопіювати посилання. Скопіюйте адресу з браузера.',
+
   // ---- обране ----
   'favorites.toggle': 'Додати до обраного',
   'favorites.added': 'Додано в обране',

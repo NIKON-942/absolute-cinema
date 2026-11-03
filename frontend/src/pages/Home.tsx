@@ -164,7 +164,7 @@ export default function Home() {
               <p className="mb-6 line-clamp-3 text-sm leading-relaxed text-cinema-soft sm:text-base">{hero.description}</p>
               <div className="flex flex-wrap gap-3">
                 <Link
-                  to={`/watch/${hero.id}`}
+                  to={`/movie/${hero.id}`}
                   className="flex items-center gap-2 rounded-lg bg-cinema-red px-6 py-3 font-bold text-white transition hover:bg-cinema-red/85 hover:shadow-glow"
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v14l11-7-11-7z" /></svg>
