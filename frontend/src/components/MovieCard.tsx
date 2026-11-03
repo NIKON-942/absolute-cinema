@@ -80,9 +80,11 @@ export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCar
             ★ {movie.averageRating.toFixed(1)}
           </span>
         )}
-        <span className="media-surface absolute right-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-cinema-soft backdrop-blur">
-          {movie.ageRating}
-        </span>
+        {movie.ageRating?.trim() && (
+          <span className="media-surface absolute right-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-cinema-soft backdrop-blur">
+            {movie.ageRating}
+          </span>
+        )}
 
         {/* favorite heart */}
         <button
