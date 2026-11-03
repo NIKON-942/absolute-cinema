@@ -1,13 +1,14 @@
 import { Injectable, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   SubscriptionStatusEnum,
   UserEntity,
   UserRoleEnum,
 } from './user.entity';
 import { SubscriptionEntity } from '../payments/entities/subscription.entity';
+import { imageReference } from '../media/image-upload';
 
 export interface UserWithSubscription {
   user: UserEntity;
@@ -30,6 +31,8 @@ export interface SerializedUser {
     status: string;
     startsAt: string | null;
     endsAt: string | null;
+    cancelAtPeriodEnd: boolean;
+    autoRenew: boolean;
   } | null;
   createdAt: string;
   lastLoginAt: string | null;
@@ -86,6 +89,8 @@ export class UsersService {
             status: activeSubscription.status,
             startsAt: activeSubscription.startsAt?.toISOString() ?? null,
             endsAt: activeSubscription.endsAt?.toISOString() ?? null,
+            cancelAtPeriodEnd: activeSubscription.cancelAtPeriodEnd,
+            autoRenew: Boolean(activeSubscription.stripeSubscriptionId && !activeSubscription.cancelAtPeriodEnd),
           }
         : null,
       createdAt: user.createdAt.toISOString(),
@@ -98,8 +103,9 @@ export class UsersService {
       .createQueryBuilder('user')
       .orderBy('user.id', 'ASC');
     if (search) {
-      qb.andWhere('(user.email ILIKE :s OR user.name ILIKE :s)', {
+      qb.andWhere('(user.email ILIKE :s OR user.name ILIKE :s OR CAST(user.id AS TEXT) = :id)', {
         s: `%${search}%`,
+        id: search.trim(),
       });
     }
     const [items, total] = await qb
@@ -127,7 +133,7 @@ export class UsersService {
   ) {
     const update: Partial<UserEntity> = {};
     if (data.name !== undefined) update.name = data.name;
-    if (data.avatarUrl !== undefined) update.avatarUrl = data.avatarUrl;
+    if (data.avatarUrl !== undefined) update.avatarUrl = imageReference(data.avatarUrl);
     if (data.password !== undefined) {
       // Changing the password requires proving possession of the current one.
       const user = await this.usersRepo.findOne({ where: { id: userId } });
@@ -140,30 +146,31 @@ export class UsersService {
       const ok =
         !!data.currentPassword &&
         (await bcrypt.compare(data.currentPassword, user.passwordHash));
-      if (!ok) throw new UnauthorizedException('Current password is incorrect');
+      if (!ok) throw new BadRequestException('Current password is incorrect');
       update.passwordHash = await bcrypt.hash(data.password, 10);
       // Invalidate every JWT issued before now (stolen tokens included).
-      await this.usersRepo.increment({ id: userId }, 'tokenVersion', 1);
     }
     if (Object.keys(update).length > 0) {
-      await this.usersRepo.update(userId, update);
+      await this.usersRepo.createQueryBuilder().update().set({ ...update,
+        ...(data.password !== undefined ? { tokenVersion: () => 'token_version + 1', resetTokenHash: null, resetTokenExpiresAt: null } : {}),
+      }).where('id = :userId', { userId }).execute();
     }
     return this.requireWithSubscription(userId);
   }
 
   async setRole(userId: number, role: 'viewer' | 'admin') {
-    const user = await this.usersRepo.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-    user.role = role === 'admin' ? UserRoleEnum.ADMIN : UserRoleEnum.VIEWER;
-    await this.usersRepo.save(user);
+    await this.dataSource.transaction(async em => {
+      const user = await this.protectLastAdmin(em, userId, role !== 'admin');
+      await em.update(UserEntity, user.id, { role: role === 'admin' ? UserRoleEnum.ADMIN : UserRoleEnum.VIEWER });
+    });
     return this.requireWithSubscription(userId);
   }
 
   async setBlocked(userId: number, isBlocked: boolean) {
-    const user = await this.usersRepo.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-    user.isBlocked = isBlocked;
-    await this.usersRepo.save(user);
+    await this.dataSource.transaction(async em => {
+      const user = await this.protectLastAdmin(em, userId, isBlocked);
+      await em.update(UserEntity, user.id, { isBlocked });
+    });
     return this.requireWithSubscription(userId);
   }
 
@@ -171,6 +178,7 @@ export class UsersService {
     // Dependent rows must go first — their FKs are ON DELETE NO ACTION, so
     // deleting a user with ratings/history/orders would otherwise fail.
     await this.dataSource.transaction(async (em) => {
+      await this.protectLastAdmin(em, userId, true);
       await em.query('DELETE FROM ratings WHERE user_id = $1', [userId]);
       await em.query('DELETE FROM watch_progress WHERE user_id = $1', [userId]);
       await em.query('DELETE FROM user_favorites WHERE users_id = $1', [userId]);
@@ -179,9 +187,22 @@ export class UsersService {
         userId,
       ]);
       await em.query('DELETE FROM subscriptions WHERE user_id = $1', [userId]);
+      const result = await em.delete(UserEntity, userId);
+      if (result.affected === 0) throw new NotFoundException('User not found');
     });
-    const result = await this.usersRepo.delete(userId);
-    if (result.affected === 0) throw new NotFoundException('User not found');
+  }
+
+  private async protectLastAdmin(em: EntityManager, userId: number, removesAccess: boolean): Promise<UserEntity> {
+    // Serialize role/block/delete mutations across admins, including two
+    // administrators trying to remove each other's access simultaneously.
+    await em.query('SELECT pg_advisory_xact_lock(1702, 1)');
+    const user = await em.findOneBy(UserEntity, { id: userId });
+    if (!user) throw new NotFoundException('User not found');
+    if (removesAccess && user.role === UserRoleEnum.ADMIN && !user.isBlocked
+      && await em.countBy(UserEntity, { role: UserRoleEnum.ADMIN, isBlocked: false }) <= 1) {
+      throw new BadRequestException('Cannot remove access from the last active administrator');
+    }
+    return user;
   }
 
   async requireWithSubscription(userId: number): Promise<UserWithSubscription> {

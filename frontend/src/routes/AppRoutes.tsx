@@ -25,14 +25,7 @@ export default function AppRoutes() {
       <Route path="/" element={<Home />} />
       <Route path="/catalog" element={<Catalog />} />
       <Route path="/movie/:id" element={<MovieDetails />} />
-      <Route
-        path="/watch/:id"
-        element={
-          <ProtectedRoute>
-            <Watch />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/watch/:id" element={<Watch />} />
 
       {/* auth */}
       <Route path="/login" element={<Login />} />

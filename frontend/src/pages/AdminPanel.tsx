@@ -16,6 +16,7 @@ import { AdminTable } from '@/components/AdminTable';
 import type { Column } from '@/components/AdminTable';
 import { Modal } from '@/components/Modal';
 import { AutoTextarea } from '@/components/AutoTextarea';
+import { ImageField } from '@/components/ImageField';
 import { ProgressBar, TranscodeProgress } from '@/components/TranscodeProgress';
 import { LoadingBlock } from '@/components/Spinner';
 import { EmptyState } from '@/components/EmptyState';
@@ -252,7 +253,7 @@ function MoviesTab() {
       director: movie.director,
       runtimeMinutes: movie.runtimeMinutes ? String(movie.runtimeMinutes) : '',
       trailerUrl: movie.trailerUrl ?? '',
-      posterUrl: /^https?:\/\//i.test(movie.posterUrl) ? movie.posterUrl : '',
+      posterUrl: movie.posterUrl,
       keywords: movie.keywords.join(', '),
       genreIds: movie.genres.map((g) => g.id),
       actorIds: movie.actors.map((a) => a.id),
@@ -284,7 +285,7 @@ function MoviesTab() {
   }, [requestedMovie, location.key, openEdit, setSearchParams, errorToast, t]);
 
   const selectMaster = (file: File | null) => {
-    if (file && !/^video\//.test(file.type) && !/\.(mp4|webm|mkv|mov|m4v|avi)$/i.test(file.name)) {
+    if (file && !/\.(mp4|webm)$/i.test(file.name)) {
       errorToast(t('admin.movies.videoUnsupported'));
       return;
     }
@@ -299,6 +300,10 @@ function MoviesTab() {
 
   const submitForm = async (e: FormEvent) => {
     e.preventDefault();
+    if (form.file && (form.file.size > 5 * 1024 * 1024 || !/\.(jpe?g|png|webp)$/i.test(form.file.name))) {
+      setFormError(t('admin.movies.posterHint'));
+      return;
+    }
     const year = Number(form.year);
     if (!form.title.trim() || !form.description.trim() || !form.year || !Number.isInteger(year) || year < 1890 || year > 2100) {
       setFormError(t('admin.movies.fillRequired'));
@@ -739,36 +744,10 @@ function MoviesTab() {
           </div>
 
           {/* poster upload or direct URL (FR-29) */}
-          <div>
-            <span className={labelClass}>{t('admin.movies.poster')}</span>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="h-20 w-14 shrink-0 overflow-hidden rounded-lg border border-cinema-border bg-cinema-card">
-                {form.file ? (
-                  <img src={URL.createObjectURL(form.file)} alt="" className="h-full w-full object-cover" />
-                ) : editing?.posterUrl ? (
-                  <img src={resolveMediaUrl(editing.posterUrl)} alt="" className="h-full w-full object-cover" />
-                ) : null}
-              </div>
-              <label className={`${ghostBtn} inline-block`}>
-                {form.file ? form.file.name : t('admin.movies.posterChoose')}
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(e) => setForm({ ...form, file: e.target.files?.[0] ?? null })}
-                />
-              </label>
-              <span className="text-xs text-cinema-muted">{t('admin.movies.posterHint')}</span>
-              <input
-                type="url"
-                value={form.posterUrl}
-                onChange={(e) => setForm({ ...form, posterUrl: e.target.value })}
-                placeholder={t('admin.movies.posterUrl')}
-                className={`${inputClass} max-w-xs flex-1`}
-                aria-label={t('admin.movies.posterUrl')}
-              />
-            </div>
-          </div>
+          <ImageField id="movie-poster" label={t('admin.movies.poster')} portrait
+            value={form.posterUrl} file={form.file ?? null} disabled={saving}
+            onFileChange={file => setForm(previous => ({ ...previous, file }))}
+            onUrlChange={posterUrl => setForm(previous => ({ ...previous, posterUrl }))} />
 
           {/* Video is optional for both new and existing movies. */}
           <div className="space-y-3 rounded-xl border border-cinema-border bg-cinema-black/40 p-4">
@@ -808,7 +787,7 @@ function MoviesTab() {
             <input
               id="master-file-input"
               type="file"
-              accept="video/*,.mkv,.avi,.m4v"
+              accept="video/mp4,video/webm,.mp4,.webm"
               className="sr-only"
               disabled={saving || conversionBusy}
               onChange={(e) => { selectMaster(e.target.files?.[0] ?? null); e.target.value = ''; }}
@@ -1180,6 +1159,7 @@ function ActorsTab() {
   const [editing, setEditing] = useState<ActorDto | null>(null);
   const [name, setName] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -1194,6 +1174,7 @@ function ActorsTab() {
     setEditing(actor);
     setName(actor?.name ?? '');
     setPhotoUrl(actor?.photoUrl ?? '');
+    setPhotoFile(null);
   };
   const closeModal = () => setModalOpen(false);
 
@@ -1203,10 +1184,10 @@ function ActorsTab() {
     setSaving(true);
     try {
       if (editing) {
-        await mediaService.updateActor(editing.id, name.trim(), photoUrl.trim() || undefined);
+        await mediaService.updateActor(editing.id, name.trim(), photoUrl.trim(), photoFile);
         success(t('admin.actors.updated'));
       } else {
-        await mediaService.createActor(name.trim(), photoUrl.trim() || undefined);
+        await mediaService.createActor(name.trim(), photoUrl.trim() || undefined, photoFile);
         success(t('admin.actors.created'));
       }
       closeModal();
@@ -1258,8 +1239,8 @@ function ActorsTab() {
     },
     {
       key: 'photoUrl',
-      label: t('admin.actors.photoUrl'),
-      render: (a) => <span className="truncate text-xs text-cinema-muted">{a.photoUrl ?? '—'}</span>,
+      label: t('admin.actors.photo'),
+      render: (a) => <span className="text-xs text-cinema-muted">{t(a.photoUrl ? 'images.added' : 'images.notSet')}</span>,
     },
   ];
 
@@ -1332,12 +1313,8 @@ function ActorsTab() {
             </label>
             <input id="actor-name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
           </div>
-          <div>
-            <label htmlFor="actor-photo" className={labelClass}>
-              {t('admin.actors.photoUrl')} <span className="font-normal normal-case text-cinema-muted">({t('common.optional')})</span>
-            </label>
-            <input id="actor-photo" type="url" value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} placeholder="https://…" className={inputClass} />
-          </div>
+          <ImageField id="actor-photo" label={t('admin.actors.photo')} value={photoUrl} file={photoFile}
+            onFileChange={setPhotoFile} onUrlChange={setPhotoUrl} disabled={saving} />
         </form>
       </Modal>
 

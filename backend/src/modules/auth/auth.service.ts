@@ -77,16 +77,31 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.usersService.findByEmail(dto.email);
-    if (!user || !user.passwordHash) {
+    // Return failures from the transaction so the counter commits before the
+    // HTTP error is thrown. A row lock serializes concurrent login attempts.
+    const result = await this.usersRepo.manager.transaction(async em => {
+      const repo = em.getRepository(UserEntity);
+      const user = await repo.findOne({ where: { email: dto.email.toLowerCase() }, lock: { mode: 'pessimistic_write' } });
+      if (!user || !user.passwordHash) return { error: 'invalid' } as const;
+      if (user.isBlocked) return { error: 'blocked' } as const;
+      if (user.loginLockedUntil && user.loginLockedUntil.getTime() > Date.now()) return { error: 'locked' } as const;
+      if (user.loginLockedUntil) user.failedLoginAttempts = 0;
+      if (!await bcrypt.compare(dto.password, user.passwordHash)) {
+        const attempts = (user.failedLoginAttempts ?? 0) + 1;
+        await repo.update(user.id, { failedLoginAttempts: attempts,
+          loginLockedUntil: attempts >= 5 ? new Date(Date.now() + 60 * 60 * 1000) : null });
+        return { error: attempts >= 5 ? 'locked' : 'invalid' } as const;
+      }
+      user.lastLoginAt = new Date();
+      await repo.update(user.id, { lastLoginAt: user.lastLoginAt, failedLoginAttempts: 0, loginLockedUntil: null });
+      return { user };
+    });
+    if (!result.user) {
+      if (result.error === 'blocked') throw new ForbiddenException('Account is blocked');
+      if (result.error === 'locked') throw new ForbiddenException('Sign-in locked for one hour after five failed attempts');
       throw new UnauthorizedException('Invalid credentials');
     }
-    const ok = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!ok) throw new UnauthorizedException('Invalid credentials');
-    if (user.isBlocked) throw new ForbiddenException('Account is blocked');
-    const lastLoginAt = new Date();
-    user.lastLoginAt = lastLoginAt;
-    await this.usersRepo.update(user.id, { lastLoginAt });
+    const user = result.user;
     return {
       user: this.usersService.serialize(
         await this.usersService.attachSubscription(user),
@@ -120,6 +135,7 @@ export class AuthService {
         name: profile.name,
         googleId: profile.googleId,
         avatarUrl: profile.avatarUrl ?? null,
+        lastLoginAt: new Date(),
       });
       this.mail.sendWelcome(user.email, user.name);
     } else {
@@ -173,23 +189,19 @@ export class AuthService {
 
   async resetPassword(dto: ResetPasswordDto) {
     const hash = createHash('sha256').update(dto.token).digest('hex');
-    const user = await this.usersRepo.findOne({
-      where: { resetTokenHash: hash },
-    });
-    if (
-      !user ||
-      !user.resetTokenExpiresAt ||
-      user.resetTokenExpiresAt.getTime() < Date.now()
-    ) {
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    // Consume the token and revoke sessions in one conditional statement.
+    const result = await this.usersRepo.createQueryBuilder().update().set({
+      passwordHash,
+      resetTokenHash: null,
+      resetTokenExpiresAt: null,
+      tokenVersion: () => 'token_version + 1',
+      failedLoginAttempts: 0,
+      loginLockedUntil: null,
+    }).where('reset_token_hash = :hash AND reset_token_expires_at > CURRENT_TIMESTAMP', { hash }).execute();
+    if (!result.affected) {
       throw new BadRequestException('Reset token is invalid or expired');
     }
-    await this.usersRepo.update(user.id, {
-      passwordHash: await bcrypt.hash(dto.newPassword, 10),
-      resetTokenHash: null,
-      resetTokenExpiresAt: null, // single use
-    });
-    // Invalidate every session/token issued before the reset (FR-36).
-    await this.usersRepo.increment({ id: user.id }, 'tokenVersion', 1);
     return { message: 'Password has been updated' };
   }
 }

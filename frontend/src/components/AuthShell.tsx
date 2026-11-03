@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { googleAuthUrl } from '@/utils/url';
+import { BrandIcon } from '@/components/BrandIcon';
 
 interface AuthShellProps {
   title: string;
@@ -17,9 +18,7 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
       <div className="w-full max-w-md animate-fadeIn rounded-2xl border border-cinema-border bg-cinema-panel/80 p-6 shadow-card sm:p-8">
         <div className="mb-6 text-center">
           <Link to="/" className="mb-4 inline-flex items-center gap-2" aria-label="AbsoluteCinema">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cinema-amber to-cinema-red text-xl font-black text-cinema-ink">
-              A
-            </span>
+            <BrandIcon />
             <span className="text-xl font-extrabold tracking-tight text-cinema-text">
               Absolute<span className="text-cinema-accent">Cinema</span>
             </span>

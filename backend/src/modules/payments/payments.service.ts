@@ -1,334 +1,282 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
-import { LessThan, Repository } from 'typeorm';
+import { EntityManager, LessThan, Repository } from 'typeorm';
 import Stripe from 'stripe';
 import { AppConfig } from '../../config/configuration';
-import {
-  SubscriptionPeriodEnum,
-  SubscriptionStatusEnum,
-  SubscriptionTierEnum,
-} from '../users/user.entity';
+import { SubscriptionPeriodEnum, SubscriptionStatusEnum, SubscriptionTierEnum, UserEntity } from '../users/user.entity';
 import { MailService } from '../mail/mail.service';
-import {
-  PaymentTransactionEntity,
-  TransactionStatusEnum,
-} from './entities/payment-transaction.entity';
+import { PaymentTransactionEntity, TransactionStatusEnum } from './entities/payment-transaction.entity';
 import { SubscriptionEntity } from './entities/subscription.entity';
 import { SubscriptionPlanEntity } from './entities/subscription-plan.entity';
+
+/** Calendar billing clamps January 31 to February's last day. */
+export function billingEnd(start: Date, period: SubscriptionPeriodEnum): Date {
+  const end = new Date(start);
+  const day = end.getUTCDate();
+  end.setUTCDate(1);
+  end.setUTCMonth(end.getUTCMonth() + (period === SubscriptionPeriodEnum.MONTHLY ? 1 : 12));
+  const last = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+  end.setUTCDate(Math.min(day, last));
+  return end;
+}
 
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
   private stripe: Stripe | null = null;
-
   constructor(
-    private config: ConfigService<AppConfig, true>,
-    private mail: MailService,
-    @InjectRepository(SubscriptionPlanEntity)
-    private plansRepo: Repository<SubscriptionPlanEntity>,
-    @InjectRepository(SubscriptionEntity)
-    private subsRepo: Repository<SubscriptionEntity>,
-    @InjectRepository(PaymentTransactionEntity)
-    private txRepo: Repository<PaymentTransactionEntity>,
+    private config: ConfigService<AppConfig, true>, private mail: MailService,
+    @InjectRepository(SubscriptionPlanEntity) private plansRepo: Repository<SubscriptionPlanEntity>,
+    @InjectRepository(SubscriptionEntity) private subsRepo: Repository<SubscriptionEntity>,
+    @InjectRepository(PaymentTransactionEntity) private txRepo: Repository<PaymentTransactionEntity>,
   ) {
     const cfg = config.get('stripe', { infer: true })!;
-    if (cfg.enabled && cfg.secretKey) {
-      this.stripe = new Stripe(cfg.secretKey, {
-        apiVersion: '2026-10-28.endive',
-      });
+    if (cfg.enabled) {
+      if (!cfg.secretKey || !cfg.webhookSecret) throw new Error('Stripe is enabled: STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required');
+      this.stripe = new Stripe(cfg.secretKey, { apiVersion: '2026-10-28.endive' });
     }
   }
 
   async plans() {
-    const plans = await this.plansRepo.find({ order: { monthlyPrice: 'ASC' } });
-    return plans.map((p) => ({
-      tier: p.tier,
-      monthlyPrice: parseFloat(p.monthlyPrice),
-      yearlyPrice: parseFloat(p.yearlyPrice),
-      currency: p.currency,
-      maxDevices: p.maxDevices,
-      maxQuality: p.maxQuality,
-      prioritySupport: p.prioritySupport,
-      features: [], // localized client-side by tier key
+    return (await this.plansRepo.find({ order: { monthlyPrice: 'ASC' } })).map(p => ({
+      tier: p.tier, monthlyPrice: Number(p.monthlyPrice), yearlyPrice: Number(p.yearlyPrice),
+      currency: p.currency, maxDevices: p.maxDevices, maxQuality: p.maxQuality, prioritySupport: p.prioritySupport, features: [],
     }));
   }
 
-  async createCheckout(userId: number, tier: SubscriptionTierEnum, period: SubscriptionPeriodEnum) {
+  private async lock(em: EntityManager, userId: number) {
+    await em.query('SELECT pg_advisory_xact_lock(1701, $1)', [userId]);
+  }
+
+  private async expireCheckout(tx: PaymentTransactionEntity): Promise<void> {
+    if (!this.stripe || !tx.stripeCheckoutId) return;
+    const session = await this.stripe.checkout.sessions.retrieve(tx.stripeCheckoutId);
+    if (session.status === 'complete') throw new ConflictException('Payment is being confirmed; wait for confirmation');
+    if (session.status === 'open') await this.stripe.checkout.sessions.expire(session.id);
+  }
+
+  async createCheckout(userId: number, tier: SubscriptionTierEnum, period: SubscriptionPeriodEnum, retryOf?: string) {
     const plan = await this.plansRepo.findOne({ where: { tier } });
     if (!plan) throw new BadRequestException('Unknown subscription tier');
-
-    const amount = parseFloat(
-      period === SubscriptionPeriodEnum.MONTHLY ? plan.monthlyPrice : plan.yearlyPrice,
-    );
-
-    // one pending order at a time per user
-    await this.txRepo.update(
-      { userId, status: TransactionStatusEnum.PENDING },
-      { status: TransactionStatusEnum.CANCELLED },
-    );
-    await this.subsRepo.update(
-      { userId, status: SubscriptionStatusEnum.PENDING },
-      { status: SubscriptionStatusEnum.CANCELLED },
-    );
-
-    const subscription = await this.subsRepo.save(
-      this.subsRepo.create({ userId, tier, period, status: SubscriptionStatusEnum.PENDING }),
-    );
-
-    const sessionId = randomUUID();
-    await this.txRepo.save(
-      this.txRepo.create({
-        sessionId,
-        userId,
-        subscriptionId: subscription.id,
-        tier,
-        period,
-        amount: amount.toFixed(2),
-        currency: plan.currency,
-        status: TransactionStatusEnum.PENDING,
-      }),
-    );
-
-    if (this.stripe) {
+    return this.txRepo.manager.transaction(async em => {
+      await this.lock(em, userId);
+      let retries = 0;
+      if (retryOf) {
+        const previous = await em.findOne(PaymentTransactionEntity, { where: { sessionId: retryOf, userId } });
+        if (!previous) throw new NotFoundException('Order not found');
+        if (previous.status !== TransactionStatusEnum.FAILED || previous.retries >= 3) throw new BadRequestException('This order cannot be retried');
+        await em.update(PaymentTransactionEntity, previous.id, { status: TransactionStatusEnum.CANCELLED });
+        retries = previous.retries + 1;
+      }
+      const pending = await em.find(PaymentTransactionEntity, { where: { userId, status: TransactionStatusEnum.PENDING } });
+      for (const order of pending) await this.expireCheckout(order);
+      await em.update(PaymentTransactionEntity, { userId, status: TransactionStatusEnum.PENDING }, { status: TransactionStatusEnum.CANCELLED });
+      await em.update(SubscriptionEntity, { userId, status: SubscriptionStatusEnum.PENDING }, { status: SubscriptionStatusEnum.CANCELLED });
+      const subscription = await em.save(SubscriptionEntity, em.create(SubscriptionEntity, { userId, tier, period, status: SubscriptionStatusEnum.PENDING }));
+      const sessionId = randomUUID();
+      const amount = period === SubscriptionPeriodEnum.MONTHLY ? plan.monthlyPrice : plan.yearlyPrice;
+      const tx = await em.save(PaymentTransactionEntity, em.create(PaymentTransactionEntity, {
+        sessionId, userId, subscriptionId: subscription.id, tier, period, amount,
+        currency: plan.currency, status: TransactionStatusEnum.PENDING, retries, expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+      }));
+      if (!this.stripe) return { checkoutUrl: `/mock-checkout/${sessionId}` };
       const session = await this.stripe.checkout.sessions.create({
-        mode: 'subscription',
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: plan.currency,
-              unit_amount: Math.round(amount * 100),
-              recurring: {
-                interval:
-                  period === SubscriptionPeriodEnum.MONTHLY ? 'month' : 'year',
-              },
-              product_data: {
-                name: `AbsoluteCinema ${tier} (${period})`,
-              },
-            },
-          },
-        ],
-        success_url: `${this.config.get('clientUrl', { infer: true })}/?payment=success&session_id=${sessionId}`,
-        cancel_url: `${this.config.get('clientUrl', { infer: true })}/plans?payment=cancelled`,
-        client_reference_id: sessionId,
-        metadata: { sessionId },
-      });
+        mode: 'subscription', allowed_payment_method_types: ['card'], client_reference_id: sessionId, metadata: { sessionId },
+        subscription_data: { metadata: { sessionId } },
+        line_items: [{ quantity: 1, price_data: { currency: plan.currency, unit_amount: Math.round(Number(amount) * 100),
+          recurring: { interval: period === SubscriptionPeriodEnum.MONTHLY ? 'month' : 'year' }, product_data: { name: `AbsoluteCinema ${tier} (${period})` } } }],
+        success_url: `${this.config.get('clientUrl', { infer: true })}/?payment=success`,
+        cancel_url: `${this.config.get('clientUrl', { infer: true })}/plans?retry=${sessionId}`,
+      }, { idempotencyKey: sessionId });
+      await em.update(PaymentTransactionEntity, tx.id, { stripeCheckoutId: session.id });
+      if (!session.url) throw new Error('Stripe did not return a checkout URL');
       return { checkoutUrl: session.url };
-    }
-
-    // mock mode: the SPA renders a fake gateway at this route
-    return { checkoutUrl: `/mock-checkout/${sessionId}` };
+    });
   }
 
-  /**
-   * Shared success path for the Stripe webhook and the mock simulator.
-   * `expectedUserId` (mock endpoints) additionally asserts ownership of the
-   * order. The PAID flip is a conditional update on status='pending', so two
-   * concurrent completions can never both activate a subscription.
-   */
-  async complete(
-    sessionId: string,
-    expectedUserId?: number,
-  ): Promise<{ message: string }> {
-    const tx = await this.txRepo.findOne({ where: { sessionId } });
-    if (!tx || (expectedUserId !== undefined && tx.userId !== expectedUserId)) {
-      // Same response for missing and foreign orders — no existence oracle.
-      throw new NotFoundException('Order not found');
-    }
-    if (tx.status === TransactionStatusEnum.PAID) {
-      return { message: 'Payment already processed' };
-    }
-    if (tx.status !== TransactionStatusEnum.PENDING) {
-      throw new BadRequestException(`Order is ${tx.status}`);
-    }
-
-    const now = new Date();
-    const endsAt = new Date(now);
-    if (tx.period === SubscriptionPeriodEnum.MONTHLY) {
-      endsAt.setMonth(endsAt.getMonth() + 1);
-    } else {
-      endsAt.setFullYear(endsAt.getFullYear() + 1);
-    }
-
-    // Conditional update: wins exactly once even when the webhook races us.
-    const paidUpdate = await this.txRepo.update(
-      { id: tx.id, status: TransactionStatusEnum.PENDING },
-      { status: TransactionStatusEnum.PAID },
-    );
-    if ((paidUpdate.affected ?? 0) === 0) {
-      return { message: 'Payment already processed' };
-    }
-
-    // expire any previously active subscription, activate the new one
-    await this.subsRepo.update(
-      { userId: tx.userId, status: SubscriptionStatusEnum.ACTIVE },
-      { status: SubscriptionStatusEnum.EXPIRED },
-    );
-    if (tx.subscriptionId) {
-      await this.subsRepo.update(tx.subscriptionId, {
-        status: SubscriptionStatusEnum.ACTIVE,
-        startsAt: now,
-        endsAt,
-      });
-    }
-
-    const user = await this.txRepo
-      .createQueryBuilder('tx')
-      .relation(PaymentTransactionEntity, 'user')
-      .of(tx.id)
-      .loadOne();
-    if (user) {
-      this.mail.sendReceipt(user.email, {
-        tier: tx.tier,
-        period: tx.period,
-        amount: parseFloat(tx.amount),
-        currency: tx.currency,
-        endsAt,
-      });
-    }
-    return { message: 'Payment completed — subscription is now active' };
+  async retry(userId: number, sessionId: string) {
+    const tx = await this.txRepo.findOne({ where: { userId, sessionId } });
+    if (!tx) throw new NotFoundException('Order not found');
+    if (tx.status === TransactionStatusEnum.PENDING) await this.failOrder(sessionId);
+    return this.createCheckout(userId, tx.tier, tx.period, sessionId);
   }
 
-  async cancel(
-    sessionId: string,
-    expectedUserId?: number,
-  ): Promise<{ message: string }> {
-    const tx = await this.txRepo.findOne({ where: { sessionId } });
-    if (!tx || (expectedUserId !== undefined && tx.userId !== expectedUserId)) {
-      throw new NotFoundException('Order not found');
-    }
-    // Conditional update — never clobbers an order that just turned PAID.
-    const cancelled = await this.txRepo.update(
-      { id: tx.id, status: TransactionStatusEnum.PENDING },
-      { status: TransactionStatusEnum.CANCELLED },
-    );
-    if (
-      (cancelled.affected ?? 0) > 0 &&
-      tx.subscriptionId
-    ) {
-      await this.subsRepo.update(tx.subscriptionId, {
-        status: SubscriptionStatusEnum.CANCELLED,
-      });
-    }
+  async complete(sessionId: string, expectedUserId?: number, external?: Stripe.Subscription): Promise<{ message: string }> {
+    const owner = await this.txRepo.findOne({ where: { sessionId } });
+    if (!owner || (expectedUserId !== undefined && owner.userId !== expectedUserId)) throw new NotFoundException('Order not found');
+    const receipt = await this.txRepo.manager.transaction(async em => {
+      await this.lock(em, owner.userId);
+      const tx = await em.findOneByOrFail(PaymentTransactionEntity, { id: owner.id });
+      if (tx.status === TransactionStatusEnum.PAID) return null;
+      if (tx.status !== TransactionStatusEnum.PENDING || !tx.subscriptionId) throw new BadRequestException(`Order is ${tx.status}`);
+      if (!external && tx.expiresAt && tx.expiresAt.getTime() <= Date.now()) throw new BadRequestException('Order expired; retry payment');
+      const active = await em.find(SubscriptionEntity, { where: { userId: tx.userId, status: SubscriptionStatusEnum.ACTIVE } });
+      for (const old of active) {
+        if (this.stripe && old.stripeSubscriptionId && old.stripeSubscriptionId !== external?.id) {
+          const current = await this.stripe.subscriptions.retrieve(old.stripeSubscriptionId);
+          if (current.status !== 'canceled') await this.stripe.subscriptions.cancel(current.id);
+        }
+      }
+      const now = new Date();
+      const item = external?.items.data[0];
+      if (external && !item) throw new Error('Stripe subscription has no billing period');
+      const endsAt = item ? new Date(item.current_period_end * 1000) : billingEnd(now, tx.period);
+      await em.update(SubscriptionEntity, { userId: tx.userId, status: SubscriptionStatusEnum.ACTIVE }, { status: SubscriptionStatusEnum.EXPIRED });
+      await em.update(SubscriptionEntity, tx.subscriptionId, { status: SubscriptionStatusEnum.ACTIVE,
+        startsAt: item ? new Date(item.current_period_start * 1000) : now, endsAt,
+        stripeSubscriptionId: external?.id ?? null, cancelAtPeriodEnd: external?.cancel_at_period_end ?? false });
+      await em.update(PaymentTransactionEntity, tx.id, { status: TransactionStatusEnum.PAID });
+      const user = await em.findOneBy(UserEntity, { id: tx.userId });
+      return user ? { email: user.email, tx, endsAt } : null;
+    });
+    if (receipt) this.mail.sendReceipt(receipt.email, { tier: receipt.tx.tier, period: receipt.tx.period,
+      amount: Number(receipt.tx.amount), currency: receipt.tx.currency, endsAt: receipt.endsAt });
+    return { message: receipt ? 'Payment completed — subscription is now active' : 'Payment already processed' };
+  }
+
+  private async failOrder(sessionId: string) {
+    const owner = await this.txRepo.findOne({ where: { sessionId } });
+    if (!owner) return;
+    await this.txRepo.manager.transaction(async em => {
+      await this.lock(em, owner.userId);
+      const tx = await em.findOneByOrFail(PaymentTransactionEntity, { id: owner.id });
+      if (tx.status !== TransactionStatusEnum.PENDING) return;
+      await this.expireCheckout(tx);
+      await em.update(PaymentTransactionEntity, tx.id, { status: TransactionStatusEnum.FAILED });
+      if (tx.subscriptionId) await em.update(SubscriptionEntity, { id: tx.subscriptionId, status: SubscriptionStatusEnum.PENDING }, { status: SubscriptionStatusEnum.CANCELLED });
+    });
+  }
+
+  async cancel(sessionId: string, expectedUserId?: number): Promise<{ message: string }> {
+    const owner = await this.txRepo.findOne({ where: { sessionId } });
+    if (!owner || (expectedUserId !== undefined && owner.userId !== expectedUserId)) throw new NotFoundException('Order not found');
+    await this.txRepo.manager.transaction(async em => {
+      await this.lock(em, owner.userId);
+      const tx = await em.findOneByOrFail(PaymentTransactionEntity, { id: owner.id });
+      if (tx.status !== TransactionStatusEnum.PENDING) return;
+      await this.expireCheckout(tx);
+      await em.update(PaymentTransactionEntity, tx.id, { status: TransactionStatusEnum.CANCELLED });
+      if (tx.subscriptionId) await em.update(SubscriptionEntity, tx.subscriptionId, { status: SubscriptionStatusEnum.CANCELLED });
+    });
     return { message: 'Payment cancelled' };
   }
 
-  /**
-   * User-initiated subscription cancellation: revokes the active
-   * subscription (and any pending checkout) immediately.
-   */
   async cancelSubscription(userId: number): Promise<{ message: string }> {
-    const active = await this.subsRepo.findOne({
-      where: { userId, status: SubscriptionStatusEnum.ACTIVE },
-      order: { endsAt: 'DESC' },
+    await this.subsRepo.manager.transaction(async em => {
+      await this.lock(em, userId);
+      const active = await em.findOne(SubscriptionEntity, { where: { userId, status: SubscriptionStatusEnum.ACTIVE }, order: { endsAt: 'DESC' } });
+      if (!active || (active.endsAt && active.endsAt.getTime() <= Date.now())) throw new BadRequestException('No active subscription to cancel');
+      if (this.stripe && active.stripeSubscriptionId) await this.stripe.subscriptions.update(active.stripeSubscriptionId, { cancel_at_period_end: true });
+      // ТЗ: retain paid access when cancelling automatic renewal.
+      await em.update(SubscriptionEntity, active.id, { cancelAtPeriodEnd: true });
+      const pending = await em.find(PaymentTransactionEntity, { where: { userId, status: TransactionStatusEnum.PENDING } });
+      for (const tx of pending) await this.expireCheckout(tx);
+      await em.update(PaymentTransactionEntity, { userId, status: TransactionStatusEnum.PENDING }, { status: TransactionStatusEnum.CANCELLED });
+      await em.update(SubscriptionEntity, { userId, status: SubscriptionStatusEnum.PENDING }, { status: SubscriptionStatusEnum.CANCELLED });
     });
-    if (!active) throw new BadRequestException('No active subscription to cancel');
-
-    await this.subsRepo.update(active.id, { status: SubscriptionStatusEnum.CANCELLED });
-    await this.txRepo.update(
-      { userId, status: TransactionStatusEnum.PENDING },
-      { status: TransactionStatusEnum.CANCELLED },
-    );
-    return { message: 'Subscription cancelled' };
+    return { message: 'Automatic renewal cancelled; access remains until the paid period ends' };
   }
 
-  async handleWebhook(
-    payload: Buffer | undefined,
-    signature: string | undefined,
-  ): Promise<{ received: boolean }> {
-    if (!this.stripe) {
-      // mock mode: nothing to verify, the mock-complete endpoint drives state
-      return { received: true };
-    }
-    const secret = this.config.get('stripe', { infer: true })!.webhookSecret;
-    let event: Stripe.Event;
-    try {
-      event = this.stripe.webhooks.constructEvent(payload as Buffer, signature ?? '', secret);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Webhook signature verification failed: ${message}`);
-      throw new BadRequestException('Invalid webhook signature');
-    }
+  private async completedCheckout(session: Stripe.Checkout.Session) {
+    if (!this.stripe || session.payment_status !== 'paid') return;
+    const sessionId = session.metadata?.sessionId ?? session.client_reference_id;
+    const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+    if (!sessionId || !subscriptionId) throw new BadRequestException('Checkout has no local order or subscription');
+    const tx = await this.txRepo.findOneBy({ sessionId });
+    if (!tx || tx.stripeCheckoutId !== session.id) throw new BadRequestException('Checkout does not match the order');
+    await this.complete(sessionId, undefined, await this.stripe.subscriptions.retrieve(subscriptionId));
+  }
 
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const sessionId = session.metadata?.sessionId ?? session.client_reference_id;
-      if (sessionId) await this.complete(sessionId);
+  private async paidInvoice(invoice: Stripe.Invoice) {
+    if (!this.stripe) return;
+    const value = invoice.parent?.subscription_details?.subscription;
+    const stripeId = typeof value === 'string' ? value : value?.id;
+    if (!stripeId) return;
+    const external = await this.stripe.subscriptions.retrieve(stripeId);
+    const sessionId = external.metadata.sessionId;
+    if (sessionId) {
+      const initial = await this.txRepo.findOneBy({ sessionId });
+      if (initial?.stripeCheckoutId && initial.status === TransactionStatusEnum.PENDING) {
+        await this.completedCheckout(await this.stripe.checkout.sessions.retrieve(initial.stripeCheckoutId));
+      }
+    }
+    const owner = await this.subsRepo.findOneBy({ stripeSubscriptionId: stripeId });
+    if (!owner) {
+      if (!sessionId) return; // another application on the same Stripe account
+      throw new Error('Invoice subscription has not been linked yet; retry webhook');
+    }
+    if (invoice.billing_reason === 'subscription_create') return;
+    await this.txRepo.manager.transaction(async em => {
+      await this.lock(em, owner.userId);
+      const key = `invoice:${invoice.id}`;
+      if (await em.existsBy(PaymentTransactionEntity, { sessionId: key })) return;
+      const sub = await em.findOneByOrFail(SubscriptionEntity, { id: owner.id });
+      await em.save(PaymentTransactionEntity, em.create(PaymentTransactionEntity, { sessionId: key, userId: sub.userId,
+        subscriptionId: sub.id, tier: sub.tier, period: sub.period, amount: (invoice.amount_paid / 100).toFixed(2),
+        currency: invoice.currency, status: TransactionStatusEnum.PAID }));
+      if (external.status === 'canceled' || sub.status === SubscriptionStatusEnum.CANCELLED) return;
+      const periodEnd = Math.max(...invoice.lines.data.filter(line => line.parent?.type === 'subscription_item_details').map(line => line.period.end));
+      if (!Number.isFinite(periodEnd)) throw new Error('Paid invoice has no subscription period');
+      const endsAt = new Date(Math.max(sub.endsAt?.getTime() ?? 0, periodEnd * 1000));
+      await em.update(SubscriptionEntity, sub.id, { endsAt, status: SubscriptionStatusEnum.ACTIVE, cancelAtPeriodEnd: external.cancel_at_period_end });
+    });
+  }
+
+  async handleWebhook(payload: Buffer | undefined, signature: string | undefined): Promise<{ received: boolean }> {
+    if (!this.stripe) return { received: true };
+    let event: Stripe.Event;
+    try { event = this.stripe.webhooks.constructEvent(payload as Buffer, signature ?? '', this.config.get('stripe', { infer: true })!.webhookSecret); }
+    catch { throw new BadRequestException('Invalid webhook signature'); }
+    switch (event.type) {
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded':
+        await this.completedCheckout(event.data.object as Stripe.Checkout.Session); break;
+      case 'invoice.paid': await this.paidInvoice(event.data.object as Stripe.Invoice); break;
+      case 'checkout.session.expired':
+      case 'checkout.session.async_payment_failed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.metadata?.sessionId) await this.failOrder(session.metadata.sessionId);
+        break;
+      }
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted': {
+        // Retrieve current provider state rather than trusting old snapshots.
+        const external = await this.stripe.subscriptions.retrieve((event.data.object as Stripe.Subscription).id);
+        const sub = await this.subsRepo.findOneBy({ stripeSubscriptionId: external.id });
+        if (sub) await this.subsRepo.manager.transaction(async em => {
+          await this.lock(em, sub.userId);
+          await em.update(SubscriptionEntity, sub.id, { cancelAtPeriodEnd: external.cancel_at_period_end,
+            ...(external.status === 'canceled' ? { status: SubscriptionStatusEnum.CANCELLED } : {}) });
+        });
+        break;
+      }
     }
     return { received: true };
   }
 
-  /**
-   * docs/6 payment lifecycle: pending orders older than 20 minutes are
-   * retried up to 3 times, then marked failed and the pending subscription
-   * is cancelled. Each retry restarts the 20-minute window.
-   */
   @Cron(CronExpression.EVERY_MINUTE)
   async expireStalePendingOrders(): Promise<void> {
-    const staleCutoff = new Date(Date.now() - 20 * 60 * 1000);
-    // Filter in SQL via idx_transaction_status_created — never scan all
-    // pending orders just to discard most of them in JS.
-    const stale = await this.txRepo.find({
-      where: {
-        status: TransactionStatusEnum.PENDING,
-        createdAt: LessThan(staleCutoff),
-      },
-    });
+    const stale = await this.txRepo.find({ where: { status: TransactionStatusEnum.PENDING, expiresAt: LessThan(new Date()) } });
     for (const tx of stale) {
-      if (tx.retries < 3) {
-        // Conditional on status='pending' so a webhook that completes the
-        // order between find and update can't be overwritten by a retry.
-        const bumped = await this.txRepo.update(
-          { id: tx.id, status: TransactionStatusEnum.PENDING },
-          { retries: tx.retries + 1, createdAt: new Date() }, // restart window
-        );
-        if ((bumped.affected ?? 0) > 0) {
-          this.logger.log(
-            `Retry ${tx.retries + 1}/3 for pending order ${tx.sessionId}`,
-          );
+      try {
+        if (this.stripe && tx.stripeCheckoutId) {
+          const session = await this.stripe.checkout.sessions.retrieve(tx.stripeCheckoutId);
+          if (session.status === 'complete') { await this.completedCheckout(session); continue; }
         }
-      } else {
-        const failed = await this.txRepo.update(
-          { id: tx.id, status: TransactionStatusEnum.PENDING },
-          { status: TransactionStatusEnum.FAILED },
-        );
-        if ((failed.affected ?? 0) > 0) {
-          if (tx.subscriptionId) {
-            // Also conditional — never cancel an already-ACTIVE subscription.
-            await this.subsRepo.update(
-              { id: tx.subscriptionId, status: SubscriptionStatusEnum.PENDING },
-              { status: SubscriptionStatusEnum.CANCELLED },
-            );
-          }
-          this.logger.warn(`Order ${tx.sessionId} failed after 3 retries`);
-        }
-      }
+        await this.failOrder(tx.sessionId);
+      } catch (error) { this.logger.warn(`Could not reconcile order ${tx.sessionId}: ${String(error)}`); }
     }
   }
 
-  /** Subscriptions whose endsAt passed stop counting as ACTIVE. */
   @Cron(CronExpression.EVERY_HOUR)
   async expireFinishedSubscriptions(): Promise<void> {
-    await this.subsRepo.update(
-      {
-        status: SubscriptionStatusEnum.ACTIVE,
-        endsAt: LessThan(new Date()),
-      },
-      { status: SubscriptionStatusEnum.EXPIRED },
-    );
+    await this.subsRepo.update({ status: SubscriptionStatusEnum.ACTIVE, endsAt: LessThan(new Date()) }, { status: SubscriptionStatusEnum.EXPIRED });
   }
 
   assertMockMode() {
-    if (this.stripe) {
-      throw new NotFoundException('Mock endpoints are disabled when Stripe is enabled');
-    }
+    if (this.stripe) throw new NotFoundException('Mock endpoints are disabled when Stripe is enabled');
   }
 }

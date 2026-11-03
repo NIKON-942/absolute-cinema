@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { streamUrl } from '@/utils/url';
@@ -9,6 +10,49 @@ import type { Quality } from '@/types';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const VOLUME_KEY = 'ac_volume';
+
+type MobilePanel = 'volume' | 'settings' | 'quality' | 'speed';
+
+/** Native modal supplies focus containment, Escape and focus restoration. */
+function PlayerSheet({ title, onClose, children, target }: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  target: HTMLElement;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const { t } = useLanguage();
+
+  useEffect(() => {
+    const dialog = dialogRef.current!;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  return createPortal(
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      onCancel={onClose}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className="media-surface fixed inset-x-0 bottom-0 top-auto m-0 max-h-[80dvh] w-full max-w-none overflow-y-auto overscroll-contain rounded-t-2xl border border-cinema-border bg-cinema-panel p-0 text-cinema-text shadow-card backdrop:bg-black/60"
+    >
+      <div className="px-4 pt-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3">
+          <h2 id={titleId} className="text-base font-bold">{title}</h2>
+          <button type="button" onClick={onClose} aria-label={t('common.close')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-cinema-card">✕</button>
+        </div>
+        <div className="pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">{children}</div>
+      </div>
+    </dialog>, target,
+  );
+}
 
 function LockIcon() {
   return (
@@ -21,6 +65,8 @@ function LockIcon() {
 
 interface VideoPlayerProps {
   movieId: number;
+  /** Requested only after the user explicitly starts playback. */
+  autoPlay?: boolean;
   quality: Quality;
   onQualityChange: (quality: Quality) => void;
   qualities: Quality[];
@@ -52,6 +98,7 @@ interface VideoPlayerProps {
  */
 export function VideoPlayer({
   movieId,
+  autoPlay = false,
   quality,
   qualities,
   onQualityChange,
@@ -72,7 +119,9 @@ export function VideoPlayer({
   const hideTimer = useRef<number | null>(null);
   const lastTime = useRef(0);
   const wasPlaying = useRef(false);
+  const initialPlayRequested = useRef(autoPlay);
   const restoreTime = useRef<number | null>(resumeAt > 0 ? resumeAt : null);
+  const resumeApplied = useRef(false);
   const seekBarRef = useRef<HTMLDivElement>(null);
 
   const [playing, setPlaying] = useState(false);
@@ -86,6 +135,7 @@ export function VideoPlayer({
   const [muted, setMuted] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [speedOpen, setSpeedOpen] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [waiting, setWaiting] = useState(false);
@@ -93,6 +143,19 @@ export function VideoPlayer({
   const [dragRatio, setDragRatio] = useState(0);
 
   const src = streamUrl(movieId, quality);
+
+  // History and metadata arrive independently. Restore once, without seeking
+  // backwards if the viewer has already started watching or seeking.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (resumeAt <= 0 || resumeApplied.current || lastTime.current > 1) return;
+    restoreTime.current = resumeAt;
+    if (video && video.readyState >= 1 && resumeAt < video.duration - 5) {
+      video.currentTime = resumeAt;
+      restoreTime.current = null;
+      resumeApplied.current = true;
+    }
+  }, [resumeAt]);
 
   // ---- keyboard shortcuts ----
   const togglePlay = useCallback(() => {
@@ -117,6 +180,8 @@ export function VideoPlayer({
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Let buttons, sliders and the portalled dialog handle their own keys.
+    if (e.target instanceof Element && e.target.closest('button, input, dialog')) return;
     switch (e.key) {
       case ' ':
       case 'k':
@@ -164,11 +229,19 @@ export function VideoPlayer({
     if (hideTimer.current) window.clearTimeout(hideTimer.current);
     hideTimer.current = window.setTimeout(() => {
       const v = videoRef.current;
-      if (v && !v.paused && !speedOpen) {
+      if (v && !v.paused && !speedOpen && !mobilePanel) {
         setShowControls(false);
       }
     }, 3000);
-  }, [speedOpen]);
+  }, [speedOpen, mobilePanel]);
+
+  // Close the mobile sheet when rotating/resizing into the desktop layout.
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 640px)');
+    const onChange = () => { if (desktop.matches) setMobilePanel(null); };
+    desktop.addEventListener('change', onChange);
+    return () => desktop.removeEventListener('change', onChange);
+  }, []);
 
   useEffect(() => {
     bumpControls();
@@ -198,9 +271,13 @@ export function VideoPlayer({
     // restore position after a quality switch or initial resume
     if (restoreTime.current != null && restoreTime.current < (v.duration || 0) - 5) {
       v.currentTime = restoreTime.current;
+      resumeApplied.current = true;
     }
     restoreTime.current = null;
-    if (wasPlaying.current) {
+    // Start once after the user's Play request; later quality changes retain
+    // the paused/playing state rather than starting a paused video again.
+    if (wasPlaying.current || initialPlayRequested.current) {
+      initialPlayRequested.current = false;
       void v.play().catch(() => undefined);
     }
   };
@@ -283,6 +360,7 @@ export function VideoPlayer({
 
   const displayRatio = duration > 0 ? (dragging ? dragRatio : currentTime / duration) : 0;
   const displayTime = dragging && duration ? dragRatio * duration : currentTime;
+  const controlsVisible = showControls || !playing;
 
   const changeSpeed = (s: number) => {
     setSpeed(s);
@@ -337,22 +415,24 @@ export function VideoPlayer({
 
       {/* big play button when paused */}
       {!playing && !waiting && (
-        <button
-          type="button"
-          onClick={togglePlay}
-          aria-label={t('player.play')}
-          className="absolute inset-0 m-auto flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-cinema-amber/95 text-cinema-ink shadow-glow transition hover:scale-105"
-        >
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5.14v14l11-7-11-7z" />
-          </svg>
-        </button>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={togglePlay}
+            aria-label={t('player.play')}
+            className="pointer-events-auto flex h-14 w-14 shrink-0 cursor-pointer items-center justify-center rounded-full bg-cinema-amber/95 text-cinema-ink shadow-glow transition hover:scale-105 sm:h-16 sm:w-16"
+          >
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5.14v14l11-7-11-7z" />
+            </svg>
+          </button>
+        </div>
       )}
 
       {/* control bar */}
       <div
-        className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent px-3 pb-2 pt-8 transition-opacity duration-300 sm:px-4 ${
-          showControls || !playing ? 'opacity-100' : 'pointer-events-none opacity-0'
+        className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent px-3 pb-2 pt-8 transition-opacity duration-300 sm:px-4 ${
+          controlsVisible ? 'opacity-100' : 'opacity-0'
         }`}
       >
         {/* seek bar */}
@@ -364,7 +444,7 @@ export function VideoPlayer({
           aria-valuemax={Math.round(duration)}
           aria-valuenow={Math.round(displayTime)}
           tabIndex={-1}
-          className="group/bar relative mb-2 h-4 cursor-pointer"
+          className={`group/bar relative mb-2 h-4 cursor-pointer ${controlsVisible ? 'pointer-events-auto' : ''}`}
           onPointerDown={onSeekBarPointerDown}
           onPointerMove={onSeekBarPointerMove}
           onPointerUp={onSeekBarPointerUp}
@@ -379,9 +459,9 @@ export function VideoPlayer({
           />
         </div>
 
-        <div className="flex items-center gap-2 text-cinema-text sm:gap-3">
+        <div className={`flex items-center gap-0 text-cinema-text sm:gap-3 ${controlsVisible ? 'pointer-events-auto' : ''}`}>
           {/* play/pause */}
-          <button type="button" onClick={togglePlay} aria-label={playing ? t('player.pause') : t('player.play')} className="cursor-pointer rounded p-1 transition hover:text-cinema-accent">
+          <button type="button" onClick={togglePlay} aria-label={playing ? t('player.pause') : t('player.play')} className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded transition hover:text-cinema-accent sm:h-auto sm:w-auto sm:p-1">
             {playing ? (
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z" /></svg>
             ) : (
@@ -406,7 +486,20 @@ export function VideoPlayer({
           </button>
 
           {/* volume */}
-          <div className="group/vol flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setMobilePanel('volume')}
+            aria-label={t('player.volume')}
+            aria-haspopup="dialog"
+            aria-expanded={mobilePanel === 'volume'}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded hover:text-cinema-accent sm:hidden"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M11 5 6 9H2v6h4l5 4V5z" strokeLinejoin="round" />
+              {muted || volume === 0 ? <path d="m22 9-6 6M16 9l6 6" strokeLinecap="round" /> : <path d="M15.5 8.5a5 5 0 0 1 0 7M18.4 5.6a9 9 0 0 1 0 12.8" strokeLinecap="round" />}
+            </svg>
+          </button>
+          <div className="group/vol hidden items-center gap-1.5 sm:flex">
             <button
               type="button"
               onClick={() => { const next = !muted; setMuted(next); if (videoRef.current) videoRef.current.muted = next; }}
@@ -438,7 +531,7 @@ export function VideoPlayer({
           </div>
 
           {/* time */}
-          <span className="select-none text-xs font-medium tabular-nums text-cinema-soft sm:text-sm">
+          <span className="shrink-0 select-none whitespace-nowrap text-xs font-medium tabular-nums text-cinema-soft sm:text-sm">
             {formatDuration(displayTime)} / {formatDuration(duration)}
           </span>
 
@@ -448,7 +541,7 @@ export function VideoPlayer({
             {/* quality (compact switcher; unprocessed ones stay disabled while
                 transcoding; above-plan ones stay clickable but prompt an upgrade) */}
             {(transcoding || qualities.length > 1) && (
-              <div className="flex items-center gap-0.5 rounded-md bg-white/10 p-0.5" role="group" aria-label={t('player.quality')}>
+              <div className="hidden items-center gap-0.5 rounded-md bg-white/10 p-0.5 sm:flex" role="group" aria-label={t('player.quality')}>
                 {(['480p', '720p', '1080p'] as Quality[])
                   .filter((q) => transcoding || qualities.includes(q))
                   .map((q) => {
@@ -490,7 +583,7 @@ export function VideoPlayer({
             )}
 
             {/* playback speed */}
-            <div className="relative">
+            <div className="relative hidden sm:block">
               <button
                 type="button"
                 onClick={() => setSpeedOpen((v) => !v)}
@@ -519,7 +612,20 @@ export function VideoPlayer({
             </div>
 
             {/* fullscreen */}
-            <button type="button" onClick={toggleFullscreen} aria-label={t('player.fullscreen')} className="cursor-pointer rounded p-1 transition hover:text-cinema-accent">
+            <button
+              type="button"
+              onClick={() => setMobilePanel('settings')}
+              aria-label={t('player.settings')}
+              aria-haspopup="dialog"
+              aria-expanded={mobilePanel != null && mobilePanel !== 'volume'}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded hover:text-cinema-accent sm:hidden"
+            >
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="m9 3-.6 2.4-2 .9L4 5.6 2 9l1.8 1.7v2.6L2 15l2 3.4 2.4-.7 2 .9L9 21h6l.6-2.4 2-.9 2.4.7 2-3.4-1.8-1.7v-2.6L22 9l-2-3.4-2.4.7-2-.9L15 3z" strokeLinejoin="round" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+            <button type="button" onClick={toggleFullscreen} aria-label={t('player.fullscreen')} className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded transition hover:text-cinema-accent sm:h-auto sm:w-auto sm:p-1">
               {fullscreen ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M8 3v3a2 2 0 0 1-2 2H3M16 3v3a2 2 0 0 0 2 2h3M8 21v-3a2 2 0 0 0-2-2H3M16 21v-3a2 2 0 0 1 2-2h3" strokeLinecap="round" />
@@ -533,6 +639,46 @@ export function VideoPlayer({
           </div>
         </div>
       </div>
+      {mobilePanel && (
+        <PlayerSheet
+          title={t(`player.${mobilePanel}`)}
+          onClose={() => setMobilePanel(null)}
+          target={fullscreen && containerRef.current ? containerRef.current : document.body}
+        >
+          {mobilePanel === 'volume' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} onChange={(e) => changeVolume(Number(e.target.value))} aria-label={t('player.volume')} className="h-11 min-w-0 flex-1 cursor-pointer accent-cinema-amber" />
+                <output className="w-12 text-right text-sm tabular-nums">{Math.round((muted ? 0 : volume) * 100)}%</output>
+              </div>
+              <button type="button" aria-pressed={muted || volume === 0} onClick={() => { const next = !(muted || volume === 0); if (!next && volume === 0) changeVolume(1); else { setMuted(next); if (videoRef.current) videoRef.current.muted = next; } }} className="min-h-11 w-full rounded-lg bg-cinema-card px-4 text-left text-sm">{t('player.mute')}</button>
+            </div>
+          )}
+          {mobilePanel === 'settings' && (
+            <div className="space-y-2">
+              <button type="button" onClick={() => setMobilePanel('quality')} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg bg-cinema-card px-4 py-3 text-sm"><span>{t('player.quality')}</span><span className="text-cinema-accent">{quality} ›</span></button>
+              <button type="button" onClick={() => setMobilePanel('speed')} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg bg-cinema-card px-4 py-3 text-sm"><span>{t('player.speed')}</span><span className="text-cinema-accent">{speed}× ›</span></button>
+            </div>
+          )}
+          {(mobilePanel === 'quality' || mobilePanel === 'speed') && (
+            <div className="space-y-1">
+              <button type="button" onClick={() => setMobilePanel('settings')} className="mb-2 min-h-11 rounded-lg px-4 text-sm text-cinema-soft">← {t('player.settings')}</button>
+              {mobilePanel === 'quality' ? (['480p', '720p', '1080p'] as Quality[]).filter((q) => transcoding || qualities.includes(q)).map((q) => {
+                const ready = qualities.includes(q);
+                const locked = qualityRank(q) > qualityRank(maxQuality);
+                return (
+                  <button key={q} type="button" disabled={!ready} aria-pressed={q === quality} onClick={() => { setMobilePanel(null); if (locked) onLockedQuality?.(q); else onQualityChange(q); }} className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left text-sm disabled:opacity-50 ${q === quality ? 'bg-cinema-amber text-cinema-ink' : 'bg-cinema-card'}`}>
+                    <span className="flex items-center gap-2">{q}{locked && <LockIcon />}{q === quality && ' ✓'}</span>
+                    {!ready ? <span className="text-xs">{t('player.qualityProcessing')}</span> : locked ? <span className="text-xs">{t('player.qualityLocked')}</span> : null}
+                  </button>
+                );
+              }) : SPEEDS.map((s) => (
+                <button key={s} type="button" aria-pressed={s === speed} onClick={() => { changeSpeed(s); setMobilePanel(null); }} className={`flex min-h-11 w-full items-center justify-between rounded-lg px-4 py-3 text-sm ${s === speed ? 'bg-cinema-amber text-cinema-ink' : 'bg-cinema-card'}`}>{s}×{s === speed && <span>✓</span>}</button>
+              ))}
+            </div>
+          )}
+        </PlayerSheet>
+      )}
     </div>
   );
 }

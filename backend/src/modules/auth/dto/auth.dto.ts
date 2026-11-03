@@ -1,4 +1,5 @@
 import { IsEmail, IsString, Matches, MinLength } from 'class-validator';
+import { IsPassword } from '../../../common/validators/password';
 
 export class RegisterDto {
   @IsEmail({}, { message: 'Invalid email format' })
@@ -9,10 +10,7 @@ export class RegisterDto {
   name!: string;
 
   @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
-  @Matches(/^(?=.*[A-Za-z])(?=.*[^A-Za-z]).+$/, {
-    message: 'Password must contain letters and at least one number or special character',
-  })
+  @IsPassword()
   password!: string;
 }
 
@@ -34,9 +32,6 @@ export class ResetPasswordDto {
   token!: string;
 
   @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
-  @Matches(/^(?=.*[A-Za-z])(?=.*[^A-Za-z]).+$/, {
-    message: 'Password must contain letters and at least one number or special character',
-  })
+  @IsPassword()
   newPassword!: string;
 }

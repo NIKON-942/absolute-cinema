@@ -15,8 +15,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  changes:
+    name: Select checks for changed files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+      full: ${{ steps.scope.outputs.full }}
+      auth: ${{ steps.scope.outputs.auth }}
+      payments: ${{ steps.scope.outputs.payments }}
+      uploads: ${{ steps.scope.outputs.uploads }}
+      video: ${{ steps.scope.outputs.video }}
+      deployment: ${{ steps.scope.outputs.deployment }}
+      regressions: ${{ steps.scope.outputs.regressions }}
+      dependencies: ${{ steps.scope.outputs.dependencies }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          # Read-only credentials permit fetching a pre-push SHA in private repos.
+          # Checkout removes them in its post-job cleanup.
+          persist-credentials: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Check scope selection rules
+        run: node --test .github/scripts/ci-scope.test.mjs
+      - name: Select required checks
+        id: scope
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          CI_BASE_REF: ${{ github.base_ref }}
+        run: node .github/scripts/ci-scope.mjs
+
   checks:
     name: Build and integration checks (ARM64)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     permissions:
@@ -31,9 +67,10 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: "24"
           package-manager-cache: false
       - name: Prepare isolated configuration
+        id: config
         shell: bash
         run: |
           set -euo pipefail
@@ -56,8 +93,6 @@ jobs:
           EOF
           for script in deploy/*.sh; do bash -n "$script"; done
       - uses: docker/setup-buildx-action@v4
-      - name: Check upload timing calculations
-        run: npm --prefix frontend run test:upload
       - name: Build API runtime
         uses: docker/build-push-action@v7
         with:
@@ -73,12 +108,16 @@ jobs:
         with:
           context: .
           file: frontend/Dockerfile
+          build-args: |
+            CHECK_SESSIONS=${{ needs.changes.outputs.auth }}
+            CHECK_UPLOADS=${{ needs.changes.outputs.uploads }}
           load: true
           tags: ${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=frontend-arm64
           cache-to: type=gha,mode=max,scope=frontend-arm64
-      - name: Check Caddy, migrations and production bootstrap
+      - name: Start isolated application and database
+        id: stack
         shell: bash
         run: |
           set -euo pipefail
@@ -87,45 +126,79 @@ jobs:
           docker run --rm -e SITE_ADDRESS=http://localhost --entrypoint caddy \
             "$IMAGE_PREFIX-frontend:$IMAGE_TAG" validate --config /etc/caddy/Caddyfile --adapter caddyfile
           dc up -d --wait --wait-timeout 120 postgres
-          # Test compiled migration discovery and repeatability on an empty DB.
+          # Every image must boot from a clean database before it can deploy.
           dc run --rm --no-deps backend node dist/database/run-migrations.js
-          dc run --rm --no-deps backend node dist/database/run-migrations.js
-          dc run --rm --no-deps backend node dist/database/bootstrap.js
           dc run --rm --no-deps backend node dist/database/bootstrap.js
           dc run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true \
             -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/prepare-smoke.mjs
           dc up -d --wait --wait-timeout 180
+      - name: Check migration and bootstrap repeatability
+        if: needs.changes.outputs.deployment == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
+          dc run --rm --no-deps backend node dist/database/run-migrations.js
+          dc run --rm --no-deps backend node dist/database/bootstrap.js
       - name: Check SPA, authentication, payments, streaming and device limits
         shell: bash
         run: |
           set -euo pipefail
           curl --fail --silent http://localhost/login | grep -q '<div id="root">'
           node backend/scripts/smoke-plans.mjs
-      - name: Check upgraded password, mail and upload dependencies
+      - name: Check password, mail and tracing dependencies
+        if: needs.changes.outputs.dependencies == 'true'
         shell: bash
         run: |
           set -euo pipefail
           docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml \
-            run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true -e SMOKE_API_URL=http://backend:4000/api \
+            run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true -e SMOKE_GROUP=dependencies \
             -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-dependencies.mjs
-      - name: Check direct FFmpeg and Stripe SDK migration
+      - name: Check image attachments and resumable uploads
+        if: needs.changes.outputs.uploads == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
+          dc run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true -e SMOKE_GROUP=images -e SMOKE_API_URL=http://backend:4000/api \
+            -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-dependencies.mjs
+          dc run --rm --no-deps -v "$PWD/backend/scripts:/app/scripts:ro" \
+            backend node --test scripts/uploads.test.mjs
+      - name: Check FFmpeg processing and video upload
+        if: needs.changes.outputs.video == 'true'
         shell: bash
         run: |
           set -euo pipefail
           dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
           dc run --rm --no-deps -v "$PWD/backend/scripts:/app/scripts:ro" \
             backend node --test scripts/transcode.test.mjs
-          dc run --rm --no-deps -v "$PWD/backend/scripts:/app/scripts:ro" \
-            backend node --test scripts/uploads.test.mjs
+          dc run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true -e SMOKE_GROUP=video -e SMOKE_API_URL=http://backend:4000/api \
+            -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-dependencies.mjs
+      - name: Check Stripe transport and signed webhooks
+        if: needs.changes.outputs.payments == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
           dc run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true \
             -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-stripe.mjs
+      - name: Check auth and payment regressions on a separate database
+        if: needs.changes.outputs.regressions == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
+          dc exec -T postgres createdb -U cinema cinema_review
+          dc run --rm --no-deps -e DB_NAME=cinema_review backend node dist/database/run-migrations.js
+          dc run --rm --no-deps -e DB_NAME=cinema_review -e ALLOW_SMOKE_FIXTURES=true \
+            -v "$PWD/backend/scripts:/app/scripts:ro" backend node --test scripts/review-regressions.test.mjs
       - name: Show container state on failure
-        if: failure()
+        if: failure() && steps.config.outcome == 'success' && steps.stack.outcome != 'skipped'
         run: |
           docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml ps
           docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml logs --tail=100
       - name: Remove isolated containers and test data
-        if: always()
+        if: always() && steps.config.outcome == 'success' && steps.stack.outcome != 'skipped'
         run: docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml down -v --remove-orphans
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
@@ -142,8 +215,8 @@ jobs:
 
   deploy:
     name: Deploy dev to Oracle VM
-    needs: checks
-    if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
+    needs: [changes, checks]
+    if: needs.changes.outputs.run == 'true' && needs.checks.result == 'success' && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     environment: development

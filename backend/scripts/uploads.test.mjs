@@ -26,7 +26,7 @@ function fixture() {
   const job = { status: 'none' };
   const media = { getMovie: async () => movie, getMovieEntity: async () => movie,
     transcodeJob: async () => job, attachMasterVideo: async () => { attached++; job.status = 'processing'; } };
-  const transcode = { probe: async () => { probed++; return { height: 720, duration: 1 }; } };
+  const transcode = { probe: async () => { probed++; return { height: 720, duration: 1, format: 'mov,mp4,m4a,3gp,3g2,mj2', codec: 'h264' }; } };
   return { service: new UploadsService(media, transcode), media, transcode, movie, job, counts: () => ({ attached, probed }) };
 }
 let movieId = 0;

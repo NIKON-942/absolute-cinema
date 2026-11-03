@@ -64,6 +64,12 @@ export class UserEntity {
   @Column({ type: 'int', default: 0 })
   tokenVersion: number;
 
+  @Column({ type: 'int', default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  loginLockedUntil: Date | null;
+
   @Column({ type: 'varchar', nullable: true })
   avatarUrl: string | null;
 

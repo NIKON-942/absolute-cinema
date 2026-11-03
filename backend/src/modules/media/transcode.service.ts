@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
@@ -8,6 +8,7 @@ import { MovieEntity, TranscodeStatusEnum } from './entities/movie.entity';
 import { MASTERS_DIR, VIDEOS_DIR } from './media.constants';
 import { canCopyVideo, prepareWebAudio, probeMedia, renderWebVideo } from './media-processing';
 import type { MediaProbe, ProcessingProgress } from './media-processing';
+import { downloadRemoteSource } from './remote-source';
 
 type Quality = '480p' | '720p' | '1080p';
 const TARGETS: Array<{ quality: Quality; height: number; column: 'video480' | 'video720' | 'video1080' }> = [
@@ -30,13 +31,22 @@ export interface TranscodeJobInfo {
  * video is remuxed rather than encoded. New movies publish complete renditions
  * incrementally; replacements keep the old video until every rendition succeeds. */
 @Injectable()
-export class TranscodeService {
+export class TranscodeService implements OnModuleInit {
   private readonly logger = new Logger(TranscodeService.name);
   private readonly queue: Array<() => Promise<void>> = [];
   private draining = false;
   private readonly jobs = new Map<number, TranscodeJobInfo>();
   private readonly lastProgress = new Map<number, number>();
   constructor(@InjectRepository(MovieEntity) private moviesRepo: Repository<MovieEntity>) {}
+
+  async onModuleInit(): Promise<void> {
+    const interrupted = await this.moviesRepo.find({ where: { transcodeStatus: TranscodeStatusEnum.PROCESSING } });
+    for (const movie of interrupted) {
+      if (this.jobs.get(movie.id)?.status === TranscodeStatusEnum.PROCESSING) continue;
+      if (movie.pendingMasterVideo) await this.enqueue(movie.id, movie.pendingMasterVideo);
+      else await this.moviesRepo.update(movie.id, { transcodeStatus: TranscodeStatusEnum.FAILED });
+    }
+  }
 
   jobInfo(movieId: number): TranscodeJobInfo | undefined {
     const info = this.jobs.get(movieId);
@@ -55,7 +65,7 @@ export class TranscodeService {
       phase: 'queued', currentQuality: null, targetQualities: [], renditions: [], startedAt: null, finishedAt: null,
       elapsedSeconds: 0, remainingSeconds: null };
     this.jobs.set(movieId, info);
-    try { await this.moviesRepo.update(movieId, { transcodeStatus: TranscodeStatusEnum.PROCESSING }); }
+    try { await this.moviesRepo.update(movieId, { transcodeStatus: TranscodeStatusEnum.PROCESSING, pendingMasterVideo: masterSource }); }
     catch (error) { this.jobs.delete(movieId); throw error; }
     this.queue.push(() => this.run(movieId, masterSource)); void this.drain();
   }
@@ -67,7 +77,8 @@ export class TranscodeService {
   }
   private async run(movieId: number, masterSource: string): Promise<void> {
     const outputs: string[] = []; const published = new Set<string>(); let scratch: string | undefined;
-    const input = /^https?:\/\//i.test(masterSource) ? masterSource : join(MASTERS_DIR, masterSource);
+    let input = join(MASTERS_DIR, masterSource);
+    let remoteScratch: string | undefined;
     const info = this.jobs.get(movieId)!;
     info.startedAt = new Date().toISOString(); info.phase = 'probing';
     try {
@@ -75,6 +86,11 @@ export class TranscodeService {
       if (!movie) throw new Error('Movie no longer exists');
       const isNew = !movie.video480 && !movie.video720 && !movie.video1080;
       await mkdir(VIDEOS_DIR, { recursive: true }); await mkdir(MASTERS_DIR, { recursive: true });
+      if (/^https?:\/\//i.test(masterSource)) {
+        remoteScratch = await mkdtemp(join(MASTERS_DIR, '.remote-'));
+        input = join(remoteScratch, 'source');
+        await downloadRemoteSource(masterSource, input);
+      }
       const meta = await this.probe(input);
       const targets = TARGETS.filter(target => target.height <= meta.height);
       if (!targets.length) throw new Error('Master video must be at least 480 pixels high');
@@ -123,7 +139,7 @@ export class TranscodeService {
       const result = await this.moviesRepo.update(movieId, { masterVideo: masterSource,
         video480: rendered.find(r => r.quality === '480p')?.file ?? null,
         video720: rendered.find(r => r.quality === '720p')?.file ?? null,
-        video1080: rendered.find(r => r.quality === '1080p')?.file ?? null, transcodeStatus: TranscodeStatusEnum.READY });
+        video1080: rendered.find(r => r.quality === '1080p')?.file ?? null, transcodeStatus: TranscodeStatusEnum.READY, pendingMasterVideo: null });
       if (result?.affected === 0) throw new Error('Movie no longer exists');
       outputs.forEach(path => published.add(path));
       info.status = TranscodeStatusEnum.READY; info.phase = 'ready'; info.progress = 100;
@@ -135,12 +151,13 @@ export class TranscodeService {
       await Promise.all(outputs.filter(path => !published.has(path)).map(path => rm(path, { force: true }).catch(() => undefined)));
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Transcode failed for movie #${movieId}: ${message}`);
-      await this.moviesRepo.update(movieId, { transcodeStatus: TranscodeStatusEnum.FAILED }).catch(() => undefined);
+      await this.moviesRepo.update(movieId, { transcodeStatus: TranscodeStatusEnum.FAILED, pendingMasterVideo: null }).catch(() => undefined);
       const current = info.renditions.find(r => r.quality === info.currentQuality); if (current) current.state = 'failed';
       info.status = TranscodeStatusEnum.FAILED; info.phase = 'failed'; info.currentQuality = null; info.error = message;
     } finally {
       info.finishedAt = new Date().toISOString(); this.jobInfo(movieId);
       if (scratch) await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+      if (remoteScratch) await rm(remoteScratch, { recursive: true, force: true }).catch(() => undefined);
     }
   }
   async probe(input: string): Promise<MediaProbe> { return probeMedia(input); }

@@ -56,7 +56,7 @@ function toForm(payload: MovieUpsertPayload): FormData {
     ['masterVideoUrl', payload.masterVideoUrl],
   ];
   for (const [key, value] of entries) {
-    if (value !== undefined && value !== null && value !== '') form.append(key, String(value));
+    if (value !== undefined && value !== null && (value !== '' || key === 'posterUrl')) form.append(key, String(value));
   }
   if (payload.genreIds) form.append('genreIds', JSON.stringify(payload.genreIds));
   if (payload.actorIds) form.append('actorIds', JSON.stringify(payload.actorIds));
@@ -128,11 +128,19 @@ export const mediaService = {
     return api.delete(`/media/genres/${id}`).then(() => undefined);
   },
 
-  createActor(name: string, photoUrl?: string): Promise<ActorDto> {
+  createActor(name: string, photoUrl?: string, file?: File | null): Promise<ActorDto> {
+    if (file) {
+      const form = new FormData(); form.append('name', name); form.append('file', file);
+      return api.post('/media/actors', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data);
+    }
     return api.post('/media/actors', { name, photoUrl }).then((r) => r.data);
   },
 
-  updateActor(id: number, name: string, photoUrl?: string): Promise<ActorDto> {
+  updateActor(id: number, name: string, photoUrl?: string, file?: File | null): Promise<ActorDto> {
+    if (file) {
+      const form = new FormData(); form.append('name', name); form.append('file', file);
+      return api.patch(`/media/actors/${id}`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data);
+    }
     return api.patch(`/media/actors/${id}`, { name, photoUrl }).then((r) => r.data);
   },
 

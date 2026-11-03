@@ -54,6 +54,12 @@ export class PaymentTransactionEntity {
   @Column({ type: 'int', default: 0 })
   retries: number;
 
+  @Column({ type: 'varchar', nullable: true })
+  stripeCheckoutId: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  expiresAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

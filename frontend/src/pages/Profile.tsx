@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { Spinner } from '@/components/Spinner';
 import { FieldError } from '@/components/AuthShell';
 import { Modal } from '@/components/Modal';
+import { ImageField } from '@/components/ImageField';
 import { formatDate, formatDuration } from '@/utils/format';
 import { resolveMediaUrl } from '@/utils/url';
 import { posterGradient } from '@/utils/format';
@@ -27,11 +28,13 @@ const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide t
 
 export default function Profile() {
   const { t, lang } = useLanguage();
-  const { user, setUser, refreshMe } = useAuth();
+  const { user, setUser, refreshMe, logout } = useAuth();
+  const navigate = useNavigate();
   const { success, error: errorToast } = useToast();
 
   const [name, setName] = useState(user?.name ?? '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl ?? '');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [password, setPassword] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [errors, setErrors] = useState<{
@@ -112,7 +115,7 @@ export default function Profile() {
     else if (name.trim().length < 2) next.name = t('auth.validation.nameMin');
     if (password && !isValidPassword(password)) next.password = t('auth.validation.passwordPattern');
     if (password && !currentPassword) next.currentPassword = t('profile.account.currentPasswordRequired');
-    if (avatarUrl.trim() && !/^https?:\/\/.+/i.test(avatarUrl.trim())) next.avatarUrl = t('profile.account.avatarUrlInvalid');
+    if (!avatarFile && avatarUrl.trim() && avatarUrl !== user.avatarUrl && !/^https?:\/\/.+/i.test(avatarUrl.trim())) next.avatarUrl = t('profile.account.avatarUrlInvalid');
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
@@ -120,13 +123,20 @@ export default function Profile() {
     try {
       const updated = await usersService.updateMe({
         name: name.trim(),
+        file: avatarFile,
         ...(avatarUrl.trim() !== (user.avatarUrl ?? '') ? { avatarUrl: avatarUrl.trim() || null } : {}),
         ...(password ? { password, currentPassword } : {}),
       });
       setUser(updated);
+      setAvatarUrl(updated.avatarUrl ?? '');
+      setAvatarFile(null);
       setPassword('');
       setCurrentPassword('');
       success(t('profile.account.saved'));
+      if (password) {
+        logout();
+        navigate('/login', { replace: true });
+      }
     } catch (err) {
       errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
     } finally {
@@ -183,18 +193,8 @@ export default function Profile() {
               <input type="email" value={user.email} readOnly className={`${inputClass} cursor-not-allowed opacity-60`} />
             </div>
             <div>
-              <label htmlFor="profile-avatar" className={labelClass}>
-                {t('profile.account.avatarUrl')}
-              </label>
-              <input
-                id="profile-avatar"
-                type="url"
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                placeholder="https://…"
-                className={inputClass}
-                aria-invalid={Boolean(errors.avatarUrl)}
-              />
+              <ImageField id="profile-avatar" label={t('profile.account.avatar')}
+                value={avatarUrl} file={avatarFile} onFileChange={setAvatarFile} onUrlChange={setAvatarUrl} disabled={saving} />
               <FieldError message={errors.avatarUrl} />
             </div>
             <div>
@@ -269,7 +269,7 @@ export default function Profile() {
                 <dd className="text-right font-semibold text-cinema-soft">{formatDate(sub.endsAt)}</dd>
                 <dt className="text-cinema-muted">{t('profile.subscription.autoRenew')}</dt>
                 <dd className="text-right font-semibold text-cinema-soft">
-                  {sub.status === 'active' ? '✓' : '—'}
+                  {sub.autoRenew ? '✓' : '—'}
                 </dd>
               </dl>
               <div className="mt-6 flex flex-wrap gap-3">
@@ -279,7 +279,7 @@ export default function Profile() {
                 >
                   {t('plans.title')}
                 </Link>
-                {sub.status === 'active' && (
+                {sub.status === 'active' && !sub.cancelAtPeriodEnd && (
                   <button
                     type="button"
                     onClick={() => setCancelOpen(true)}
@@ -394,7 +394,7 @@ export default function Profile() {
               return (
                 <li key={p.movieId}>
                   <Link
-                    to={`/watch/${p.movieId}`}
+                    to={`/movie/${p.movieId}`}
                     className="group flex gap-4 rounded-2xl border border-cinema-border bg-cinema-panel/60 p-3 transition hover:border-cinema-amber/50 hover:bg-cinema-panel"
                   >
                     <div className="w-20 shrink-0 overflow-hidden rounded-lg border border-cinema-border">

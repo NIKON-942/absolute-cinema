@@ -72,7 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     // Ask the server to revoke the token (FR-36), then clear local state.
-    authService.logout().catch(() => undefined);
+    const accessToken = localStorage.getItem(TOKEN_KEY);
+    authService.logout(accessToken).catch(() => undefined);
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);

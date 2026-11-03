@@ -2,13 +2,12 @@
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-/** Password rule (FR-2): min 8 chars, at least one letter and one non-letter character (digit or special). */
-const PASSWORD_RE = /^(?=.*[A-Za-zА-Яа-яІіЇїЄєҐґ])(?=.*[^A-Za-zА-Яа-яІіЇїЄєҐґ]).{8,}$/;
+/** РГР2 FR-2: at least eight characters; bcrypt accepts up to 72 UTF-8 bytes. */
 
 export function isValidEmail(value: string): boolean {
   return EMAIL_RE.test(value.trim());
 }
 
 export function isValidPassword(value: string): boolean {
-  return PASSWORD_RE.test(value);
+  return [...value].length >= 8 && new TextEncoder().encode(value).length <= 72;
 }

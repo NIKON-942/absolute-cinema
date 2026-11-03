@@ -71,6 +71,8 @@ interface SubscriptionDto {
   status: 'pending' | 'active' | 'expired' | 'cancelled';
   startsAt: string | null;
   endsAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  autoRenew: boolean; // false in mock mode and after renewal cancellation
 }
 
 interface WatchProgressDto {
@@ -119,12 +121,12 @@ interface DeviceSessionDto {
 | POST | `/auth/login` | — | `{ email, password }` | `{ user: UserDto, accessToken }` (updates lastLoginAt) |
 | POST | `/auth/logout` | Bearer | — | `{ message }` — revokes all issued tokens (FR-36) |
 | GET | `/auth/google` | — | — | redirects to Google |
-| GET | `/auth/google/callback` | — | `?code=...` | 302 → `CLIENT_URL/auth/oauth-success?token=<jwt>` |
+| GET | `/auth/google/callback` | — | `?code=...` | 302 → `CLIENT_URL/auth/oauth-success#token=<jwt>` |
 | GET | `/auth/me` | Bearer | — | `UserDto` |
 | POST | `/auth/forgot-password` | — | `{ email }` | `{ message }` (always 200; email with reset link `/reset-password?token=...`) |
 | POST | `/auth/reset-password` | — | `{ token, newPassword }` | `{ message }` (token valid 24h) |
 
-Password rules: min 8 chars, must contain a letter and a number.
+Password rules (РГР2 FR-2): at least 8 Unicode code points, at most 72 UTF-8 bytes (bcrypt limit). The same rule applies to registration, reset and profile changes. Five incorrect login attempts lock password sign-in for one hour. Changing a password revokes all JWTs and requires signing in again.
 
 ## Users (`/users`, admin unless noted)
 
@@ -132,7 +134,7 @@ Password rules: min 8 chars, must contain a letter and a number.
 |---|---|---|---|---|
 | GET | `/users` | admin | `?page=1&limit=20&search=` | `{ items: UserDto[], total, page, limit }` |
 | GET | `/users/me` | Bearer | — | `UserDto` |
-| PATCH | `/users/me` | Bearer | `{ name?, password? }` | `UserDto` |
+| PATCH | `/users/me` | Bearer | JSON `{ name?, avatarUrl?, password?, currentPassword? }` or multipart with the same fields plus `file?` (avatar image). `currentPassword` required for a password change. | `UserDto` |
 | PATCH | `/users/:id/role` | admin | `{ role: 'viewer'|'admin' }` | `UserDto` |
 | PATCH | `/users/:id/block` | admin | `{ isBlocked: boolean }` | `UserDto` |
 | DELETE | `/users/:id` | admin | — | 204 |
@@ -168,11 +170,11 @@ Blocked users: login returns 403 `Account is blocked`.
 | POST | `/media/:id/master-video` | multipart: `file` (single master video, any ffmpeg-readable container) → `MovieDto` with `transcodeStatus: 'processing'`; the server renders 480p/720p/1080p H.264/AAC variants in the background and links them to the movie |
 | GET | `/media/:id/transcode` | `{ movieId, status: none|processing|ready|failed, qualities: string[], error? }` — live background-job state for polling |
 | POST | `/media/genres` / PATCH `/media/genres/:id` / DELETE | `{ name }` |
-| POST | `/media/actors` / PATCH `/media/actors/:id` / DELETE | `{ name, photoUrl? }` |
+| POST | `/media/actors` / PATCH `/media/actors/:id` / DELETE | JSON `{ name, photoUrl? }` or multipart `{ name, photoUrl?, file? }` (actor image) |
 | POST | `/media/countries` / PATCH `/media/countries/:id` / DELETE | `{ name }` (FR-38) |
 | POST | `/media/directors` / PATCH `/media/directors/:id` / DELETE | `{ name }` (FR-39) |
 
-Video pipeline: administrators provide ONE master source (upload or URL). A background fluent-ffmpeg job probes it and renders every target resolution ≤ the master's height (never upscales) as faststart MP4s in `storage/videos/`, linking them to the movie and flipping `transcodeStatus` to `ready` (or `failed`). Renditions are linked **as soon as each finishes** (low→high, so 480p is watchable while 720p/1080p still render) — `availableQualities` grows progressively and clients should poll `GET /media/:id` while `transcodeStatus === 'processing'`. Re-uploading a master immediately unlinks previous renditions. Streaming (`GET /media/:id/stream?quality=`) range-serves those generated files, degrading to the best ready quality if the requested one isn't linked yet.
+Video pipeline: administrators provide ONE master source (upload or URL). A durable pending source is stored in PostgreSQL; the single-process queue resumes interrupted jobs on startup. Direct FFmpeg subprocesses render resolutions no higher than the source as faststart H.264/AAC MP4s. New movies publish completed renditions progressively; replacements preserve the previous video until every new rendition succeeds. Remote sources are downloaded with public-address validation, DNS pinning, redirect checks, an 8 GiB limit and a 15-minute download deadline. FFmpeg/ffprobe accept local files only. Uploaded masters must be MP4 (H.264/H.265, AAC if audio is present) or WebM; posters must be JPG/PNG/WebP up to 5 MiB, with byte-signature validation.
 
 ## Recommendations (`/recommendations`)
 
@@ -188,10 +190,13 @@ Video pipeline: administrators provide ONE master source (upload or URL). A back
 | POST | `/payments/checkout` | Bearer | `{ tier, period }` | `{ checkoutUrl }` — Stripe hosted checkout when `STRIPE_ENABLED=true`, otherwise `{ checkoutUrl: "/mock-checkout/<sessionId>" }` on the frontend |
 | POST | `/payments/mock-complete/:sessionId` | Bearer | — | `{ message }` — mock mode only: simulates the gateway webhook (activates subscription, grants access, sends receipt email) |
 | POST | `/payments/mock-cancel/:sessionId` | Bearer | — | `{ message }` — mock mode only: marks order cancelled |
-| POST | `/payments/subscription/cancel` | Bearer | — | `{ message }` — cancels the user's active subscription (and any pending checkout) immediately |
-| POST | `/payments/webhook` | Stripe sig header | raw body | 200; handles `checkout.session.completed`; pending orders time out after 20 min (cron) with up to 3 retries |
+| POST | `/payments/subscription/cancel` | Bearer | — | `{ message }` — turns off Stripe automatic renewal, preserves access until `endsAt`, cancels pending checkouts |
+| POST | `/payments/retry/:sessionId` | Bearer, order owner | — | `{ checkoutUrl }` — closes an abandoned checkout and creates a new attempt, up to 3 retries per order chain |
+| POST | `/payments/webhook` | Stripe sig header | raw body | 200; verifies signatures, handles paid Checkout, paid renewal invoices, checkout expiration and subscription updates/deletion; duplicate payments are idempotent |
 
-Subscription activation sets `subscription.status='active'`, `startsAt=now`, `endsAt=now+1mo|1y`, and grants streaming access.
+Subscription activation and the paid transaction commit together under a per-user lock. Stripe billing dates are authoritative; mock calendar dates clamp to the last day of the target month. Pending checkouts expire after 20 minutes (cron); retries require a user action and never rewrite the original `createdAt`. Stripe mode requires both secret key and webhook secret; missing credentials stop startup instead of enabling mock payments.
+
+Configure the Stripe event destination for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `invoice.paid`, `customer.subscription.updated`, and `customer.subscription.deleted`. Existing live subscriptions created before external IDs were stored require reconciliation with Stripe; the migration cannot infer these IDs.
 
 ## Devices (`/devices`, Bearer)
 
@@ -209,6 +214,10 @@ Concurrent-device enforcement. The SPA generates a persistent `deviceId` (localS
 | Method | Path | Returns |
 |---|---|---|
 | GET | `/admin/analytics?days=30` | `{ totalUsers, totalMovies, activeSubscriptions, intervalDays, newUsersInPeriod, topMovies: { id, title, viewCount, averageRating }[], genrePopularity: { genre, views, movies, averageRating }[], revenueByMonth: { month, total }[] }` — revenue/new-users are filtered to the interval; genre popularity covers all time (FR-43/44) |
+
+## Image attachments
+
+Profile avatars, actor photos and movie posters use file attachments as the primary UI action, with external URLs available in a secondary disclosure. Accepted files: JPG/JPEG, PNG and WebP up to 5 MiB, validated by MIME/extension and byte signature. Uploaded files are stored in the existing persistent media volume and served through `/api/media/posters/:filename`; the saved avatar/photo/poster URL remains valid after reload and deployment. A file takes precedence over a supplied URL. Empty image URL clears the image (`null` also supported for avatars). User avatars require authentication; actor/poster changes require admin access. No database migration is required for image attachment support.
 
 ## Mail
 

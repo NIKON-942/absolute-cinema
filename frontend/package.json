@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test:upload": "node --experimental-strip-types --test scripts/upload-metrics.test.mjs",
+    "test:auth": "node --test scripts/auth-regressions.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

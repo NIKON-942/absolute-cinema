@@ -78,7 +78,8 @@ Business rules implemented per `docs/6`: pending orders time out after **20 minu
 
 - **Auth** — email/password (bcrypt, ≥8 chars), JWT sessions, Google OAuth 2.0, password reset with 24h single-use tokens.
 - **Catalog** — search & filters (title, genre, year, country, age rating), sorting, pagination, favorites, 1–10 ratings.
-- **Streaming** — HTTP Range requests (206 Partial Content), 480p/720p/1080p quality selection, saved watch progress, subscription-gated access. Renditions become watchable progressively while higher qualities are still transcoding — the Watch page live-polls availability, plays the best ready quality, and disables not-yet-processed ones; stream requests for a missing quality degrade to the best ready rendition. Admins upload **one master video** (drag-and-drop file or URL); a background FFmpeg/ffprobe job transcodes it into every target resolution (never upscaling) and links the variants to the movie automatically.
+- **Movie page** — `/movie/:id` combines playback, metadata, trailer, cast, ratings, favorites and link sharing. Related movies appear beside the player on desktop and below the details on mobile. Guests can read the page; full-video access requires sign-in and an active subscription. Video loading starts only after pressing Play. Legacy `/watch/:id` links redirect to the movie page.
+- **Streaming** — HTTP Range requests (206 Partial Content), 480p/720p/1080p quality selection, saved watch progress, subscription-gated access. Renditions become watchable progressively while higher qualities are still transcoding — the movie page live-polls availability, plays the best ready quality, and disables not-yet-processed ones; stream requests for a missing quality degrade to the best ready rendition. Admins upload **one master video** (drag-and-drop file or URL); a background FFmpeg/ffprobe job transcodes it into every target resolution (never upscaling) and links the variants to the movie automatically.
 - **Plan enforcement** — limits are strict and server-side: Basic streams on **1 device** at up to **720p**, Plus on **2 devices** at up to **1080p**, Premium on **4 devices** (1080p, priority support). The SPA heartbeats a per-browser `deviceId` while playing; a stream request for a quality above the plan returns `402 UPGRADE_REQUIRED` (the UI shows an upgrade prompt), and one more device than allowed returns `409 DEVICE_LIMIT` (with a device manager on the profile page; idle slots auto-release after 5 minutes).
 - **Recommendations** — content-based filtering over genres/director/actors/keywords weighted by your ratings & history; popular/new fallback for cold start.
 - **Subscriptions** — Basic/Plus/Premium, monthly/yearly billing, automated access control with per-tier device-count and quality ceilings.
@@ -107,7 +108,19 @@ absolutecinema/
 ## Oracle Cloud and CI/CD
 
 The `dev` branch is the Oracle test environment; `main` holds the reviewed stable
-code. Pull requests and pushes to both branches run container integration checks.
+code. Runtime changes in pull requests and pushes to both branches build the
+containers and run the basic login, API, subscription, streaming and device-limit
+smoke checks. Changes only to documentation skip builds and deployment.
+Additional checks are selected from the changed paths: auth/payment regressions,
+image/resumable uploads, FFmpeg processing, and migration/bootstrap repeatability.
+Frontend tests reuse the Docker build stage's dependencies instead of installing
+them again on the runner. The Actions summary shows the selected scopes.
+
+Pull requests into `main`, direct runtime pushes to `main`, and manual runs execute
+the full suite. Dependency manifests/lockfiles, Docker/build configuration and CI
+changes also enable every check. If the previous Git revision cannot be read,
+the workflow runs the full suite rather than guessing which checks to omit.
+
 Only `dev` publishes images and can deploy; merging `dev` into `main` does not
 deploy. Deployment stays disabled until the repository variable `DEPLOY_ENABLED`
 is set to `true` and the GitHub environment `development` is configured.

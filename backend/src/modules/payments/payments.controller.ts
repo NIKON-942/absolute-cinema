@@ -79,6 +79,13 @@ export class PaymentsController {
     );
   }
 
+  @Post('retry/:sessionId')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  retry(@Req() req: Request, @Param('sessionId') sessionId: string) {
+    return this.paymentsService.retry((req.user as { id: number }).id, sessionId);
+  }
+
   @Post('webhook')
   @HttpCode(200)
   webhook(

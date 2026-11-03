@@ -31,6 +31,7 @@ export default function MockCheckout() {
 
   const [phase, setPhase] = useState<Phase>('form');
   const [cancelting, setCancelting] = useState(false);
+  const [paymentFailed, setPaymentFailed] = useState(false);
 
   // after success: refresh the session (subscription became active), then go home
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function MockCheckout() {
       setPhase('success');
     } catch (err) {
       setPhase('form');
+      setPaymentFailed(true);
       errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
     }
   };
@@ -140,6 +142,11 @@ export default function MockCheckout() {
             </section>
 
             {/* mock card form — prefilled test card, locked on purpose */}
+            {paymentFailed && (
+              <Link to={`/plans?retry=${sessionId}`} className="mb-4 block text-center underline">
+                {t('checkout.retryPayment')}
+              </Link>
+            )}
             <form onSubmit={payNow}>
               <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-cinema-muted">{t('checkout.cardDetails')}</h2>
               <fieldset disabled={phase === 'paying'} className="space-y-3 opacity-80">

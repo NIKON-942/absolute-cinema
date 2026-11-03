@@ -11,7 +11,7 @@ export const api = axios.create({
 /** Attach the JWT to every request when present. */
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_KEY);
-  if (token) {
+  if (token && !config.headers.Authorization) {
     config.headers = config.headers ?? {};
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -26,8 +26,9 @@ api.interceptors.response.use(
       const url = error.config?.url ?? '';
       // Login/forgot failures must not trigger a session wipe / redirect.
       const isAuthAttempt = url.includes('/auth/login') || url.includes('/auth/register');
-      const hadToken = Boolean(localStorage.getItem(TOKEN_KEY));
-      if (!isAuthAttempt && hadToken) {
+      const stored = localStorage.getItem(TOKEN_KEY);
+      const belongsToCurrentSession = stored && error.config?.headers?.Authorization === `Bearer ${stored}`;
+      if (!isAuthAttempt && belongsToCurrentSession) {
         localStorage.removeItem(TOKEN_KEY);
         const loginPath = `/login?expired=1`;
         if (window.location.pathname !== '/login') {
