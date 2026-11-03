@@ -107,7 +107,19 @@ absolutecinema/
 ## Oracle Cloud and CI/CD
 
 The `dev` branch is the Oracle test environment; `main` holds the reviewed stable
-code. Pull requests and pushes to both branches run container integration checks.
+code. Runtime changes in pull requests and pushes to both branches build the
+containers and run the basic login, API, subscription, streaming and device-limit
+smoke checks. Changes only to documentation skip builds and deployment.
+Additional checks are selected from the changed paths: auth/payment regressions,
+image/resumable uploads, FFmpeg processing, and migration/bootstrap repeatability.
+Frontend tests reuse the Docker build stage's dependencies instead of installing
+them again on the runner. The Actions summary shows the selected scopes.
+
+Pull requests into `main`, direct runtime pushes to `main`, and manual runs execute
+the full suite. Dependency manifests/lockfiles, Docker/build configuration and CI
+changes also enable every check. If the previous Git revision cannot be read,
+the workflow runs the full suite rather than guessing which checks to omit.
+
 Only `dev` publishes images and can deploy; merging `dev` into `main` does not
 deploy. Deployment stays disabled until the repository variable `DEPLOY_ENABLED`
 is set to `true` and the GitHub environment `development` is configured.
