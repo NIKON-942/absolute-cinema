@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinTable,
   ManyToMany,
   PrimaryGeneratedColumn,
@@ -32,6 +33,7 @@ export enum SubscriptionStatusEnum {
 }
 
 @Entity('users')
+@Index('uq_users_google_id', ['googleId'], { unique: true, where: 'google_id IS NOT NULL' })
 export class UserEntity {
   @PrimaryGeneratedColumn()
   id: number;

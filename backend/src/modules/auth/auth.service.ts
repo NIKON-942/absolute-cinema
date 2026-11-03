@@ -110,50 +110,43 @@ export class AuthService {
     };
   }
 
-  /**
-   * Called by the Google OAuth callback with the verified profile.
-   * `emailVerified` is asserted by the strategy — auto-linking an existing
-   * password account purely on an email match is only safe for verified
-   * addresses (otherwise anyone could claim a victim's email).
-   */
+  /** Google ID is authoritative. Existing password accounts require an explicit signed-in link. */
   async loginWithGoogle(profile: {
-    googleId: string;
-    email: string;
-    name: string;
-    avatarUrl?: string;
-    emailVerified: boolean;
-  }): Promise<string> {
-    if (!profile.emailVerified) {
-      throw new ForbiddenException(
-        'Google account email is not verified — sign up with a password instead',
-      );
-    }
-    let user = await this.usersService.findByEmail(profile.email);
-    if (!user) {
-      user = await this.usersRepo.save({
-        email: profile.email.toLowerCase(),
-        name: profile.name,
-        googleId: profile.googleId,
-        avatarUrl: profile.avatarUrl ?? null,
-        lastLoginAt: new Date(),
+    googleId: string; email: string; name: string; avatarUrl?: string; emailVerified: boolean;
+  }, linkUserId?: number, expectedTokenVersion?: number): Promise<string> {
+    if (!profile.emailVerified || !profile.googleId || !profile.email) throw new ForbiddenException('Google account has no verified email');
+    const conflict = () => new ConflictException({ code: 'GOOGLE_ACCOUNT_CONFLICT', message: 'This Google account is already linked to another account' });
+    let created = false;
+    let user: UserEntity;
+    try {
+      user = await this.usersRepo.manager.transaction(async em => {
+        await em.query('SELECT pg_advisory_xact_lock(1703, hashtext($1))', [profile.googleId]);
+        const owner = await em.findOneBy(UserEntity, { googleId: profile.googleId });
+        let target: UserEntity;
+        if (linkUserId !== undefined) {
+          const current = await em.findOne(UserEntity, { where: { id: linkUserId }, lock: { mode: 'pessimistic_write' } });
+          if (!current || current.isBlocked || current.tokenVersion !== expectedTokenVersion) throw new ForbiddenException('The linking session has expired');
+          if ((owner && owner.id !== current.id) || (current.googleId && current.googleId !== profile.googleId)) throw conflict();
+          current.googleId = profile.googleId; target = current;
+        } else if (owner) {
+          const current = await em.findOneOrFail(UserEntity, { where: { id: owner.id }, lock: { mode: 'pessimistic_write' } });
+          target = current;
+        } else {
+          const existing = await em.findOneBy(UserEntity, { email: profile.email.trim().toLowerCase() });
+          if (existing) throw new ConflictException({ code: 'GOOGLE_LINK_REQUIRED', message: 'Sign in with your password, then link Google in your profile' });
+          target = em.create(UserEntity, { email: profile.email.trim().toLowerCase(), name: profile.name?.trim().slice(0,255) || 'Google User', googleId: profile.googleId });
+          created = true;
+        }
+        if (target.isBlocked) throw new ForbiddenException('Account is blocked');
+        target.lastLoginAt = new Date();
+        if (!target.avatarUrl && profile.avatarUrl) target.avatarUrl = profile.avatarUrl;
+        return em.save(target);
       });
-      this.mail.sendWelcome(user.email, user.name);
-    } else {
-      // Blocked users must never receive a JWT, regardless of sign-in method.
-      if (user.isBlocked) throw new ForbiddenException('Account is blocked');
-      if (!user.googleId) {
-        user.googleId = profile.googleId;
-        await this.usersRepo.update(user.id, {
-          googleId: profile.googleId,
-          lastLoginAt: new Date(),
-          ...(profile.avatarUrl && !user.avatarUrl
-            ? { avatarUrl: profile.avatarUrl }
-            : {}),
-        });
-      } else {
-        await this.usersRepo.update(user.id, { lastLoginAt: new Date() });
-      }
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') throw conflict();
+      throw error;
     }
+    if (created) this.mail.sendWelcome(user.email, user.name);
     return this.signToken(user);
   }
 

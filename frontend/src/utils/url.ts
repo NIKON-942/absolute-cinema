@@ -31,6 +31,6 @@ export function streamUrl(movieId: number, quality: Quality): string {
 }
 
 /** Full URL of the Google OAuth entry point (backend redirects to Google). */
-export function googleAuthUrl(): string {
-  return `${API_BASE}/auth/google`;
+export function googleAuthUrl(returnTo = '/'): string {
+  return `${API_BASE}/auth/google?returnTo=${encodeURIComponent(returnTo)}`;
 }

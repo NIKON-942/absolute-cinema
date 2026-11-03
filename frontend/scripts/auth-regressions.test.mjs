@@ -189,3 +189,16 @@ test('multipart metadata retains JSON relation lists and explicit clears; multi-
   await mediaService.list({ genreIds: [1,2], yearFrom: 2025 });
   assert.equal(params.genreIds, '1,2'); assert.equal(params.yearFrom, 2025);
 });
+
+
+test('OAuth destinations stay internal and the code exchange sends the browser cookie', async () => {
+  const { safeReturnTo } = evaluate('../src/utils/authReturn.ts', {});
+  assert.equal(safeReturnTo('/movie/7?source=login#movie-player'), '/movie/7?source=login#movie-player');
+  for (const path of ['https://evil.example', '//evil.example', '/\\evil.example', '/auth/oauth-success', '/login']) assert.equal(safeReturnTo(path), '/');
+  const calls = [];
+  const { authService } = evaluate('../src/services/authService.ts', { './api': { api: { post: async (...args) => { calls.push(args); return { data: {} }; } } } });
+  await authService.exchangeGoogle('short-lived-code');
+  await authService.linkGoogle();
+  assert.equal(calls[0][0], '/auth/google/exchange'); assert.equal(calls[0][1].code, 'short-lived-code'); assert.equal(calls[0][2].withCredentials, true);
+  assert.equal(calls[1][0], '/auth/google/link'); assert.equal(calls[1][2].withCredentials, true);
+});

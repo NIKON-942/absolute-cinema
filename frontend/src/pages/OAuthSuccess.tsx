@@ -3,42 +3,32 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { AuthShell } from '@/components/AuthShell';
+import { authService } from '@/services/authService';
+import { safeReturnTo } from '@/utils/authReturn';
 import { Spinner } from '@/components/Spinner';
 
-/**
- * OAuth landing page: the backend redirects here with the JWT in the URL
- * FRAGMENT (`#token=<jwt>`, never sent to any server). We store the token,
- * fetch `me` and go home.
- */
+/** Exchange the short-lived, browser-bound OAuth code once; never accept JWTs from URLs. */
 export default function OAuthSuccess() {
   const { t } = useLanguage();
   const { loginWithToken } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [failed, setFailed] = useState(false);
+  const error = searchParams.get('error');
+  const [failed, setFailed] = useState(Boolean(error));
+  const errorKey = ['cancelled','unavailable','state','linkRequired','conflict'].includes(error ?? '') ? `auth.google.${error}` : 'auth.oauth.errorText';
   const startedRef = useRef(false);
 
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    // Prefer the fragment; fall back to ?token= for older links.
-    let token = searchParams.get('token');
-    const hashMatch = /(?:^|[#&])token=([^&]+)/.exec(window.location.hash);
-    if (hashMatch) {
-      token = decodeURIComponent(hashMatch[1]);
-      // Scrub the fragment so the JWT doesn't linger in history/address bar.
-      window.history.replaceState(
-        window.history.state,
-        '',
-        window.location.pathname + window.location.search,
-      );
-    }
-    if (!token) {
-      setFailed(true);
-      return;
-    }
-    loginWithToken(token)
-      .then(() => navigate('/', { replace: true }))
+    const code = new URLSearchParams(window.location.hash.slice(1)).get('code');
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+    if (error || !code) { setFailed(true); return; }
+    authService.exchangeGoogle(code)
+      .then(async result => {
+        await loginWithToken(result.accessToken);
+        navigate(safeReturnTo(result.returnTo), { replace: true });
+      })
       .catch(() => setFailed(true));
   }, [searchParams, loginWithToken, navigate]);
 
@@ -47,7 +37,7 @@ export default function OAuthSuccess() {
       {failed ? (
         <div className="rounded-xl border border-cinema-red/50 bg-cinema-red/10 px-4 py-6 text-center" role="alert">
           <span className="mb-2 block text-3xl">😞</span>
-          <p className="mb-4 text-sm text-cinema-error">{t('auth.oauth.errorText')}</p>
+          <p className="mb-4 text-sm text-cinema-error">{t(errorKey)}</p>
           <Link to="/login" className="inline-block rounded-xl bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink transition hover:shadow-glow">
             {t('auth.oauth.toLogin')}
           </Link>

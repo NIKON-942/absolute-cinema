@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
+import { authService } from '@/services/authService';
 import { mediaService } from '@/services/mediaService';
 import { usersService } from '@/services/usersService';
 import { paymentsService } from '@/services/paymentsService';
@@ -44,6 +45,12 @@ export default function Profile() {
     currentPassword?: string;
   }>({});
   const [saving, setSaving] = useState(false);
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
+  const linkGoogle = async () => {
+    setLinkingGoogle(true);
+    try { const { url } = await authService.linkGoogle(); window.location.assign(url); }
+    catch (err) { errorToast(extractServerMessage(err) ?? t('auth.google.unavailable')); setLinkingGoogle(false); }
+  };
 
   const [favorites, setFavorites] = useState<MovieDto[] | null>(null);
   const [progress, setProgress] = useState<WatchProgressDto[] | null>(null);
@@ -173,6 +180,10 @@ export default function Profile() {
         {/* account form */}
         <section className="rounded-2xl border border-cinema-border bg-cinema-panel/60 p-6">
           <h2 className="mb-5 text-lg font-bold text-cinema-text">{t('profile.account.title')}</h2>
+          <div className="mb-5 rounded-xl border border-cinema-border bg-cinema-card/50 p-4">
+            <p className="text-sm font-semibold text-cinema-text">{t(user.googleLinked ? 'auth.google.linked' : 'auth.google.linkHint')}</p>
+            {!user.googleLinked && <button type="button" onClick={() => void linkGoogle()} disabled={linkingGoogle} className="mt-3 rounded-lg bg-cinema-amber px-4 py-2 text-sm font-bold text-cinema-ink disabled:opacity-60">{t(linkingGoogle ? 'common.loading' : 'auth.google.link')}</button>}
+          </div>
           <form onSubmit={onSubmit} noValidate className="space-y-4">
             <div>
               <label htmlFor="profile-name" className={labelClass}>

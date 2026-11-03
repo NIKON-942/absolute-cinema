@@ -16,6 +16,14 @@ export const authService = {
     return api.post('/auth/login', { email, password }).then((r) => r.data);
   },
 
+  linkGoogle(): Promise<{ url: string }> {
+    return api.post('/auth/google/link', {}, { withCredentials: true }).then(r => r.data);
+  },
+
+  exchangeGoogle(code: string): Promise<{ accessToken: string; returnTo: string }> {
+    return api.post('/auth/google/exchange', { code }, { withCredentials: true }).then(r => r.data);
+  },
+
   me(): Promise<UserDto> {
     return api.get('/auth/me').then((r) => r.data);
   },

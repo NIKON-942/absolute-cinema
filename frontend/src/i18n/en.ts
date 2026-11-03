@@ -543,4 +543,12 @@ export const en: Record<string, string> = {
   'admin.analytics.averageRatingInPeriod': 'Average rating in period',
   'admin.analytics.periodHint': 'Views and ratings use events recorded since the analytics update. Ratings use each viewer’s latest rating action within the selected period; cleared ratings are excluded. User, movie and subscription totals show the current state.',
   'admin.movies.invalidMetadata': 'Check field lengths, runtime (1–600 minutes), URLs and dictionary selections.',
+  'auth.google.cancelled': "Google sign-in was cancelled. You can try again.",
+  'auth.google.unavailable': "Google sign-in is not configured yet. Use email and password.",
+  'auth.google.state': "The Google sign-in request expired or belongs to another browser. Start again.",
+  'auth.google.linkRequired': "An account with this email already exists. Sign in with your password, then link Google in your profile.",
+  'auth.google.conflict': "This Google account is already linked, or your profile has another Google account linked.",
+  'auth.google.linked': "Google account linked",
+  'auth.google.linkHint': "Link Google to sign in without entering your password.",
+  'auth.google.link': "Link Google account",
 };

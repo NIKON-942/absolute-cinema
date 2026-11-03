@@ -27,6 +27,7 @@ interface UserDto {
   name: string;
   role: 'viewer' | 'admin';
   isBlocked: boolean;
+  googleLinked: boolean; // whether a Google identity is linked
   avatarUrl: string | null;      // shown in navbar/profile (FR-35)
   hasActiveSubscription: boolean;
   activeSubscription: SubscriptionDto | null;
@@ -122,8 +123,10 @@ interface DeviceSessionDto {
 | POST | `/auth/register` | — | `{ email, password (min 8), name }` | `{ user: UserDto, accessToken }` + welcome email |
 | POST | `/auth/login` | — | `{ email, password }` | `{ user: UserDto, accessToken }` (updates lastLoginAt) |
 | POST | `/auth/logout` | Bearer | — | `{ message }` — revokes all issued tokens (FR-36) |
-| GET | `/auth/google` | — | — | redirects to Google |
-| GET | `/auth/google/callback` | — | `?code=...` | 302 → `CLIENT_URL/auth/oauth-success#token=<jwt>` |
+| GET | `/auth/google` | — | `?returnTo=/movie/1` (internal path only) | browser-bound state cookie and redirect to Google; errors return to OAuth UI |
+| GET | `/auth/google/callback` | state + browser cookie | `?code=...&state=...` or denial | 302 → `CLIENT_URL/auth/oauth-success#code=<one-use-code>`; JWT is never put in the URL |
+| POST | `/auth/google/exchange` | same browser cookie | `{ code }` | `{ accessToken, returnTo }`; code expires after one minute and is consumed once |
+| POST | `/auth/google/link` | Bearer | — | `{ url }`; explicit link to the signed-in account, checked again at callback |
 | GET | `/auth/me` | Bearer | — | `UserDto` |
 | POST | `/auth/forgot-password` | — | `{ email }` | `{ message }` (always 200; email with reset link `/reset-password?token=...`) |
 | POST | `/auth/reset-password` | — | `{ token, newPassword }` | `{ message }` (token valid 24h) |
@@ -238,3 +241,5 @@ Transactional emails via SMTP (Mailpit at http://localhost:8025 in dev): welcome
 - Create/PATCH accept JSON or multipart metadata. Relation lists accept JSON arrays (the frontend uses this format) or legacy comma-separated values. Invalid or unknown IDs return 400; omitted PATCH fields remain unchanged and empty lists clear relations. Unknown metadata fields return 400. Title/name: 1–255 trimmed characters; year: integer 1890–2100; runtime: integer 1–600 minutes or empty/null; age rating: 0+/6+/12+/16+/18+/21+; description: up to 20000 characters; URLs: HTTP(S), up to 2048 characters; up to 50 tags of at most 100 characters.
 - Playback events are reported after actual Play, once per player session. Retry with the same playbackId does not increment views. Pauses, quality changes and Range/HEAD requests do not count additional views. Lifetime counters are preserved; period reports use only recorded events since migration.
 - Period bounds are `[periodFrom, periodTo)`. For each user/movie, the latest rating action within the period is counted once; a clear action excludes that rating. Genre averages weight individual ratings equally. Multi-genre views contribute to every associated genre and must not be summed as unique global views. Deleting the user/movie cascades to their event history.
+
+Google OAuth uses verified provider profiles and identifies returning users by Google ID. A matching email alone never merges accounts: password users sign in normally and link Google in Profile. Blocked accounts and revoked linking sessions are rejected. Provider IDs are unique; DTOs expose only `googleLinked`. State expires after ten minutes, is consumed once and must match an HttpOnly, SameSite=Lax browser cookie (Secure for HTTPS callbacks). Concurrent/replayed exchanges cannot issue the token twice. Missing credentials, denied consent, state errors and account conflicts return localized authentication UI messages.

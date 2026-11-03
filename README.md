@@ -146,3 +146,13 @@ The separate **Dependency audit** workflow checks root, backend and frontend at
 the high severity threshold; it is not a deployment gate. Root, backend and frontend have
 no audit findings (snapshot: 2026-11-01). See [dependency upgrade notes](docs/dependency-upgrades.md)
 for the earlier transitive fixes and remaining work.
+
+## Google sign-in setup
+
+The supported production callback for the current domain is `https://absolutecine.duckdns.org/api/auth/google/callback`. In Google Auth Platform create a **Web application** OAuth client, configure branding/audience and register that exact authorized redirect URI. For local development use a separate client with `http://localhost:4000/api/auth/google/callback`. This server redirect flow does not require a frontend client secret or Google JavaScript SDK.
+
+On Oracle set `SITE_ADDRESS=absolutecine.duckdns.org`, `CLIENT_URL=https://absolutecine.duckdns.org`, `GOOGLE_CALLBACK_URL=https://absolutecine.duckdns.org/api/auth/google/callback`, plus `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the server environment. Never commit the secret. If Google requests domain verification, verify control of this hostname; the code cannot configure the Google project or publish its consent screen. Restart/recreate the backend after updating its environment.
+
+Migration `1793780000000-GoogleOAuthFlows` adds unique Google identities and short-lived OAuth flows. Existing duplicate non-null Google IDs must be reviewed before migrating; accounts are never merged automatically. State is bound to an HttpOnly SameSite=Lax cookie and consumed once. The callback passes a one-minute exchange code in the URL fragment; exchange requires the same browser cookie and consumes the code atomically. JWTs are no longer accepted from callback URLs. Expired flows are cleaned periodically and when starting sign-in.
+
+New Google users get a viewer account. Existing Google identities sign in by Google ID. Existing password users must first sign in normally, then choose **Link Google account** in their profile; matching email alone never links accounts. Linking checks the initiating session version again at callback. Profile DTOs expose only `googleLinked`, not the provider ID. Sign-in returns to a validated internal destination and handles cancellation, expired state, configuration errors and account conflicts on the normal authentication UI.

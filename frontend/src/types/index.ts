@@ -15,6 +15,7 @@ export interface UserDto {
   role: Role;
   isBlocked: boolean;
   avatarUrl: string | null;
+  googleLinked: boolean;
   hasActiveSubscription: boolean;
   activeSubscription: SubscriptionDto | null;
   createdAt: string; // ISO

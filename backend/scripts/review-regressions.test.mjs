@@ -372,3 +372,68 @@ test('HTTP metadata validation, multipart relations and playback guards work thr
     await rm(join(VIDEOS_DIR, videoFilename), { force: true });
   }
 });
+
+
+test('Google IDs are authoritative; existing accounts require explicit linking and a current session', async () => {
+  const existing = await newUser();
+  const profile = { googleId: 'google-' + randomUUID(), email: existing.email, name: 'Google viewer', emailVerified: true };
+  await assert.rejects(auth.loginWithGoogle(profile), err => err.getResponse().code === 'GOOGLE_LINK_REQUIRED');
+  await assert.rejects(auth.loginWithGoogle({ ...profile, emailVerified: false }), err => err.getStatus() === 403);
+  const linked = JSON.parse(await auth.loginWithGoogle(profile, existing.id, 0));
+  assert.equal(linked.sub, existing.id);
+  assert.equal((await auth.me(existing.id)).googleLinked, true);
+  // Email changes at Google cannot move the identity to another local account.
+  assert.equal(JSON.parse(await auth.loginWithGoogle({ ...profile, email: randomUUID() + '@example.com' })).sub, existing.id);
+  const other = await newUser();
+  await assert.rejects(auth.loginWithGoogle(profile, other.id, 0), err => err.getResponse().code === 'GOOGLE_ACCOUNT_CONFLICT');
+  await auth.logout(existing.id);
+  await assert.rejects(auth.loginWithGoogle(profile, existing.id, 0), err => err.getStatus() === 403);
+  await repo(UserEntity).update(existing.id, { isBlocked: true });
+  await assert.rejects(auth.loginWithGoogle(profile), err => err.getStatus() === 403);
+  await users.remove(existing.id); await users.remove(other.id);
+});
+
+test('Google registration is unique under concurrent callbacks and creates one local account', async () => {
+  const profile = { googleId: 'google-' + randomUUID(), email: randomUUID() + '@example.com', name: 'New Google viewer', emailVerified: true };
+  const tokens = await Promise.all([auth.loginWithGoogle(profile), auth.loginWithGoogle(profile)]);
+  assert.equal(JSON.parse(tokens[0]).sub, JSON.parse(tokens[1]).sub);
+  const [user] = await repo(UserEntity).findBy({ googleId: profile.googleId });
+  assert.equal(await repo(UserEntity).countBy({ googleId: profile.googleId }), 1);
+  assert.equal(user.passwordHash, null);
+  await users.remove(user.id);
+});
+
+test('Google OAuth state and exchange codes are short-lived, browser-bound and single-use', async () => {
+  const { GoogleFlowService, safeReturnTo } = require('../dist/modules/auth/google-flow.service.js');
+  const { GoogleCallbackGuard } = require('../dist/modules/auth/google-callback.guard.js');
+  const service = new GoogleFlowService(db, { get: key => key === 'google' ? { clientId: 'test-client', clientSecret: 'test-secret', callbackUrl: 'https://absolutecine.duckdns.org/api/auth/google/callback' } : 'https://absolutecine.duckdns.org' });
+  let cookie, options;
+  const response = { cookie: (name, value, opts) => { cookie = name + '=' + value; options = opts; }, setHeader() {}, clearCookie() {} };
+  const url = new URL(await service.begin(response, '/movie/17?quality=720p'));
+  assert.equal(url.origin, 'https://accounts.google.com');
+  assert.equal(url.searchParams.get('redirect_uri'), 'https://absolutecine.duckdns.org/api/auth/google/callback');
+  assert.equal(options.httpOnly, true); assert.equal(options.secure, true); assert.equal(options.sameSite, 'lax');
+  const req = { query: { state: url.searchParams.get('state') }, headers: { cookie } };
+  await assert.rejects(service.consume({ ...req, headers: { cookie: 'ac_google_flow=' + 'a'.repeat(64) } }));
+  const attempts = await Promise.allSettled([service.consume(req), service.consume(req)]);
+  assert.equal(attempts.filter(a => a.status === 'fulfilled').length, 1);
+  const flow = attempts.find(a => a.status === 'fulfilled').value;
+  const landing = new URL(await service.finish(flow, 'application-jwt'));
+  assert.equal(landing.searchParams.has('token'), false); assert.equal(landing.hash.includes('application-jwt'), false);
+  const code = new URLSearchParams(landing.hash.slice(1)).get('code');
+  await assert.rejects(service.finish(flow, 'another-jwt'));
+  await assert.rejects(service.exchange({ headers: {} }, response, code));
+  const exchange = await Promise.allSettled([service.exchange(req, response, code), service.exchange(req, response, code)]);
+  assert.equal(exchange.filter(a => a.status === 'fulfilled').length, 1);
+  assert.deepEqual(exchange.find(a => a.status === 'fulfilled').value, { accessToken: 'application-jwt', returnTo: '/movie/17?quality=720p' });
+  const expiredUrl = new URL(await service.begin(response, '/'));
+  await db.query("UPDATE google_oauth_flows SET expires_at = now() - interval '1 second' WHERE code_hash IS NULL");
+  await assert.rejects(service.consume({ query: { state: expiredUrl.searchParams.get('state') }, headers: { cookie } }));
+  for (const target of ['https://evil.example', '//evil.example', '/\\evil.example', '/auth/oauth-success', '/login']) assert.equal(safeReturnTo(target), '/');
+  const cancelUrl = new URL(await service.begin(response, '/'));
+  let redirected;
+  const cancelRequest = { query: { state: cancelUrl.searchParams.get('state'), error: 'access_denied' }, headers: { cookie } };
+  const context = { switchToHttp: () => ({ getRequest: () => cancelRequest, getResponse: () => ({ setHeader() {}, redirect: url => { redirected = url; } }) }) };
+  assert.equal(await new GoogleCallbackGuard(service).canActivate(context), false);
+  assert.equal(new URL(redirected).searchParams.get('error'), 'cancelled');
+});

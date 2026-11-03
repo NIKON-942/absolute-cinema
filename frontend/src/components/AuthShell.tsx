@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { googleAuthUrl } from '@/utils/url';
+import { safeReturnTo } from '@/utils/authReturn';
 import { BrandIcon } from '@/components/BrandIcon';
 
 interface AuthShellProps {
@@ -36,11 +37,13 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
 /** Google OAuth button — navigates the browser to the backend OAuth entry point. */
 export function GoogleButton() {
   const { t } = useLanguage();
+  const location = useLocation();
+  const returnTo = safeReturnTo((location.state as { from?: string } | null)?.from ?? new URLSearchParams(location.search).get('returnTo'));
   return (
     <button
       type="button"
       onClick={() => {
-        window.location.href = googleAuthUrl();
+        window.location.href = googleAuthUrl(returnTo);
       }}
       className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-cinema-border bg-cinema-black/60 px-4 py-3 text-sm font-semibold text-cinema-text transition hover:border-cinema-muted/60 hover:bg-cinema-black"
     >
