@@ -48,6 +48,8 @@ export const uk: Record<string, string> = {
   'common.confirm': 'Підтвердити',
   'common.search': 'Пошук',
   'common.actions': 'Дії',
+  'common.yes': 'Так',
+  'common.no': 'Ні',
   'common.optional': "необов'язково",
   'common.required': "Це поле обов'язкове",
   'common.language': 'Мова',

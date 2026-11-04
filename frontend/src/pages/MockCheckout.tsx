@@ -1,3 +1,4 @@
+import { Ban, Check, CreditCard } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -81,7 +82,7 @@ export default function MockCheckout() {
       <div className="w-full max-w-lg animate-fadeIn overflow-hidden rounded-2xl border border-cinema-border bg-cinema-panel shadow-card">
         {/* fake gateway header */}
         <div className={`flex items-center gap-3 border-b border-cinema-border bg-gradient-to-r px-6 py-4 ${posterGradient(sessionId)}`}>
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-cinema-black/70 text-lg">💳</span>
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-cinema-black/70 text-lg"><CreditCard size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
           <div className="flex-1">
             <h1 className="text-base font-extrabold text-cinema-text">{t('checkout.title')}</h1>
             <p className="text-[11px] text-cinema-muted">{t('checkout.mockBadge')}</p>
@@ -93,14 +94,14 @@ export default function MockCheckout() {
 
         {phase === 'success' ? (
           <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
-            <span className="flex h-16 w-16 animate-popIn items-center justify-center rounded-full bg-cinema-success/20 text-3xl text-cinema-success">✓</span>
+            <span className="flex h-16 w-16 animate-popIn items-center justify-center rounded-full bg-cinema-success/20 text-3xl text-cinema-success"><Check size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
             <h2 className="text-xl font-extrabold text-cinema-strong">{t('checkout.successTitle')}</h2>
             <p className="text-sm text-cinema-muted">{t('checkout.successText')}</p>
             <Spinner size={5} />
           </div>
         ) : phase === 'cancelled' ? (
           <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
-            <span className="flex h-16 w-16 animate-popIn items-center justify-center rounded-full bg-cinema-card text-3xl">🚫</span>
+            <span className="flex h-16 w-16 animate-popIn items-center justify-center rounded-full bg-cinema-card text-3xl"><Ban size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
             <h2 className="text-xl font-extrabold text-cinema-strong">{t('checkout.cancelledTitle')}</h2>
             <p className="text-sm text-cinema-muted">{t('checkout.cancelledText')}</p>
             <p className="text-xs text-cinema-muted">{t('checkout.cancelledRedirect')}</p>

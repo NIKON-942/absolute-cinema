@@ -1,3 +1,4 @@
+import { Clapperboard, LockKeyhole, TriangleAlert, Tv } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -170,7 +171,7 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
           </div>
         ) : (
           <EmptyState
-            icon="🎬"
+            icon={<Clapperboard size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
             title={t('watch.noQualitiesTitle')}
             subtitle={t('watch.noQualitiesText')}
             action={<Link to="/catalog" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink">{t('common.backToCatalog')}</Link>}
@@ -182,7 +183,7 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
             <div className="absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full bg-cinema-amber/40" />
           </div>
           <div className="relative mx-auto max-w-md">
-            <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-cinema-amber/50 bg-cinema-amber/10 text-3xl">🔒</span>
+            <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-cinema-amber/50 bg-cinema-amber/10 text-3xl"><LockKeyhole size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
             <h2 className="mb-2 text-2xl font-extrabold text-cinema-strong">{t('watch.upsellTitle')}</h2>
             <p className="mb-6 text-sm leading-relaxed text-cinema-muted">{t('watch.upsellText')}</p>
             <Link
@@ -200,7 +201,7 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
       ) : deviceLimit ? (
         <div className="relative overflow-hidden rounded-2xl border border-cinema-red/40 bg-gradient-to-b from-cinema-panel to-cinema-black p-8 text-center sm:p-14">
           <div className="relative mx-auto max-w-md">
-            <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-cinema-red/50 bg-cinema-red/10 text-3xl">📺</span>
+            <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-cinema-red/50 bg-cinema-red/10 text-3xl"><Tv size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
             <h2 className="mb-2 text-2xl font-extrabold text-cinema-strong">{t('watch.deviceLimitTitle')}</h2>
             <p className="mb-6 text-sm leading-relaxed text-cinema-muted">
               {t('watch.deviceLimitText', { maxDevices: limitsForTier(user?.activeSubscription?.tier).maxDevices })}
@@ -235,7 +236,7 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
         </div>
       ) : streamError ? (
         <div className="rounded-2xl border border-cinema-red/50 bg-cinema-red/10 p-8 text-center">
-          <span className="mb-3 block text-4xl">⚠️</span>
+          <span className="mb-3 block text-4xl"><TriangleAlert size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
           <h2 className="mb-1 text-lg font-bold text-cinema-error">{t('watch.streamError')}</h2>
           <p className="mb-4 text-sm text-cinema-error">{t('watch.streamErrorText')}</p>
           <button

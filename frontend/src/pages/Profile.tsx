@@ -1,3 +1,4 @@
+import { Check, Heart, Laptop, LockKeyholeOpen, Minus, Tv } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -280,7 +281,8 @@ export default function Profile() {
                 <dd className="text-right font-semibold text-cinema-soft">{formatDate(sub.endsAt)}</dd>
                 <dt className="text-cinema-muted">{t('profile.subscription.autoRenew')}</dt>
                 <dd className="text-right font-semibold text-cinema-soft">
-                  {sub.autoRenew ? '✓' : '—'}
+                  <span className="sr-only">{t(sub.autoRenew ? 'common.yes' : 'common.no')}</span>
+                  {sub.autoRenew ? <Check size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" /> : <Minus size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
                 </dd>
               </dl>
               <div className="mt-6 flex flex-wrap gap-3">
@@ -303,7 +305,7 @@ export default function Profile() {
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <span className="text-4xl">🔓</span>
+              <span className="text-4xl"><LockKeyholeOpen size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
               <p className="font-semibold text-cinema-text">{t('profile.subscription.none')}</p>
               <p className="max-w-xs text-sm text-cinema-muted">{t('profile.subscription.noneHint')}</p>
               <Link to="/plans" className="mt-2 rounded-xl bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink transition hover:shadow-glow">
@@ -346,7 +348,7 @@ export default function Profile() {
                   return (
                     <li key={d.deviceId} className="flex flex-wrap items-center gap-3 py-3">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cinema-card text-base">
-                        {isCurrent ? '💻' : '📺'}
+                        {isCurrent ? <Laptop size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /> : <Tv size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-cinema-text">
@@ -450,7 +452,7 @@ export default function Profile() {
             <Spinner size={8} />
           </div>
         ) : favorites.length === 0 ? (
-          <EmptyState icon="❤️" title={t('profile.favorites.empty')} subtitle={t('profile.favorites.emptyHint')} />
+          <EmptyState icon={<Heart size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('profile.favorites.empty')} subtitle={t('profile.favorites.emptyHint')} />
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {favorites.map((m) => (

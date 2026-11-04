@@ -1,3 +1,4 @@
+import { TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -224,7 +225,7 @@ export default function Catalog() {
 
       {/* results */}
       {error ? (
-        <EmptyState icon="⚠️" title={t('errors.server')} />
+        <EmptyState icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('errors.server')} />
       ) : loading ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {Array.from({ length: 10 }).map((_, i) => (

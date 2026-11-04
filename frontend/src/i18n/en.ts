@@ -48,6 +48,8 @@ export const en: Record<string, string> = {
   'common.confirm': 'Confirm',
   'common.search': 'Search',
   'common.actions': 'Actions',
+  'common.yes': 'Yes',
+  'common.no': 'No',
   'common.optional': 'optional',
   'common.required': 'This field is required',
   'common.language': 'Language',

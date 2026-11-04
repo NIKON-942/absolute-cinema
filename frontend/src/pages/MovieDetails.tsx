@@ -1,3 +1,4 @@
+import { Clapperboard, Eye, Film, Star } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -67,7 +68,7 @@ export default function MovieDetails() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-20">
         <EmptyState
-          icon="🎞️"
+          icon={<Film size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
           title={t('movie.notFound')}
           action={<Link to="/catalog" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink">{t('common.backToCatalog')}</Link>}
         />
@@ -139,7 +140,7 @@ export default function MovieDetails() {
               {movie.posterUrl ? (
                 <img src={resolveMediaUrl(movie.posterUrl)} alt={movie.title} className="aspect-[2/3] w-full object-cover" />
               ) : (
-                <div className={`flex aspect-[2/3] items-center justify-center bg-gradient-to-br p-4 text-center ${posterGradient(movie.id)}`}>🎬 {movie.title}</div>
+                <div className={`flex aspect-[2/3] items-center justify-center bg-gradient-to-br p-4 text-center ${posterGradient(movie.id)}`}><Clapperboard size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {movie.title}</div>
               )}
             </div>
             <div className="min-w-0">
@@ -172,7 +173,7 @@ export default function MovieDetails() {
                 {movie.ageRating && (
                   <span className="rounded border border-cinema-border px-2 py-0.5 text-xs font-semibold">{movie.ageRating}</span>
                 )}
-                <span>👁 {movie.viewCount.toLocaleString()}</span>
+                <span><Eye size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {movie.viewCount.toLocaleString()}</span>
                 {movie.availableQualities.length > 0 && (
                   <span className="text-cinema-muted">{t('movie.qualities')}: {movie.availableQualities.join(' / ')}</span>
                 )}
@@ -284,12 +285,12 @@ export default function MovieDetails() {
                   {m.posterUrl ? (
                     <img src={resolveMediaUrl(m.posterUrl)} alt="" loading="lazy" className="h-24 w-16 shrink-0 rounded-lg object-cover" />
                   ) : (
-                    <span className={`flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${posterGradient(m.id)}`}>🎬</span>
+                    <span className={`flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${posterGradient(m.id)}`}><Clapperboard size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
                   )}
                   <div className="min-w-0 py-1">
                     <h3 className="line-clamp-2 text-sm font-bold text-cinema-text group-hover:text-cinema-accent">{m.title}</h3>
                     <p className="mt-1 text-xs text-cinema-muted">{[m.year, m.ageRating].filter(Boolean).join(' · ')}</p>
-                    {m.averageRating > 0 && <p className="mt-2 text-xs font-bold text-cinema-accent">★ {m.averageRating.toFixed(1)}</p>}
+                    {m.averageRating > 0 && <p className="mt-2 text-xs font-bold text-cinema-accent"><Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {m.averageRating.toFixed(1)}</p>}
                   </div>
                 </Link>
               ))}

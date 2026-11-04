@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 
@@ -15,13 +15,25 @@ export function Carousel({ title, subtitle, action, children }: CarouselProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
+  const [canScroll, setCanScroll] = useState(false);
 
-  const updateArrows = () => {
+  const updateArrows = useCallback(() => {
     const el = trackRef.current;
     if (!el) return;
     setAtStart(el.scrollLeft <= 8);
     setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 8);
-  };
+    setCanScroll(el.scrollWidth > el.clientWidth + 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    updateArrows();
+    const observer = new ResizeObserver(updateArrows);
+    observer.observe(el);
+    for (const child of el.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [children, updateArrows]);
 
   const scrollBy = (dir: 1 | -1) => {
     const el = trackRef.current;
@@ -38,7 +50,7 @@ export function Carousel({ title, subtitle, action, children }: CarouselProps) {
         </div>
         <div className="flex items-center gap-2">
           {action}
-          <div className="hidden gap-1.5 sm:flex">
+          {canScroll && <div className="hidden gap-1.5 sm:flex">
             <button
               type="button"
               onClick={() => scrollBy(-1)}
@@ -61,7 +73,7 @@ export function Carousel({ title, subtitle, action, children }: CarouselProps) {
                 <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
-          </div>
+          </div>}
         </div>
       </div>
       {/* Scroll containers clip vertical overflow too; leave room for card lift and glow. */}

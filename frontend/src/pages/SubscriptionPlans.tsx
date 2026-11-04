@@ -1,3 +1,4 @@
+import { Check, Star, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -90,7 +91,7 @@ export default function SubscriptionPlans() {
       )}
       {hasActive && activeSub && (
         <div className="mx-auto mb-8 flex max-w-2xl flex-col items-center gap-3 rounded-2xl border border-cinema-success/40 bg-cinema-success-surface/30 px-6 py-4 text-center sm:flex-row sm:text-left">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cinema-success/20 text-lg">✓</span>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cinema-success/20 text-lg"><Check size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
           <div className="flex-1 text-sm text-cinema-success">
             <p className="font-bold">
               {t('tier.' + activeSub.tier)} · {t('sub.period.' + activeSub.period)}
@@ -127,7 +128,7 @@ export default function SubscriptionPlans() {
       {/* plans */}
       {loadError ? (
         <EmptyState
-          icon="⚠️"
+          icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
           title={t('plans.loadError')}
           action={
             <button type="button" onClick={load} className="cursor-pointer rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink">
@@ -160,7 +161,7 @@ export default function SubscriptionPlans() {
               >
                 {isPopular && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-cinema-amber px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-cinema-ink">
-                    ★ {t('plans.popular')}
+                    <Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {t('plans.popular')}
                   </span>
                 )}
 
@@ -197,7 +198,7 @@ export default function SubscriptionPlans() {
 
                 {isCurrent ? (
                   <span className="flex items-center justify-center gap-2 rounded-xl border border-cinema-success/50 bg-cinema-success/10 px-4 py-3 text-sm font-bold text-cinema-success">
-                    ✓ {t('plans.current')}
+                    <Check size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {t('plans.current')}
                   </span>
                 ) : isAuthenticated ? (
                   <button

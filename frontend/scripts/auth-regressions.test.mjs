@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import axios from 'axios';
+import * as lucideIcons from 'lucide-react';
 
 // Execute the actual modules with a minimal React hook host. Axios and its
 // asynchronous interceptors are real; no DOM is needed to test token transport.
@@ -13,6 +14,7 @@ function evaluate(file, imports) {
   } });
   const module = { exports: {} };
   new Function('require', 'module', 'exports', outputText)(name => {
+    if (name === 'lucide-react') return lucideIcons;
     if (!(name in imports)) throw new Error(`Unexpected import: ${name}`);
     return imports[name];
   }, module, module.exports);

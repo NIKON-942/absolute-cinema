@@ -1,3 +1,4 @@
+import { ChartNoAxesCombined, Clapperboard, CreditCard, Play, Star, TriangleAlert, UserPlus, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import type { FormEvent } from 'react';
@@ -478,7 +479,7 @@ function MoviesTab() {
       key: 'averageRating',
       label: t('admin.movies.rating'),
       sortable: true,
-      render: (m) => (m.averageRating > 0 ? `★ ${m.averageRating.toFixed(1)}` : '—'),
+      render: (m) => (m.averageRating > 0 ? <span className="inline-flex items-center gap-1"><Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" />{m.averageRating.toFixed(1)}</span> : '—'),
       className: 'hidden sm:table-cell',
     },
     {
@@ -524,7 +525,7 @@ function MoviesTab() {
         <LoadingBlock />
       ) : loadError ? (
         <EmptyState
-          icon="⚠️"
+          icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
           title={t('admin.loadError')}
           action={
             <button type="button" onClick={() => reload()} className={primaryBtn}>
@@ -786,7 +787,7 @@ function MoviesTab() {
                 dragOver ? 'border-cinema-amber bg-cinema-amber/10' : 'border-cinema-border'
               } ${saving || conversionBusy ? 'opacity-60' : 'cursor-pointer hover:border-cinema-amber/60'}`}
             >
-              <span className="text-2xl">🎬</span>
+              <span className="text-2xl"><Clapperboard size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
               <p className="break-all text-sm font-semibold text-cinema-soft">{masterFile?.name ?? t('admin.movies.masterDropTitle')}</p>
               <p className="text-xs text-cinema-muted">{t(masterFile ? 'admin.movies.videoSelected' : 'admin.movies.masterDropHint')}</p>
             </div>
@@ -917,7 +918,7 @@ function GenresTab() {
 
       {genres === null ? (
         loadError ? (
-          <EmptyState icon="⚠️" title={t('admin.loadError')} />
+          <EmptyState icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('admin.loadError')} />
         ) : (
           <LoadingBlock />
         )
@@ -1090,7 +1091,7 @@ function DictionaryTab({
 
       {rows === null ? (
         loadError ? (
-          <EmptyState icon="⚠️" title={t('admin.loadError')} />
+          <EmptyState icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('admin.loadError')} />
         ) : (
           <LoadingBlock />
         )
@@ -1267,7 +1268,7 @@ function ActorsTab() {
 
       {actors === null ? (
         loadError ? (
-          <EmptyState icon="⚠️" title={t('admin.loadError')} />
+          <EmptyState icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('admin.loadError')} />
         ) : (
           <LoadingBlock />
         )
@@ -1509,7 +1510,7 @@ function UsersTab() {
         <LoadingBlock />
       ) : loadError ? (
         <EmptyState
-          icon="⚠️"
+          icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
           title={t('admin.loadError')}
           action={
             <button type="button" onClick={() => reload()} className={primaryBtn}>
@@ -1593,17 +1594,17 @@ function AnalyticsTab() {
 
   const cards = useMemo(
     () => [
-      { key: 'totalUsers', icon: '👥', value: data?.totalUsers },
-      { key: 'totalMovies', icon: '🎬', value: data?.totalMovies },
-      { key: 'activeSubscriptions', icon: '💳', value: data?.activeSubscriptions },
-      { key: 'newUsersInPeriod', icon: '✨', value: data?.newUsersInPeriod },
-      { key: 'viewsInPeriod', icon: '▶', value: data?.viewsInPeriod },
-      { key: 'averageRatingInPeriod', icon: '★', value: data?.averageRatingInPeriod },
+      { key: 'totalUsers', icon: <Users size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.totalUsers },
+      { key: 'totalMovies', icon: <Clapperboard size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.totalMovies },
+      { key: 'activeSubscriptions', icon: <CreditCard size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.activeSubscriptions },
+      { key: 'newUsersInPeriod', icon: <UserPlus size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.newUsersInPeriod },
+      { key: 'viewsInPeriod', icon: <Play size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.viewsInPeriod },
+      { key: 'averageRatingInPeriod', icon: <Star size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.averageRatingInPeriod },
     ],
     [data],
   );
 
-  if (loadError) return <EmptyState icon="⚠️" title={t('admin.loadError')} />;
+  if (loadError) return <EmptyState icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('admin.loadError')} />;
   if (!data) return <LoadingBlock />;
 
   return (
@@ -1647,7 +1648,7 @@ function AnalyticsTab() {
           columns={[
             { key: 'title', label: t('admin.analytics.movie') },
             { key: 'viewCount', label: t('admin.analytics.views'), sortable: true, render: (m) => m.viewCount.toLocaleString() },
-            { key: 'averageRating', label: t('admin.analytics.rating'), sortable: true, render: (m) => (m.averageRating > 0 ? `★ ${m.averageRating.toFixed(1)}` : '—') },
+            { key: 'averageRating', label: t('admin.analytics.rating'), sortable: true, render: (m) => (m.averageRating > 0 ? <span className="inline-flex items-center gap-1"><Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" />{m.averageRating.toFixed(1)}</span> : '—') },
           ]}
           rows={data.topMovies}
           rowKey={(m) => m.id}
@@ -1667,7 +1668,7 @@ function AnalyticsTab() {
               key: 'averageRating',
               label: t('admin.analytics.rating'),
               sortable: true,
-              render: (g) => (g.averageRating > 0 ? `★ ${g.averageRating.toFixed(1)}` : '—'),
+              render: (g) => (g.averageRating > 0 ? <span className="inline-flex items-center gap-1"><Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" />{g.averageRating.toFixed(1)}</span> : '—'),
             },
           ]}
           rows={data.genrePopularity}
@@ -1680,7 +1681,7 @@ function AnalyticsTab() {
       <div>
         <h2 className="mb-3 text-lg font-bold text-cinema-text">{t('admin.analytics.revenueByMonth')}</h2>
         {data.revenueByMonth.length === 0 ? (
-          <EmptyState icon="📉" title={t('admin.analytics.noRevenue')} />
+          <EmptyState icon={<ChartNoAxesCombined size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('admin.analytics.noRevenue')} />
         ) : (
           <AdminTable
             columns={[

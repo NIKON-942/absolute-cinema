@@ -1,3 +1,4 @@
+import { Star } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -77,7 +78,7 @@ export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCar
         {/* rating badge */}
         {movie.averageRating > 0 && (
           <span className="media-surface absolute left-2 top-2 rounded-md bg-cinema-black/85 px-1.5 py-0.5 text-xs font-bold text-cinema-accent backdrop-blur">
-            ★ {movie.averageRating.toFixed(1)}
+            <Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {movie.averageRating.toFixed(1)}
           </span>
         )}
         {movie.ageRating?.trim() && (

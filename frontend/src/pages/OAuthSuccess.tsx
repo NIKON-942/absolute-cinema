@@ -1,3 +1,4 @@
+import { CircleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -36,7 +37,7 @@ export default function OAuthSuccess() {
     <AuthShell title={failed ? t('auth.oauth.errorTitle') : t('auth.oauth.successTitle')}>
       {failed ? (
         <div className="rounded-xl border border-cinema-red/50 bg-cinema-red/10 px-4 py-6 text-center" role="alert">
-          <span className="mb-2 block text-3xl">😞</span>
+          <span className="mb-2 block text-3xl"><CircleAlert size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
           <p className="mb-4 text-sm text-cinema-error">{t(errorKey)}</p>
           <Link to="/login" className="inline-block rounded-xl bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink transition hover:shadow-glow">
             {t('auth.oauth.toLogin')}

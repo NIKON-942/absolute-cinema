@@ -1,3 +1,4 @@
+import { Clapperboard, Sparkles, Star } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -149,7 +150,7 @@ export default function Home() {
               {hero.posterUrl ? (
                 <img src={resolveMediaUrl(hero.posterUrl)} alt={hero.title} className="aspect-[2/3] w-full object-cover" />
               ) : (
-                <div className={`flex aspect-[2/3] items-center justify-center bg-gradient-to-br text-4xl ${posterGradient(hero.id)}`}>🎬</div>
+                <div className={`flex aspect-[2/3] items-center justify-center bg-gradient-to-br text-4xl ${posterGradient(hero.id)}`}><Clapperboard size={40} aria-hidden="true" className="shrink-0" /></div>
               )}
             </div>
             <div className="max-w-xl">
@@ -157,7 +158,7 @@ export default function Home() {
               <h1 className="mb-3 text-3xl font-extrabold text-cinema-strong sm:text-5xl">{hero.title}</h1>
               <p className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-cinema-soft">
                 {hero.year > 0 && <span>{hero.year}</span>}
-                {hero.averageRating > 0 && <span className="font-bold text-cinema-accent">★ {hero.averageRating.toFixed(1)}</span>}
+                {hero.averageRating > 0 && <span className="font-bold text-cinema-accent"><Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {hero.averageRating.toFixed(1)}</span>}
                 {hero.ageRating && <span className="rounded border border-cinema-border px-1.5 py-0.5 text-xs">{hero.ageRating}</span>}
                 {hero.genres.slice(0, 3).map((g) => (
                   <span key={g.id} className="text-cinema-muted">{g.name}</span>
@@ -210,7 +211,7 @@ export default function Home() {
         )}
         {!authLoading && !isAuthenticated && (
           <section className="mb-10 flex flex-col items-start gap-4 rounded-2xl border border-cinema-amber/30 bg-gradient-to-r from-cinema-card via-cinema-panel to-cinema-panel p-6 sm:flex-row sm:items-center">
-            <span className="text-3xl">✨</span>
+            <span className="text-3xl"><Sparkles size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
             <div className="flex-1">
               <h2 className="text-lg font-bold text-cinema-text">{t('home.recommendedTitle')}</h2>
               <p className="text-sm text-cinema-muted">{t('home.recommendedSubtitle')}</p>
