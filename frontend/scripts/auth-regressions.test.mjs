@@ -66,7 +66,7 @@ test('client accepts the same Unicode passwords and bcrypt byte limit as the ser
   assert.equal(isValidPassword('😀'.repeat(20)), false);
 });
 
-function playbackHost(user, movieOverrides = {}, services = {}) {
+function playbackHost(user, movieOverrides = {}, services = {}, playbackProps = {}) {
   const states = [];
   const refs = [];
   let cursor = 0;
@@ -95,7 +95,7 @@ function playbackHost(user, movieOverrides = {}, services = {}) {
     '@/utils/url': { resolveMediaUrl: url => url, streamUrl: () => { throw new Error('No stream may be requested while rendering'); } },
     '@/utils/plans': { getDeviceId: () => 'device', limitsForTier: () => ({ maxQuality: '720p' }), qualityRank: q => parseInt(q) },
   });
-  return () => { cursor = 0; refCursor = 0; return MoviePlayback({ initialMovie: movie }); };
+  return () => { cursor = 0; refCursor = 0; return MoviePlayback({ initialMovie: movie, ...playbackProps }); };
 }
 
 function elements(tree, predicate) {
@@ -137,6 +137,28 @@ test('processing movies without ready qualities do not mount a stream', () => {
   const tree = playbackHost({ id: 1, hasActiveSubscription: true }, { availableQualities: [], transcodeStatus: 'processing' })();
   assert.equal(elements(tree, node => node.type === 'VideoPlayer').length, 0);
   assert.equal(elements(tree, node => node.type === 'Spinner').length, 1);
+});
+
+test('Watch now starts subscriber playback with saved progress and plan controls', () => {
+  const tree = playbackHost({ id: 1, hasActiveSubscription: true }, {}, {}, { autoPlay: true })();
+  const player = elements(tree, node => node.type === 'VideoPlayer')[0];
+  assert.ok(player);
+  assert.equal(player.props.autoPlay, true);
+  assert.equal(player.props.resumeAt, 42);
+  assert.equal(player.props.maxQuality, '720p');
+});
+
+test('Watch now preserves guest login destination and never bypasses subscription or readiness checks', () => {
+  const guest = playbackHost(null, {}, {}, { autoPlay: true })();
+  assert.equal(elements(guest, node => node.type === 'VideoPlayer').length, 0);
+  const login = elements(guest, node => node.type === 'Link' && node.props.to === '/login')[0];
+  assert.equal(login.props.state.from, '/movie/7?play=1#movie-player');
+  const unsubscribed = playbackHost({ id: 1, hasActiveSubscription: false }, {}, {}, { autoPlay: true })();
+  assert.equal(elements(unsubscribed, node => node.type === 'VideoPlayer').length, 0);
+  assert.ok(elements(unsubscribed, node => node.type === 'Link' && node.props.to === '/plans').length);
+  const processing = playbackHost({ id: 1, hasActiveSubscription: true },
+    { availableQualities: [], transcodeStatus: 'processing' }, {}, { autoPlay: true })();
+  assert.equal(elements(processing, node => node.type === 'VideoPlayer').length, 0);
 });
 
 test('legacy watch links redirect to the public movie page and preserve search and hash', () => {

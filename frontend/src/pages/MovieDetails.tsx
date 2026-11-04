@@ -1,6 +1,6 @@
 import { Clapperboard, Eye, Film, Star } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
@@ -17,6 +17,8 @@ import type { MovieDto } from '@/types';
 export default function MovieDetails() {
   const { id } = useParams<{ id: string }>();
   const movieId = Number(id);
+  const [searchParams] = useSearchParams();
+  const autoPlay = searchParams.get('play') === '1';
   const { t } = useLanguage();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { success, error: errorToast } = useToast();
@@ -133,7 +135,7 @@ export default function MovieDetails() {
 
       <div className={`grid min-w-0 gap-8 ${similar.length > 0 ? 'lg:grid-cols-[minmax(0,1fr)_260px]' : ''}`}>
         <div className="min-w-0">
-          <MoviePlayback key={`${movie.id}-${user?.id ?? 'guest'}-${user?.hasActiveSubscription ?? false}-${user?.activeSubscription?.tier ?? ''}`} initialMovie={movie} />
+          <MoviePlayback key={`${movie.id}-${user?.id ?? 'guest'}-${user?.hasActiveSubscription ?? false}-${user?.activeSubscription?.tier ?? ''}-${autoPlay}`} initialMovie={movie} autoPlay={autoPlay} />
 
           <div className="mt-8 grid gap-6 sm:grid-cols-[160px_minmax(0,1fr)]">
             <div className="hidden self-start overflow-hidden rounded-xl border border-cinema-border sm:block">

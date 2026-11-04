@@ -15,12 +15,12 @@ import { getDeviceId, limitsForTier, qualityRank } from '@/utils/plans';
 import type { MovieDto, Quality } from '@/types';
 
 /** Playback and subscription states shared by the public movie page. */
-export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
+export function MoviePlayback({ initialMovie, autoPlay = false }: { initialMovie: MovieDto; autoPlay?: boolean }) {
   const movieId = initialMovie.id;
   const { t } = useLanguage();
   const { user, isAuthenticated } = useAuth();
   const [movie, setMovie] = useState(initialMovie);
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(() => autoPlay && Boolean(user?.hasActiveSubscription));
   const [streamForbidden, setStreamForbidden] = useState(false);
   const [streamError, setStreamError] = useState(false);
   const [deviceLimit, setDeviceLimit] = useState(false);
@@ -188,7 +188,7 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
             <p className="mb-6 text-sm leading-relaxed text-cinema-muted">{t('watch.upsellText')}</p>
             <Link
               to={isAuthenticated ? "/plans" : "/login"}
-              state={isAuthenticated ? undefined : { from: `/movie/${movieId}` }}
+              state={isAuthenticated ? undefined : { from: `/movie/${movieId}${autoPlay ? '?play=1#movie-player' : ''}` }}
               className="inline-flex items-center gap-2 rounded-xl bg-cinema-amber px-7 py-3 font-bold text-cinema-ink transition hover:shadow-glow"
             >
               {t(isAuthenticated ? 'watch.seePlans' : 'nav.login')}
