@@ -338,6 +338,16 @@ test('HTTP metadata validation, multipart relations and playback guards work thr
     assert.deepEqual(movie.genres.map(g => g.id), [genre.id]);
     const poster = await request(movie.posterUrl.replace('/api', ''));
     assert.equal(poster.status, 200); assert.equal((await poster.arrayBuffer()).byteLength, 8);
+    for (let i = 0; i < 2; i++) {
+      const metadata = new FormData();
+      metadata.set('posterUrl', movie.posterUrl);
+      metadata.set('genreIds', JSON.stringify([genre.id]));
+      metadata.set('keywords', 'cinema, drama');
+      const saved = await request('/media/' + movie.id, { method: 'PATCH', body: metadata });
+      assert.equal(saved.status, 200, await saved.clone().text());
+      assert.equal((await saved.json()).posterUrl, movie.posterUrl);
+      assert.equal((await request(movie.posterUrl.replace('/api', ''))).status, 200);
+    }
     const invalid = new FormData(); invalid.set('title', 'Must not change'); invalid.set('actorIds', '[2147483647]');
     invalid.set('file', new Blob([Buffer.from([137,80,78,71,13,10,26,10])], { type: 'image/png' }), 'poster.png');
     assert.equal((await request('/media/' + movie.id, { method: 'PATCH', body: invalid })).status, 400);

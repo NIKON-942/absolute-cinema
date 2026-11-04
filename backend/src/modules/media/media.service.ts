@@ -35,6 +35,12 @@ const QUALITY_COLUMNS: Record<VideoQuality, keyof MovieEntity> = {
   '1080p': 'video1080',
 };
 
+function posterUrl(path: string | null): string {
+  if (!path) return '';
+  return /^(https?:\/\/|\/api\/media\/posters\/)/i.test(path)
+    ? path : `/api/media/posters/${path}`;
+}
+
 export interface MovieDto {
   id: number;
   title: string;
@@ -331,9 +337,7 @@ export class MediaService {
       movieTitle: r.movie.title,
       year: r.movie.year,
       genres: (r.movie.genres ?? []).map((g) => ({ id: g.id, name: g.name })),
-      posterUrl: r.movie.posterPath
-        ? /^https?:\/\//i.test(r.movie.posterPath) ? r.movie.posterPath : `/api/media/posters/${r.movie.posterPath}`
-        : '',
+      posterUrl: posterUrl(r.movie.posterPath),
       positionSeconds: r.positionSeconds,
       durationSeconds: r.durationSeconds,
       updatedAt: r.updatedAt.toISOString(),
@@ -532,11 +536,7 @@ export class MediaService {
       runtimeMinutes: movie.runtimeMinutes ?? null,
       trailerUrl: movie.trailerUrl ?? null,
       keywords: movie.keywords ?? [],
-      posterUrl: movie.posterPath
-        ? /^https?:\/\//i.test(movie.posterPath)
-          ? movie.posterPath
-          : `/api/media/posters/${movie.posterPath}`
-        : '',
+      posterUrl: posterUrl(movie.posterPath),
       masterVideoUrl: movie.masterVideo
         ? /^https?:\/\//i.test(movie.masterVideo)
           ? movie.masterVideo
@@ -588,7 +588,9 @@ export class MediaService {
 
   private metadata(input: MovieInput): Partial<MovieEntity> {
     const { country, director, genreIds, actorIds, posterUrl, masterVideoUrl, ...fields } = input;
-    return { ...fields, ...(posterUrl !== undefined ? { posterPath: posterUrl } : {}) };
+    // Uploaded movie posters are stored as filenames; the API exposes a URL.
+    return { ...fields, ...(posterUrl !== undefined
+      ? { posterPath: posterUrl?.replace(/^\/api\/media\/posters\//i, '') ?? null } : {}) };
   }
 
   async posterIsUsed(filename: string): Promise<boolean> {

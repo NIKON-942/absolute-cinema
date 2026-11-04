@@ -351,7 +351,7 @@ function MoviesTab() {
         : await mediaService.createMovie(payload);
       const saved = savedMovie;
       setEditing(saved);
-      setForm(prev => ({ ...prev, file: null }));
+      setForm(prev => ({ ...prev, file: null, posterUrl: saved.posterUrl }));
       if (masterFile || payload.masterVideoUrl) {
         setJobs(prev => { const next = { ...prev }; delete next[saved.id]; return next; });
       }
