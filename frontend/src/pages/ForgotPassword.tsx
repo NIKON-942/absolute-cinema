@@ -1,3 +1,4 @@
+import { ArrowLeft, Mail } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
@@ -45,13 +46,13 @@ export default function ForgotPassword() {
       subtitle={t('auth.forgot.subtitle')}
       footer={
         <Link to="/login" className="font-semibold text-cinema-accent hover:underline">
-          ← {t('auth.forgot.backToLogin')}
+          <ArrowLeft size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {t('auth.forgot.backToLogin')}
         </Link>
       }
     >
       {sent ? (
         <div className="rounded-xl border border-cinema-success/40 bg-cinema-success-surface/40 px-4 py-5 text-center" role="status">
-          <span className="mb-2 block text-3xl">📧</span>
+          <span className="mb-2 block text-3xl"><Mail size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
           <p className="text-sm leading-relaxed text-cinema-success">{t('auth.forgot.sent')}</p>
         </div>
       ) : (

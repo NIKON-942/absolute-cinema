@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="/brand/frog-head.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="AbsoluteCinema — online cinema: thousands of movies, one subscription." />
-    <meta name="theme-color" content="#0b0c10" />
+    <meta name="theme-color" content="#0f1115" />
     <script>
       (() => {
         let saved;
@@ -14,23 +14,32 @@
           ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
-        document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f7f8fc' : '#0b0c10';
+        document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f7f4ed' : '#0f1115';
       })();
     </script>
     <title>AbsoluteCinema</title>
     <style>
       /* Match the initial theme before the stylesheet loads. */
-      html, body { margin: 0; background: #0b0c10; }
-      html[data-theme="light"], html[data-theme="light"] body { background: #f7f8fc; }
+      html, body { margin: 0; background: #0f1115; }
+      html[data-theme="light"], html[data-theme="light"] body { background: #f7f4ed; }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
+    <noscript>
+      <section style="max-width:800px;margin:2rem auto;padding:1rem;font:16px/1.6 system-ui,sans-serif">
+        <h1>AbsoluteCinema</h1>
+        <p lang="uk">Навчальний онлайн-кінотеатр: каталог фільмів, рекомендації, обране та перегляд за підпискою. Для роботи інтерактивних функцій потрібен JavaScript.</p>
+        <p lang="en">Educational online cinema with a movie catalog, recommendations, favorites and subscription-based playback. Interactive features require JavaScript.</p>
+        <p><a href="/privacy">Політика конфіденційності / Privacy policy</a></p>
+        <p><a href="/terms">Умови користування / Terms of use</a></p>
+      </section>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

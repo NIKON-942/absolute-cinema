@@ -32,9 +32,9 @@ export class RecommendationsService {
        GROUP BY 1
     ),
     director_w AS (
-      SELECT m.director AS d, SUM(s.w) AS w
+      SELECT m.director_id AS d, SUM(s.w) AS w
         FROM sig s JOIN movies m ON m.id = s.mid
-       WHERE m.director <> ''
+       WHERE m.director_id IS NOT NULL
        GROUP BY 1
     ),
     actor_w AS (
@@ -50,7 +50,7 @@ export class RecommendationsService {
     scored AS (
       SELECT m.id,
         (COALESCE((SELECT SUM(gw.w) * 3 FROM movie_genres mg JOIN genre_w gw ON gw.gid = mg.genres_id WHERE mg.movies_id = m.id), 0)
-       + COALESCE((SELECT dw.w * 2 FROM director_w dw WHERE dw.d = m.director), 0)
+       + COALESCE((SELECT dw.w * 2 FROM director_w dw WHERE dw.d = m.director_id), 0)
        + COALESCE((SELECT SUM(aw.w) * 1 FROM movie_actors ma JOIN actor_w aw ON aw.aid = ma.actors_id WHERE ma.movies_id = m.id), 0)
        + COALESCE((SELECT SUM(kww.w) * 1 FROM unnest(m.keywords) AS kk JOIN keyword_w kww ON kww.kw = kk), 0)
         ) AS score

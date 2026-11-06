@@ -1,5 +1,7 @@
+import { ArrowDown, ArrowUp, ArrowUpDown, Settings } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useLanguage } from '@/context/LanguageContext';
 
 export interface Column<T> {
   key: string;
@@ -21,6 +23,7 @@ interface AdminTableProps<T> {
 }
 
 export function AdminTable<T>({ columns, rows, rowKey, actions, emptyMessage }: AdminTableProps<T>) {
+  const { t } = useLanguage();
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -64,8 +67,10 @@ export function AdminTable<T>({ columns, rows, rowKey, actions, emptyMessage }: 
                     className="inline-flex cursor-pointer items-center gap-1 transition hover:text-cinema-text"
                   >
                     {col.label}
-                    <span className={`text-[10px] ${sortKey === col.key ? 'text-cinema-accent' : 'opacity-40'}`}>
-                      {sortKey === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '▲▼'}
+                    <span className={sortKey === col.key ? 'text-cinema-accent' : 'opacity-40'}>
+                      {sortKey === col.key ? (
+                        sortDir === 'asc' ? <ArrowUp size={12} aria-hidden="true" /> : <ArrowDown size={12} aria-hidden="true" />
+                      ) : <ArrowUpDown size={12} aria-hidden="true" />}
                     </span>
                   </button>
                 ) : (
@@ -73,7 +78,7 @@ export function AdminTable<T>({ columns, rows, rowKey, actions, emptyMessage }: 
                 )}
               </th>
             ))}
-            {actions && <th className="px-4 py-3 text-right font-semibold">⚙</th>}
+            {actions && <th className="px-4 py-3 text-right font-semibold"><span className="sr-only">{t('common.actions')}</span><Settings size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /></th>}
           </tr>
         </thead>
         <tbody>

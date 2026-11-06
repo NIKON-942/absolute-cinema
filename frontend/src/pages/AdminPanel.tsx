@@ -1,3 +1,4 @@
+import { ArrowLeft, ArrowRight, ChartNoAxesCombined, Clapperboard, CreditCard, Play, Star, TriangleAlert, UserPlus, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import type { FormEvent } from 'react';
@@ -46,7 +47,7 @@ const primaryBtn =
 const ghostBtn =
   'cursor-pointer rounded-lg border border-cinema-border px-4 py-2 text-sm font-semibold text-cinema-soft transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-60';
 const dangerBtn =
-  'cursor-pointer rounded-lg bg-cinema-red px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-red/85 disabled:cursor-default disabled:opacity-60';
+  'cursor-pointer rounded-lg bg-cinema-danger px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-danger/90 disabled:cursor-default disabled:opacity-60';
 
 type Tab = 'movies' | 'genres' | 'actors' | 'countries' | 'directors' | 'users' | 'analytics';
 const TABS: Tab[] = ['movies', 'genres', 'actors', 'countries', 'directors', 'users', 'analytics'];
@@ -148,9 +149,9 @@ interface MovieFormState {
   originalTitle: string;
   description: string;
   year: string;
-  country: string;
+  countryId: string;
   ageRating: string;
-  director: string;
+  directorId: string;
   runtimeMinutes: string;
   trailerUrl: string;
   posterUrl: string;
@@ -166,9 +167,9 @@ const emptyMovieForm: MovieFormState = {
   originalTitle: '',
   description: '',
   year: '',
-  country: '',
-  ageRating: '',
-  director: '',
+  countryId: '',
+  ageRating: '16+',
+  directorId: '',
   runtimeMinutes: '',
   trailerUrl: '',
   posterUrl: '',
@@ -248,9 +249,9 @@ function MoviesTab() {
       originalTitle: movie.originalTitle,
       description: movie.description,
       year: String(movie.year || ''),
-      country: movie.country,
+      countryId: movie.countryId == null ? '' : String(movie.countryId),
       ageRating: movie.ageRating,
-      director: movie.director,
+      directorId: movie.directorId == null ? '' : String(movie.directorId),
       runtimeMinutes: movie.runtimeMinutes ? String(movie.runtimeMinutes) : '',
       trailerUrl: movie.trailerUrl ?? '',
       posterUrl: movie.posterUrl,
@@ -309,6 +310,21 @@ function MoviesTab() {
       setFormError(t('admin.movies.fillRequired'));
       return;
     }
+    const validUrl = (value: string) => {
+      if (!value.trim()) return true;
+      try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && value.length <= 2048; } catch { return false; }
+    };
+    if (form.title.trim().length > 255 || form.originalTitle.trim().length > 255 || form.description.trim().length > 20000
+      || (form.runtimeMinutes && (!Number.isInteger(Number(form.runtimeMinutes)) || Number(form.runtimeMinutes) < 1 || Number(form.runtimeMinutes) > 600))
+      || !AGE_RATINGS.includes(form.ageRating as typeof AGE_RATINGS[number])
+      || !validUrl(form.trailerUrl) || !validUrl(form.masterVideoUrl)
+      || (form.countryId && !countries.some(c => c.id === Number(form.countryId)))
+      || (form.directorId && !directors.some(d => d.id === Number(form.directorId)))
+      || form.genreIds.some(id => !genres.some(g => g.id === id)) || form.actorIds.some(id => !actors.some(a => a.id === id))
+      || form.keywords.split(',').length > 50 || form.keywords.split(',').some(k => k.trim().length > 100)) {
+      setFormError(t('admin.movies.invalidMetadata'));
+      return;
+    }
     setFormError(null);
     setSaving(true);
     let savedMovie: MovieDto | null = null;
@@ -318,9 +334,9 @@ function MoviesTab() {
         originalTitle: form.originalTitle.trim(),
         description: form.description.trim(),
         year,
-        country: form.country.trim(),
+        countryId: form.countryId ? Number(form.countryId) : null,
         ageRating: form.ageRating,
-        director: form.director.trim(),
+        directorId: form.directorId ? Number(form.directorId) : null,
         runtimeMinutes: form.runtimeMinutes ? Number(form.runtimeMinutes) : '',
         trailerUrl: form.trailerUrl.trim(),
         posterUrl: form.posterUrl.trim(),
@@ -336,7 +352,7 @@ function MoviesTab() {
         : await mediaService.createMovie(payload);
       const saved = savedMovie;
       setEditing(saved);
-      setForm(prev => ({ ...prev, file: null }));
+      setForm(prev => ({ ...prev, file: null, posterUrl: saved.posterUrl }));
       if (masterFile || payload.masterVideoUrl) {
         setJobs(prev => { const next = { ...prev }; delete next[saved.id]; return next; });
       }
@@ -463,7 +479,7 @@ function MoviesTab() {
       key: 'averageRating',
       label: t('admin.movies.rating'),
       sortable: true,
-      render: (m) => (m.averageRating > 0 ? `★ ${m.averageRating.toFixed(1)}` : '—'),
+      render: (m) => (m.averageRating > 0 ? <span className="inline-flex items-center gap-1"><Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" />{m.averageRating.toFixed(1)}</span> : '—'),
       className: 'hidden sm:table-cell',
     },
     {
@@ -509,7 +525,7 @@ function MoviesTab() {
         <LoadingBlock />
       ) : loadError ? (
         <EmptyState
-          icon="⚠️"
+          icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
           title={t('admin.loadError')}
           action={
             <button type="button" onClick={() => reload()} className={primaryBtn}>
@@ -554,13 +570,13 @@ function MoviesTab() {
           {totalPages > 1 && (
             <div className="mt-4 flex items-center justify-center gap-3 text-sm">
               <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className={ghostBtn}>
-                ← {t('common.prev')}
+                <ArrowLeft size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {t('common.prev')}
               </button>
               <span className="text-cinema-muted">
                 {page} / {totalPages}
               </span>
               <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className={ghostBtn}>
-                {t('common.next')} →
+                {t('common.next')} <ArrowRight size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" />
               </button>
             </div>
           )}
@@ -594,13 +610,13 @@ function MoviesTab() {
               <label htmlFor="mf-title" className={labelClass}>
                 {t('admin.movies.title')} *
               </label>
-              <input id="mf-title" type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={inputClass} required />
+              <input id="mf-title" type="text" maxLength={255} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={inputClass} required />
             </div>
             <div>
               <label htmlFor="mf-orig" className={labelClass}>
                 {t('admin.movies.originalTitle')}
               </label>
-              <input id="mf-orig" type="text" value={form.originalTitle} onChange={(e) => setForm({ ...form, originalTitle: e.target.value })} className={inputClass} />
+              <input id="mf-orig" type="text" maxLength={255} value={form.originalTitle} onChange={(e) => setForm({ ...form, originalTitle: e.target.value })} className={inputClass} />
             </div>
           </div>
           <div>
@@ -609,7 +625,7 @@ function MoviesTab() {
             </label>
             <AutoTextarea
               id="mf-desc"
-              value={form.description}
+              maxLength={20000} value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               minRows={3}
               className={inputClass}
@@ -627,10 +643,10 @@ function MoviesTab() {
               <label htmlFor="mf-country" className={labelClass}>
                 {t('admin.movies.country')}
               </label>
-              <select id="mf-country" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} className={inputClass}>
+              <select id="mf-country" value={form.countryId} onChange={(e) => setForm({ ...form, countryId: e.target.value })} className={inputClass}>
                 <option value="">—</option>
                 {countries.map((c) => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
@@ -666,19 +682,10 @@ function MoviesTab() {
               <label htmlFor="mf-director" className={labelClass}>
                 {t('admin.movies.director')}
               </label>
-              <input
-                id="mf-director"
-                type="text"
-                list="mf-director-options"
-                value={form.director}
-                onChange={(e) => setForm({ ...form, director: e.target.value })}
-                className={inputClass}
-              />
-              <datalist id="mf-director-options">
-                {directors.map((d) => (
-                  <option key={d.id} value={d.name} />
-                ))}
-              </datalist>
+              <select id="mf-director" value={form.directorId} onChange={(e) => setForm({ ...form, directorId: e.target.value })} className={inputClass}>
+                <option value="">—</option>
+                {directors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
             </div>
             <div>
               <label htmlFor="mf-trailer" className={labelClass}>
@@ -780,7 +787,7 @@ function MoviesTab() {
                 dragOver ? 'border-cinema-amber bg-cinema-amber/10' : 'border-cinema-border'
               } ${saving || conversionBusy ? 'opacity-60' : 'cursor-pointer hover:border-cinema-amber/60'}`}
             >
-              <span className="text-2xl">🎬</span>
+              <span className="text-2xl"><Clapperboard size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
               <p className="break-all text-sm font-semibold text-cinema-soft">{masterFile?.name ?? t('admin.movies.masterDropTitle')}</p>
               <p className="text-xs text-cinema-muted">{t(masterFile ? 'admin.movies.videoSelected' : 'admin.movies.masterDropHint')}</p>
             </div>
@@ -911,7 +918,7 @@ function GenresTab() {
 
       {genres === null ? (
         loadError ? (
-          <EmptyState icon="⚠️" title={t('admin.loadError')} />
+          <EmptyState icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('admin.loadError')} />
         ) : (
           <LoadingBlock />
         )
@@ -971,7 +978,7 @@ function GenresTab() {
           <label htmlFor="genre-name" className={labelClass}>
             {t('admin.genres.name')}
           </label>
-          <input id="genre-name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
+          <input id="genre-name" type="text" maxLength={255} value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
         </form>
       </Modal>
 
@@ -1084,7 +1091,7 @@ function DictionaryTab({
 
       {rows === null ? (
         loadError ? (
-          <EmptyState icon="⚠️" title={t('admin.loadError')} />
+          <EmptyState icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('admin.loadError')} />
         ) : (
           <LoadingBlock />
         )
@@ -1138,7 +1145,7 @@ function DictionaryTab({
           <label htmlFor="dict-name" className={labelClass}>
             {t(`${i18nPrefix}.name`)}
           </label>
-          <input id="dict-name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
+          <input id="dict-name" type="text" maxLength={255} value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
         </form>
       </Modal>
 
@@ -1229,7 +1236,7 @@ function ActorsTab() {
           {a.photoUrl ? (
             <img src={resolveMediaUrl(a.photoUrl)} alt="" className="h-9 w-9 rounded-full border border-cinema-border object-cover" loading="lazy" />
           ) : (
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-ink">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-gold/70 text-xs font-bold text-cinema-ink">
               {a.name.charAt(0).toUpperCase()}
             </span>
           )}
@@ -1261,7 +1268,7 @@ function ActorsTab() {
 
       {actors === null ? (
         loadError ? (
-          <EmptyState icon="⚠️" title={t('admin.loadError')} />
+          <EmptyState icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('admin.loadError')} />
         ) : (
           <LoadingBlock />
         )
@@ -1311,7 +1318,7 @@ function ActorsTab() {
             <label htmlFor="actor-name" className={labelClass}>
               {t('admin.actors.name')}
             </label>
-            <input id="actor-name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
+            <input id="actor-name" type="text" maxLength={255} value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required autoFocus />
           </div>
           <ImageField id="actor-photo" label={t('admin.actors.photo')} value={photoUrl} file={photoFile}
             onFileChange={setPhotoFile} onUrlChange={setPhotoUrl} disabled={saving} />
@@ -1403,7 +1410,7 @@ function UsersTab() {
           {u.avatarUrl ? (
             <img src={resolveMediaUrl(u.avatarUrl)} alt="" className="h-8 w-8 shrink-0 rounded-full border border-cinema-border object-cover" loading="lazy" />
           ) : (
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-ink">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-gold/70 text-xs font-bold text-cinema-ink">
               {u.name.charAt(0).toUpperCase()}
             </span>
           )}
@@ -1503,7 +1510,7 @@ function UsersTab() {
         <LoadingBlock />
       ) : loadError ? (
         <EmptyState
-          icon="⚠️"
+          icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
           title={t('admin.loadError')}
           action={
             <button type="button" onClick={() => reload()} className={primaryBtn}>
@@ -1545,13 +1552,13 @@ function UsersTab() {
           {totalPages > 1 && (
             <div className="mt-4 flex items-center justify-center gap-3 text-sm">
               <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className={ghostBtn}>
-                ← {t('common.prev')}
+                <ArrowLeft size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {t('common.prev')}
               </button>
               <span className="text-cinema-muted">
                 {page} / {totalPages}
               </span>
               <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className={ghostBtn}>
-                {t('common.next')} →
+                {t('common.next')} <ArrowRight size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" />
               </button>
             </div>
           )}
@@ -1587,15 +1594,17 @@ function AnalyticsTab() {
 
   const cards = useMemo(
     () => [
-      { key: 'totalUsers', icon: '👥', value: data?.totalUsers },
-      { key: 'totalMovies', icon: '🎬', value: data?.totalMovies },
-      { key: 'activeSubscriptions', icon: '💳', value: data?.activeSubscriptions },
-      { key: 'newUsersInPeriod', icon: '✨', value: data?.newUsersInPeriod },
+      { key: 'totalUsers', icon: <Users size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.totalUsers },
+      { key: 'totalMovies', icon: <Clapperboard size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.totalMovies },
+      { key: 'activeSubscriptions', icon: <CreditCard size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.activeSubscriptions },
+      { key: 'newUsersInPeriod', icon: <UserPlus size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.newUsersInPeriod },
+      { key: 'viewsInPeriod', icon: <Play size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.viewsInPeriod },
+      { key: 'averageRatingInPeriod', icon: <Star size={24} aria-hidden="true" className="inline-block shrink-0 align-middle" />, value: data?.averageRatingInPeriod },
     ],
     [data],
   );
 
-  if (loadError) return <EmptyState icon="⚠️" title={t('admin.loadError')} />;
+  if (loadError) return <EmptyState icon={<TriangleAlert size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('admin.loadError')} />;
   if (!data) return <LoadingBlock />;
 
   return (
@@ -1617,6 +1626,8 @@ function AnalyticsTab() {
         ))}
       </div>
 
+      <p className="text-sm text-cinema-muted">{t('admin.analytics.periodHint')}</p>
+
       {/* stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((c) => (
@@ -1637,7 +1648,7 @@ function AnalyticsTab() {
           columns={[
             { key: 'title', label: t('admin.analytics.movie') },
             { key: 'viewCount', label: t('admin.analytics.views'), sortable: true, render: (m) => m.viewCount.toLocaleString() },
-            { key: 'averageRating', label: t('admin.analytics.rating'), sortable: true, render: (m) => (m.averageRating > 0 ? `★ ${m.averageRating.toFixed(1)}` : '—') },
+            { key: 'averageRating', label: t('admin.analytics.rating'), sortable: true, render: (m) => (m.averageRating > 0 ? <span className="inline-flex items-center gap-1"><Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" />{m.averageRating.toFixed(1)}</span> : '—') },
           ]}
           rows={data.topMovies}
           rowKey={(m) => m.id}
@@ -1657,7 +1668,7 @@ function AnalyticsTab() {
               key: 'averageRating',
               label: t('admin.analytics.rating'),
               sortable: true,
-              render: (g) => (g.averageRating > 0 ? `★ ${g.averageRating.toFixed(1)}` : '—'),
+              render: (g) => (g.averageRating > 0 ? <span className="inline-flex items-center gap-1"><Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" />{g.averageRating.toFixed(1)}</span> : '—'),
             },
           ]}
           rows={data.genrePopularity}
@@ -1670,7 +1681,7 @@ function AnalyticsTab() {
       <div>
         <h2 className="mb-3 text-lg font-bold text-cinema-text">{t('admin.analytics.revenueByMonth')}</h2>
         {data.revenueByMonth.length === 0 ? (
-          <EmptyState icon="📉" title={t('admin.analytics.noRevenue')} />
+          <EmptyState icon={<ChartNoAxesCombined size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('admin.analytics.noRevenue')} />
         ) : (
           <AdminTable
             columns={[

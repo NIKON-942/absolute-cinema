@@ -1,3 +1,4 @@
+import { CircleCheck, CircleX, Info, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -25,7 +26,7 @@ const STYLES: Record<ToastType, string> = {
   info: 'border-cinema-border bg-cinema-panel/95 text-cinema-text',
 };
 
-const ICONS: Record<ToastType, string> = { success: '✓', error: '✕', info: 'ℹ' };
+const ICONS: Record<ToastType, ReactNode> = { success: <CircleCheck size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" />, error: <CircleX size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" />, info: <Info size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /> };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -73,7 +74,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               className="cursor-pointer text-current opacity-60 transition hover:opacity-100"
               onClick={() => dismiss(item.id)}
             >
-              ✕
+              <X size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" />
             </button>
           </div>
         ))}

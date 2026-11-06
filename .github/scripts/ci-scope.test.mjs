@@ -8,10 +8,30 @@ test('documentation alone skips builds, including documentation PRs to main', ()
     assert.ok(Object.values(scope).every(value => value === false));
   }
 });
-test('UI icons, player controls and CSS keep the basic checks without FFmpeg', () => {
-  const scope = classifyChanges(['frontend/src/components/VideoPlayer.tsx', 'frontend/src/components/BrandIcon.tsx', 'frontend/src/index.css']);
-  assert.equal(scope.run, true); assert.equal(scope.full, false);
-  assert.equal(scope.video, false); assert.equal(scope.regressions, false);
+test('frontend-only changes build and test the web image without backend fixtures or FFmpeg', () => {
+  for (const path of ['frontend/src/components/MoviePlayback.tsx', 'frontend/src/components/VideoPlayer.tsx', 'frontend/src/components/BrandIcon.tsx', 'frontend/src/pages/Watch.tsx', 'frontend/src/utils/authReturn.ts', 'frontend/src/index.css']) {
+    const scope = classifyChanges([path]);
+    assert.equal(scope.run, true, path); assert.equal(scope.full, false, path);
+    assert.equal(scope.video, false, path); assert.equal(scope.regressions, false, path);
+  }
+});
+
+test('every backend module enables integration regressions, including analytics and recommendations', () => {
+  for (const path of ['backend/src/modules/admin/admin.service.ts', 'backend/src/modules/admin/admin.controller.ts', 'backend/src/modules/recommendations/recommendations.service.ts', 'backend/src/modules/recommendations/recommendations.controller.ts', 'backend/src/modules/new-feature/new-feature.service.ts']) {
+    const scope = classifyChanges([path]);
+    assert.equal(scope.run, true, path); assert.equal(scope.regressions, true, path);
+    assert.equal(scope.full, false, path); assert.equal(scope.video, false, path);
+    assert.equal(scope.payments, false, path);
+  }
+});
+
+test('standalone poster and migration fixtures select the steps that execute them', () => {
+  const posters = classifyChanges(['backend/scripts/movie-posters.test.mjs']);
+  assert.equal(posters.uploads, true); assert.equal(posters.regressions, true);
+  assert.equal(posters.video, false); assert.equal(posters.deployment, false);
+  const migration = classifyChanges(['backend/scripts/requirements-migration.mjs']);
+  assert.equal(migration.deployment, true); assert.equal(migration.regressions, true);
+  assert.equal(migration.video, false); assert.equal(migration.uploads, false);
 });
 test('auth and payments enable regressions and the Stripe checks separately', () => {
   const auth = classifyChanges(['backend/src/modules/auth/auth.service.ts']);

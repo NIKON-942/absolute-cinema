@@ -20,14 +20,18 @@ export function classifyChanges(paths, { eventName = 'push', baseRef = '', ref =
     || /^backend\/scripts\/(review-regressions\.test|smoke-stripe)\.mjs$/.test(path)
     || /^frontend\/src\/(services\/paymentsService\.ts|pages\/(SubscriptionPlans|MockCheckout|Profile)\.tsx|utils\/plans\.ts)$/.test(path));
   const uploads = full || code.some(path => /^backend\/src\/(modules\/(media|users)\/|common\/)/.test(path)
-    || /^backend\/scripts\/(uploads\.test|smoke-dependencies)\.mjs$/.test(path)
+    || /^backend\/scripts\/(uploads\.test|movie-posters\.test|smoke-dependencies)\.mjs$/.test(path)
     || /^frontend\/src\/(services\/(uploadManager|videoUploads|mediaService|usersService)\.ts|components\/(ImageField|UploadPanel|TranscodeProgress)\.tsx|context\/UploadContext\.tsx|workers\/|utils\/upload\.ts|pages\/(AdminPanel|Profile)\.tsx)/.test(path)
     || path === 'frontend/scripts/upload-metrics.test.mjs');
   const video = full || code.some(path => /^backend\/src\/modules\/media\/(transcode\.service\.ts|media-processing\.ts|remote-source\.ts|media\.service\.ts|media\.constants\.ts|media\.module\.ts|entities\/movie\.entity\.ts)$/.test(path)
     || ['backend/scripts/transcode.test.mjs', 'backend/scripts/smoke-dependencies.mjs'].includes(path));
   const deployment = full || code.some(path => /^deploy\//.test(path) || path === 'docker-compose.yml'
+    || path === 'backend/scripts/requirements-migration.mjs'
     || /^backend\/src\/(database\/|config\/|main\.ts$|app\.module\.ts$)/.test(path));
-  const regressions = auth || payments || uploads || deployment;
+  // The integration suite spans modules; new backend modules must not silently
+  // fall back to smoke checks just because they are absent from a scope list.
+  const regressions = auth || payments || uploads || deployment
+    || code.some(path => path.startsWith('backend/src/'));
   const dependencies = full || code.some(path => /^backend\/src\/modules\/mail\//.test(path)
     || ['backend/src/main.ts', 'backend/scripts/smoke-dependencies.mjs'].includes(path));
   return { run, full, auth, payments, uploads, video, deployment, regressions, dependencies };

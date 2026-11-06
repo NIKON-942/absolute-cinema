@@ -1,3 +1,4 @@
+import { CircleCheck, Link2 } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -49,7 +50,7 @@ export default function ResetPassword() {
     return (
       <AuthShell title={t('auth.reset.title')}>
         <div className="rounded-xl border border-cinema-red/50 bg-cinema-red/10 px-4 py-5 text-center" role="alert">
-          <span className="mb-2 block text-3xl">🔗</span>
+          <span className="mb-2 block text-3xl"><Link2 size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
           <p className="text-sm text-cinema-error">{t('auth.validation.tokenMissing')}</p>
           <Link to="/forgot-password" className="mt-3 inline-block font-semibold text-cinema-accent hover:underline">
             {t('auth.forgot.submit')}
@@ -63,7 +64,7 @@ export default function ResetPassword() {
     <AuthShell title={t('auth.reset.title')} subtitle={t('auth.reset.subtitle')}>
       {done ? (
         <div className="rounded-xl border border-cinema-success/40 bg-cinema-success-surface/40 px-4 py-5 text-center" role="status">
-          <span className="mb-2 block text-3xl">✅</span>
+          <span className="mb-2 block text-3xl"><CircleCheck size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
           <p className="mb-4 text-sm leading-relaxed text-cinema-success">{t('auth.reset.success')}</p>
           <Link to="/login" className="inline-block rounded-xl bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink transition hover:shadow-glow">
             {t('auth.reset.toLogin')}

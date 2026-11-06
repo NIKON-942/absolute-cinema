@@ -1,3 +1,4 @@
+import { LockKeyhole } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { qualityRank } from '@/utils/plans';
 import type { Quality } from '@/types';
@@ -44,7 +45,7 @@ export function QualitySelector({ qualities, value, onChange, maxQuality = '1080
             className={`cursor-pointer rounded px-2 py-1 text-xs font-bold transition ${buttonClass(q)}`}
           >
             {q}
-            {qualityRank(q) > qualityRank(maxQuality) && ' 🔒'}
+            {qualityRank(q) > qualityRank(maxQuality) && <LockKeyhole size={12} aria-hidden="true" className="inline-block shrink-0 align-middle ml-1" />}
           </button>
         ))}
       </div>
@@ -63,7 +64,7 @@ export function QualitySelector({ qualities, value, onChange, maxQuality = '1080
           className={`cursor-pointer rounded-md px-3 py-1.5 text-sm font-bold transition ${buttonClass(q)}`}
         >
           {q}
-          {qualityRank(q) > qualityRank(maxQuality) && ' 🔒'}
+          {qualityRank(q) > qualityRank(maxQuality) && <LockKeyhole size={12} aria-hidden="true" className="inline-block shrink-0 align-middle ml-1" />}
         </button>
       ))}
     </div>

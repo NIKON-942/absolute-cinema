@@ -98,9 +98,13 @@ export class MailService {
     cta: string,
     href?: string,
   ): string {
+    const brandIconUrl = new URL(
+      "/brand/frog-head.png",
+      this.config.get("clientUrl", { infer: true }),
+    ).href;
     return `<!doctype html><html><body style="margin:0;background:#0b0c10;font-family:Arial,sans-serif;color:#e5e7eb;">
   <div style="max-width:520px;margin:32px auto;background:#14161c;border-radius:12px;padding:32px;">
-    <div style="font-size:20px;font-weight:bold;color:#f59e0b;margin-bottom:16px;">🎬 AbsoluteCinema</div>
+    <div style="font-size:20px;font-weight:bold;color:#f59e0b;margin-bottom:16px;"><img src="${brandIconUrl}" alt="" width="28" height="28" style="vertical-align:middle;margin-right:8px;">AbsoluteCinema</div>
     <h2 style="margin:0 0 12px;color:#fff;">${title}</h2>
     <p style="line-height:1.6;margin:0 0 24px;">${body}</p>
     ${href ? `<a href="${href}" style="display:inline-block;background:#f59e0b;color:#0b0c10;padding:12px 24px;border-radius:8px;font-weight:bold;text-decoration:none;">${cta}</a>` : ""}

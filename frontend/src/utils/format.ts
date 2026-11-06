@@ -28,12 +28,12 @@ export function formatDateTime(iso?: string | null): string {
 
 /** Deterministic poster fallback gradient class from a movie id/title. */
 const POSTER_GRADIENTS = [
-  'from-amber-500/40 via-cinema-card to-cinema-black',
-  'from-red-600/40 via-cinema-card to-cinema-black',
-  'from-indigo-500/40 via-cinema-card to-cinema-black',
-  'from-emerald-500/30 via-cinema-card to-cinema-black',
-  'from-orange-500/40 via-cinema-card to-cinema-black',
-  'from-rose-500/30 via-cinema-card to-cinema-black',
+  'from-cinema-amber/25 via-cinema-card to-cinema-black',
+  'from-cinema-gold/20 via-cinema-panel to-cinema-black',
+  'from-cinema-card via-cinema-panel to-cinema-amber/20',
+  'from-cinema-panel via-cinema-card to-cinema-gold/20',
+  'from-cinema-gold/25 via-cinema-card to-cinema-panel',
+  'from-cinema-card via-cinema-black to-cinema-amber/15',
 ];
 
 export function posterGradient(seed: string | number): string {

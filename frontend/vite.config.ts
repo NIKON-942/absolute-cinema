@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { privacyPage } from './scripts/privacy-page.mjs';
 import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), privacyPage()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

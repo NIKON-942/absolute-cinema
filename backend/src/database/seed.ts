@@ -245,9 +245,9 @@ async function main() {
           `Set in ${m.country}, it explores themes of ${m.keywords.slice(0, 3).join(', ')} ` +
           'through the eyes of unforgettable characters.',
         year: m.year,
-        country: m.country,
+        countryId: (await countriesRepo.findOneByOrFail({ name: m.country })).id,
         ageRating: m.ageRating,
-        director: m.director,
+        directorId: (await directorsRepo.findOneByOrFail({ name: m.director })).id,
         runtimeMinutes: m.runtimeMinutes,
         keywords: m.keywords,
         posterPath: `${slugify(m.title)}.svg`, // created by scripts/generate-videos.mjs

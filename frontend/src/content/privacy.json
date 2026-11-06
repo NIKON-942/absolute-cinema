@@ -1,0 +1,157 @@
+{
+  "contact": {
+    "name": "Микита Губін",
+    "nameEn": "Mykyta Hubin",
+    "email": "hubin.mykyta_ip42@edu.kpi.ua",
+    "site": "https://absolutecine.duckdns.org",
+    "updated": "2026-11-03"
+  },
+  "uk": {
+    "title": "Політика конфіденційності",
+    "intro": "AbsoluteCinema — навчальний онлайн-кінотеатр із каталогом, переглядом відео, профілями та підписками. Ця політика пояснює, які дані обробляються на absolutecine.duckdns.org і як звернутися щодо них.",
+    "updatedLabel": "Оновлено",
+    "contactTitle": "Відповідальний за проєкт і звернення щодо даних",
+    "home": "На головну",
+    "sections": [
+      {
+        "id": "account",
+        "title": "1. Акаунт і Google-вхід",
+        "paragraphs": [
+          "Для акаунта зберігаються email, ім’я, аватар за наявності, роль, статус блокування та дати реєстрації й останнього входу. При реєстрації з паролем зберігається його криптографічний хеш, а не відкритий пароль.",
+          "За вашим вибором Google передає ідентифікатор акаунта, підтверджений email, ім’я та зображення профілю через дозволи openid, email і profile. Ці дані використовуються для створення акаунта, входу та явного прив’язування Google до вашого профілю. Пароль Google, листи Gmail, контакти й файли Google Drive не запитуються. Токени доступу Google не зберігаються для подальшого доступу до Google API."
+        ]
+      },
+      {
+        "id": "activity",
+        "title": "2. Перегляди, налаштування й підписки",
+        "paragraphs": [
+          "Зберігаються обране, оцінки, історія та позиція перегляду, події початку відтворення й змін оцінок. Вони потрібні для продовження перегляду, рекомендацій та звітів про популярність контенту.",
+          "Для контролю тарифного ліміту обробляються ідентифікатор браузера/пристрою, назва браузера й операційної системи та час активності. Для підписок зберігаються тариф, строки й статус, суми та статуси замовлень, а за використання Stripe — ідентифікатори його платежів і підписок."
+        ]
+      },
+      {
+        "id": "purposes",
+        "title": "3. Для чого використовуються дані",
+        "paragraphs": [
+          "Дані обробляються для роботи акаунта, перевірки прав на відео, керування підпискою, персональних рекомендацій, відновлення пароля, сервісних листів, захисту від зловживань та усунення збоїв. Адміністратори мають доступ до даних у межах керування сервісом.",
+          "Дані Google використовуються лише для входу, прив’язування акаунта й відображення профілю. Ми не продаємо персональні дані та не використовуємо їх для персоналізованої реклами."
+        ]
+      },
+      {
+        "id": "storage",
+        "title": "4. Cookie та локальне зберігання",
+        "paragraphs": [
+          "У браузері зберігаються токен входу, вибір мови й теми, гучність, ідентифікатор пристрою та, для адміністратора, налаштування панелі завантажень. Вихід очищає токен входу; інші локальні налаштування можна видалити через очищення даних сайту в браузері.",
+          "Google-вхід використовує технічний HttpOnly cookie ac_google_flow зі строком до 10 хвилин. Запит входу одноразовий; код завершення входу чинний одну хвилину та потребує того самого браузера. Cookie очищається після успішного обміну, а прострочені серверні записи періодично видаляються.",
+          "Рекламні та маркетингові трекери в застосунку не використовуються. Звичайні технічні журнали й, якщо ввімкнено, діагностичні траси застосовуються для підтримки роботи сервісу."
+        ]
+      },
+      {
+        "id": "providers",
+        "title": "5. Зовнішні сервіси й доступ до зображень",
+        "paragraphs": [
+          "Сайт розгортається в Oracle Cloud. Google обробляє вхід у Google-акаунт за власною політикою. За налаштованої пошти SMTP-провайдер отримує адресу одержувача й вміст сервісного листа. Якщо ввімкнено оплату через Stripe, платіжні дані обробляє Stripe; застосунок не зберігає повний номер картки або CVC. У демонстраційному режимі оплата симулюється — не вводьте справжні платіжні дані.",
+          "Для шрифту Inter браузер звертається до Google Fonts. Зображення та трейлери з зовнішніх URL можуть завантажуватися з відповідних сайтів; їхні оператори отримують технічні дані запиту, зокрема IP-адресу. Під час відкриття зовнішнього посилання діють правила того сайту.",
+          "Завантажений аватар може бути доступний за прямим посиланням на файл. Не завантажуйте зображення, які містять конфіденційні дані."
+        ]
+      },
+      {
+        "id": "retention",
+        "title": "6. Зберігання й захист",
+        "paragraphs": [
+          "Профіль, історія, оцінки та записи підписок зберігаються для роботи акаунта. Для них немає фіксованого автоматичного строку видалення. Ви можете звернутися до відповідального за проєкт щодо видалення або уточнення строків зберігання.",
+          "Використовуються HTTPS, хешування паролів, перевірка прав доступу та відкликання сесій. Під час обслуговування можуть створюватися резервні копії. Попередні дані можуть залишатися в них до окремого видалення чи ротації копій; видалення з робочої бази не означає миттєвого видалення всіх резервних копій."
+        ]
+      },
+      {
+        "id": "requests",
+        "title": "7. Доступ, виправлення та видалення",
+        "paragraphs": [
+          "Ім’я й аватар можна змінити в профілі; там само можна керувати пристроями. Для отримання копії даних, виправлення інших відомостей, видалення акаунта та пов’язаних файлів або запитання щодо обробки напишіть на контактну адресу нижче. Перед виконанням запиту може знадобитися підтвердити, що акаунт належить вам.",
+          "Доступ AbsoluteCinema до Google-акаунта також можна відкликати в налаштуваннях безпеки Google. Саме відкликання доступу Google не видаляє локальний акаунт AbsoluteCinema та його історію — для цього зверніться окремо."
+        ]
+      },
+      {
+        "id": "updates",
+        "title": "8. Зміни політики",
+        "paragraphs": [
+          "У разі зміни обробки даних текст цієї сторінки оновлюється разом із датою. Питання щодо політики та даних можна надіслати відповідальному за проєкт."
+        ]
+      }
+    ]
+  },
+  "en": {
+    "title": "Privacy policy",
+    "intro": "AbsoluteCinema is an educational online cinema with a catalog, video playback, user profiles and subscriptions. This policy explains how data is handled on absolutecine.duckdns.org and how to contact the project about it.",
+    "updatedLabel": "Updated",
+    "contactTitle": "Project operator and privacy contact",
+    "home": "Back to home",
+    "sections": [
+      {
+        "id": "account",
+        "title": "1. Accounts and Google sign-in",
+        "paragraphs": [
+          "Account records include your email, name, avatar when provided, role, blocked status, registration date and last sign-in. Password accounts store a cryptographic password hash rather than a plain-text password.",
+          "When you choose Google sign-in, Google provides an account identifier, verified email, name and profile picture through the openid, email and profile permissions. These are used to create an account, sign in and explicitly link Google to your profile. We do not request your Google password, Gmail messages, contacts or Google Drive files. Google access tokens are not stored for later access to Google APIs."
+        ]
+      },
+      {
+        "id": "activity",
+        "title": "2. Viewing activity, preferences and subscriptions",
+        "paragraphs": [
+          "We store favorites, ratings, watch history and playback positions, playback-start events and rating changes. These support resuming playback, recommendations and content-popularity reports.",
+          "Plan limits use a browser/device identifier, browser and operating-system label and activity timestamps. Subscription records include the plan, dates and status, order amounts and statuses, and Stripe payment/subscription identifiers when Stripe is used."
+        ]
+      },
+      {
+        "id": "purposes",
+        "title": "3. How data is used",
+        "paragraphs": [
+          "Data supports account operation, video-access checks, subscription management, recommendations, password recovery, service emails, abuse prevention and troubleshooting. Administrators access data as needed to manage the service.",
+          "Google user data is used only for sign-in, account linking and profile display. We do not sell personal data or use it for personalized advertising."
+        ]
+      },
+      {
+        "id": "storage",
+        "title": "4. Cookies and local storage",
+        "paragraphs": [
+          "Your browser stores an authentication token, language and theme choices, volume, a device identifier and, for administrators, upload-panel preferences. Signing out removes the authentication token. Other local preferences can be removed by clearing site data in your browser.",
+          "Google sign-in uses the technical HttpOnly cookie ac_google_flow for up to ten minutes. Sign-in state is single-use; the completion code lasts one minute and requires the same browser. The cookie is cleared after successful exchange and expired server records are periodically removed.",
+          "The application does not use advertising or marketing trackers. Technical logs and diagnostic traces, when enabled, support service operation."
+        ]
+      },
+      {
+        "id": "providers",
+        "title": "5. External services and image access",
+        "paragraphs": [
+          "The site is deployed on Oracle Cloud. Google processes Google-account sign-in under its own policy. When email delivery is configured, the SMTP provider receives recipient addresses and service-email content. When Stripe payments are enabled, Stripe processes payment details; the application does not store full card numbers or CVC codes. Demo checkout simulates payment: do not enter real payment details.",
+          "Your browser contacts Google Fonts for the Inter font. Images and trailers supplied as external URLs may load from those sites, whose operators receive technical request data including your IP address. External links are subject to the destination site’s policies.",
+          "An uploaded avatar may be accessible through its direct file URL. Do not upload images containing confidential information."
+        ]
+      },
+      {
+        "id": "retention",
+        "title": "6. Retention and protection",
+        "paragraphs": [
+          "Profiles, viewing history, ratings and subscription records are retained for account operation. There is no fixed automatic deletion period for these records. Contact the project operator to request deletion or details about retention.",
+          "The service uses HTTPS, password hashing, access checks and session revocation. Backups may be created during maintenance. Previous data may remain in backups until those copies are separately deleted or rotated; deleting data from the live database does not immediately erase every backup."
+        ]
+      },
+      {
+        "id": "requests",
+        "title": "7. Access, correction and deletion",
+        "paragraphs": [
+          "You can edit your name and avatar and manage devices in your profile. To request a copy of your data, correct other information, delete your account and related files, or ask about processing, email the contact below. We may need to verify account ownership before fulfilling a request.",
+          "You can also revoke AbsoluteCinema access in your Google Account security settings. Revoking Google access alone does not delete your local AbsoluteCinema account or history; contact us separately for deletion."
+        ]
+      },
+      {
+        "id": "updates",
+        "title": "8. Policy updates",
+        "paragraphs": [
+          "Changes to data handling are reflected on this page with an updated date. Send questions about this policy or your data to the project operator."
+        ]
+      }
+    ]
+  }
+}

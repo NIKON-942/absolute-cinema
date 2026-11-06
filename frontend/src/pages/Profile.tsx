@@ -1,9 +1,11 @@
+import { Check, Heart, Hourglass, Laptop, LockKeyholeOpen, Minus, Play, Tv } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
+import { authService } from '@/services/authService';
 import { mediaService } from '@/services/mediaService';
 import { usersService } from '@/services/usersService';
 import { paymentsService } from '@/services/paymentsService';
@@ -44,6 +46,12 @@ export default function Profile() {
     currentPassword?: string;
   }>({});
   const [saving, setSaving] = useState(false);
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
+  const linkGoogle = async () => {
+    setLinkingGoogle(true);
+    try { const { url } = await authService.linkGoogle(); window.location.assign(url); }
+    catch (err) { errorToast(extractServerMessage(err) ?? t('auth.google.unavailable')); setLinkingGoogle(false); }
+  };
 
   const [favorites, setFavorites] = useState<MovieDto[] | null>(null);
   const [progress, setProgress] = useState<WatchProgressDto[] | null>(null);
@@ -156,7 +164,7 @@ export default function Profile() {
         {user.avatarUrl ? (
           <img src={resolveMediaUrl(user.avatarUrl)} alt={user.name} className="h-16 w-16 rounded-2xl border border-cinema-border object-cover" />
         ) : (
-          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-cinema-amber to-cinema-red text-2xl font-black text-cinema-ink">
+          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-cinema-amber to-cinema-gold text-2xl font-black text-cinema-ink">
             {user.name.charAt(0).toUpperCase()}
           </span>
         )}
@@ -173,6 +181,10 @@ export default function Profile() {
         {/* account form */}
         <section className="rounded-2xl border border-cinema-border bg-cinema-panel/60 p-6">
           <h2 className="mb-5 text-lg font-bold text-cinema-text">{t('profile.account.title')}</h2>
+          <div className="mb-5 rounded-xl border border-cinema-border bg-cinema-card/50 p-4">
+            <p className="text-sm font-semibold text-cinema-text">{t(user.googleLinked ? 'auth.google.linked' : 'auth.google.linkHint')}</p>
+            {!user.googleLinked && <button type="button" onClick={() => void linkGoogle()} disabled={linkingGoogle} className="mt-3 rounded-lg bg-cinema-amber px-4 py-2 text-sm font-bold text-cinema-ink disabled:opacity-60">{t(linkingGoogle ? 'common.loading' : 'auth.google.link')}</button>}
+          </div>
           <form onSubmit={onSubmit} noValidate className="space-y-4">
             <div>
               <label htmlFor="profile-name" className={labelClass}>
@@ -269,7 +281,8 @@ export default function Profile() {
                 <dd className="text-right font-semibold text-cinema-soft">{formatDate(sub.endsAt)}</dd>
                 <dt className="text-cinema-muted">{t('profile.subscription.autoRenew')}</dt>
                 <dd className="text-right font-semibold text-cinema-soft">
-                  {sub.autoRenew ? '✓' : '—'}
+                  <span className="sr-only">{t(sub.autoRenew ? 'common.yes' : 'common.no')}</span>
+                  {sub.autoRenew ? <Check size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" /> : <Minus size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
                 </dd>
               </dl>
               <div className="mt-6 flex flex-wrap gap-3">
@@ -292,7 +305,7 @@ export default function Profile() {
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <span className="text-4xl">🔓</span>
+              <span className="text-4xl"><LockKeyholeOpen size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
               <p className="font-semibold text-cinema-text">{t('profile.subscription.none')}</p>
               <p className="max-w-xs text-sm text-cinema-muted">{t('profile.subscription.noneHint')}</p>
               <Link to="/plans" className="mt-2 rounded-xl bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink transition hover:shadow-glow">
@@ -335,7 +348,7 @@ export default function Profile() {
                   return (
                     <li key={d.deviceId} className="flex flex-wrap items-center gap-3 py-3">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cinema-card text-base">
-                        {isCurrent ? '💻' : '📺'}
+                        {isCurrent ? <Laptop size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /> : <Tv size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-cinema-text">
@@ -385,7 +398,7 @@ export default function Profile() {
             <Spinner size={8} />
           </div>
         ) : continueWatching.length === 0 ? (
-          <EmptyState icon="⏳" title={t('profile.continue.empty')} subtitle={t('profile.continue.emptyHint')} />
+          <EmptyState icon={<Hourglass size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('profile.continue.empty')} subtitle={t('profile.continue.emptyHint')} />
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {continueWatching.map((p) => {
@@ -415,11 +428,11 @@ export default function Profile() {
                       </p>
                       <div className="mt-auto">
                         <div className="mb-1 h-1.5 overflow-hidden rounded-full bg-cinema-card">
-                          <div className="h-full rounded-full bg-cinema-red" style={{ width: `${percent}%` }} />
+                          <div className="h-full rounded-full bg-cinema-amber" style={{ width: `${percent}%` }} />
                         </div>
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-cinema-muted">{t('profile.continue.left', { time: formatDuration(left) })}</span>
-                          <span className="font-bold text-cinema-accent">{t('profile.continue.resume')} ▸</span>
+                          <span className="inline-flex items-center gap-1 font-bold text-cinema-accent">{t('profile.continue.resume')} <Play size={14} aria-hidden="true" /></span>
                         </div>
                       </div>
                     </div>
@@ -439,7 +452,7 @@ export default function Profile() {
             <Spinner size={8} />
           </div>
         ) : favorites.length === 0 ? (
-          <EmptyState icon="❤️" title={t('profile.favorites.empty')} subtitle={t('profile.favorites.emptyHint')} />
+          <EmptyState icon={<Heart size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('profile.favorites.empty')} subtitle={t('profile.favorites.emptyHint')} />
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {favorites.map((m) => (
@@ -469,7 +482,7 @@ export default function Profile() {
             <button
               type="button"
               onClick={() => void onCancelSubscription()}
-              className="cursor-pointer rounded-lg bg-cinema-red px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-red/85 disabled:opacity-60"
+              className="cursor-pointer rounded-lg bg-cinema-danger px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-danger/90 disabled:opacity-60"
               disabled={cancelling}
             >
               {cancelling ? t('common.loading') : t('common.confirm')}

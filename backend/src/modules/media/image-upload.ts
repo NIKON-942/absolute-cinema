@@ -19,7 +19,7 @@ export const imageUploadOptions: MulterOptions = {
 };
 
 /** Store beside existing public posters, on the persistent media volume. */
-export async function storeImage(file: Express.Multer.File | undefined, kind: 'avatar' | 'actor'): Promise<string | undefined> {
+export async function storeImage(file: Express.Multer.File | undefined, kind: 'avatar' | 'actor' | 'poster'): Promise<string | undefined> {
   if (!file) return undefined;
   await validatePoster(file);
   await mkdir(POSTERS_DIR, { recursive: true });

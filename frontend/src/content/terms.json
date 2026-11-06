@@ -1,0 +1,100 @@
+{
+  "uk": {
+    "title": "Умови користування",
+    "intro": "Ці умови описують користування AbsoluteCinema — навчальним онлайн-кінотеатром на absolutecine.duckdns.org.",
+    "updatedLabel": "Оновлено",
+    "contactTitle": "Відповідальний за проєкт і звернення",
+    "home": "На головну",
+    "sections": [
+      {
+        "id": "service",
+        "title": "1. Призначення сервісу",
+        "paragraphs": [
+          "AbsoluteCinema надає каталог фільмів, рекомендації, обране, оцінювання та перегляд відео з урахуванням доступу за підпискою. Це навчальний проєкт, функції якого можуть змінюватися. Під час оновлень чи технічних робіт можливі перерви."
+        ]
+      },
+      {
+        "id": "account",
+        "title": "2. Акаунт і доступ",
+        "paragraphs": [
+          "Створюйте акаунт із поштою або Google-акаунтом, до яких маєте законний доступ. Зберігайте пароль у таємниці, виходьте з акаунта на спільних пристроях і повідомляйте про підозру на сторонній доступ.",
+          "Перегляд відео залежить від активної підписки, доступних якостей і ліміту одночасних пристроїв. Наявність фільму в каталозі не гарантує, що його відео вже доступне."
+        ]
+      },
+      {
+        "id": "payments",
+        "title": "3. Підписки й демонстраційні платежі",
+        "paragraphs": [
+          "До підтвердження замовлення ознайомтеся з тарифом, ціною, періодом і доступними можливостями на сторінці підписок. У демонстраційному checkout платіж симулюється; не вводьте справжні карткові дані.",
+          "Якщо сервіс використовує Stripe, оформлення платежу відбувається через нього. Статус і строк підписки відображаються в профілі. Умови автоматичного подовження залежать від способу оплати; його скасування не скасовує вже оплачений період доступу. Щодо помилкових платежів або повернень звертайтеся до відповідального за проєкт."
+        ]
+      },
+      {
+        "id": "conduct",
+        "title": "4. Правила користування та контент",
+        "paragraphs": [
+          "Не намагайтеся отримати чужі дані, обійти перевірки доступу чи тарифні обмеження, порушити роботу сервісу або завантажити шкідливі файли. Не передавайте адміністративний доступ іншим особам.",
+          "Завантажуйте лише зображення та інший контент, на використання яких маєте право. Права на фільми, постери, трейлери та інші матеріали належать відповідним правовласникам. Наявність матеріалу на сайті не надає дозволу на його копіювання чи поширення. Про можливе порушення прав повідомляйте за контактною адресою.",
+          "За зловживання або порушення безпеки адміністратор може обмежити доступ чи заблокувати акаунт. Питання щодо блокування можна надіслати відповідальному за проєкт."
+        ]
+      },
+      {
+        "id": "privacy",
+        "title": "5. Дані та звернення",
+        "paragraphs": [
+          "Порядок обробки даних описано в окремій політиці конфіденційності, посилання на яку доступне внизу сайту. Для питань щодо акаунта, видалення даних, платежів або матеріалів використовуйте контакт нижче.",
+          "Оновлені умови публікуються на цій сторінці разом із датою зміни."
+        ]
+      }
+    ]
+  },
+  "en": {
+    "title": "Terms of use",
+    "intro": "These terms describe use of AbsoluteCinema, the educational online cinema at absolutecine.duckdns.org.",
+    "updatedLabel": "Updated",
+    "contactTitle": "Project operator and contact",
+    "home": "Back to home",
+    "sections": [
+      {
+        "id": "service",
+        "title": "1. About the service",
+        "paragraphs": [
+          "AbsoluteCinema provides a movie catalog, recommendations, favorites, ratings and subscription-based video access. It is an educational project whose features may change. Updates and maintenance may interrupt availability."
+        ]
+      },
+      {
+        "id": "account",
+        "title": "2. Accounts and access",
+        "paragraphs": [
+          "Create an account using an email address or Google Account you are entitled to use. Keep your password private, sign out on shared devices and report suspected unauthorized access.",
+          "Video playback depends on an active subscription, available video qualities and concurrent-device limits. A catalog listing does not guarantee that its video is ready to watch."
+        ]
+      },
+      {
+        "id": "payments",
+        "title": "3. Subscriptions and demo payments",
+        "paragraphs": [
+          "Review the plan, price, billing period and features on the subscription page before confirming an order. Demo checkout simulates payment; do not enter real card details.",
+          "When Stripe is used, payment takes place through Stripe. Your profile shows subscription status and dates. Automatic renewal depends on the payment method; cancelling renewal does not remove access for an already paid period. Contact the project operator about payment errors or refunds."
+        ]
+      },
+      {
+        "id": "conduct",
+        "title": "4. Acceptable use and content",
+        "paragraphs": [
+          "Do not try to access other users’ data, bypass access checks or plan limits, disrupt the service or upload malicious files. Do not share administrative access.",
+          "Upload only images and other content you have the right to use. Films, posters, trailers and other materials remain the property of their respective rightsholders. Listing content on this site does not grant permission to copy or redistribute it. Report suspected rights violations using the contact below.",
+          "Administrators may restrict access or block an account in response to abuse or security violations. Contact the project operator with questions about a restriction."
+        ]
+      },
+      {
+        "id": "privacy",
+        "title": "5. Data and requests",
+        "paragraphs": [
+          "Data handling is described in the separate privacy policy linked in the site footer. Use the contact below for account questions, data deletion, payments or content concerns.",
+          "Updated terms are published on this page with a revised date."
+        ]
+      }
+    ]
+  }
+}

@@ -1,5 +1,6 @@
+import { ArrowLeft, Clapperboard, Eye, Film, Play, Star } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
@@ -16,6 +17,8 @@ import type { MovieDto } from '@/types';
 export default function MovieDetails() {
   const { id } = useParams<{ id: string }>();
   const movieId = Number(id);
+  const [searchParams] = useSearchParams();
+  const autoPlay = searchParams.get('play') === '1';
   const { t } = useLanguage();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { success, error: errorToast } = useToast();
@@ -67,7 +70,7 @@ export default function MovieDetails() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-20">
         <EmptyState
-          icon="🎞️"
+          icon={<Film size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
           title={t('movie.notFound')}
           action={<Link to="/catalog" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink">{t('common.backToCatalog')}</Link>}
         />
@@ -125,21 +128,21 @@ export default function MovieDetails() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:py-8">
       <header className="mb-5">
-        <Link to="/catalog" className="text-sm font-semibold text-cinema-muted hover:text-cinema-accent">← {t('common.backToCatalog')}</Link>
+        <Link to="/catalog" className="inline-flex items-center gap-1 text-sm font-semibold text-cinema-muted hover:text-cinema-accent"><ArrowLeft size={16} aria-hidden="true" /> {t('common.backToCatalog')}</Link>
         <h1 className="mt-3 break-words text-3xl font-extrabold text-cinema-strong sm:text-4xl">{movie.title}</h1>
         {movie.originalTitle && movie.originalTitle !== movie.title && <p className="mt-1 text-cinema-muted">{movie.originalTitle}</p>}
       </header>
 
       <div className={`grid min-w-0 gap-8 ${similar.length > 0 ? 'lg:grid-cols-[minmax(0,1fr)_260px]' : ''}`}>
         <div className="min-w-0">
-          <MoviePlayback key={`${movie.id}-${user?.id ?? 'guest'}-${user?.hasActiveSubscription ?? false}-${user?.activeSubscription?.tier ?? ''}`} initialMovie={movie} />
+          <MoviePlayback key={`${movie.id}-${user?.id ?? 'guest'}-${user?.hasActiveSubscription ?? false}-${user?.activeSubscription?.tier ?? ''}-${autoPlay}`} initialMovie={movie} autoPlay={autoPlay} />
 
           <div className="mt-8 grid gap-6 sm:grid-cols-[160px_minmax(0,1fr)]">
             <div className="hidden self-start overflow-hidden rounded-xl border border-cinema-border sm:block">
               {movie.posterUrl ? (
                 <img src={resolveMediaUrl(movie.posterUrl)} alt={movie.title} className="aspect-[2/3] w-full object-cover" />
               ) : (
-                <div className={`flex aspect-[2/3] items-center justify-center bg-gradient-to-br p-4 text-center ${posterGradient(movie.id)}`}>🎬 {movie.title}</div>
+                <div className={`flex aspect-[2/3] items-center justify-center bg-gradient-to-br p-4 text-center ${posterGradient(movie.id)}`}><Clapperboard size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {movie.title}</div>
               )}
             </div>
             <div className="min-w-0">
@@ -149,8 +152,8 @@ export default function MovieDetails() {
                   onClick={handleFavorite}
                   className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-6 py-3 font-semibold transition ${
                     movie.isFavorite
-                      ? 'border-cinema-red/60 bg-cinema-red/15 text-cinema-red'
-                      : 'border-cinema-border bg-cinema-panel text-cinema-soft hover:border-cinema-red/50 hover:text-cinema-red'
+                      ? 'border-cinema-amber/60 bg-cinema-amber/15 text-cinema-accent'
+                      : 'border-cinema-border bg-cinema-panel text-cinema-soft hover:border-cinema-amber/50 hover:text-cinema-accent'
                   }`}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill={movie.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
@@ -172,7 +175,7 @@ export default function MovieDetails() {
                 {movie.ageRating && (
                   <span className="rounded border border-cinema-border px-2 py-0.5 text-xs font-semibold">{movie.ageRating}</span>
                 )}
-                <span>👁 {movie.viewCount.toLocaleString()}</span>
+                <span><Eye size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {movie.viewCount.toLocaleString()}</span>
                 {movie.availableQualities.length > 0 && (
                   <span className="text-cinema-muted">{t('movie.qualities')}: {movie.availableQualities.join(' / ')}</span>
                 )}
@@ -223,7 +226,7 @@ export default function MovieDetails() {
                       rel="noreferrer"
                       className="inline-flex items-center gap-2 rounded-xl border border-cinema-amber/50 bg-cinema-amber/10 px-5 py-2.5 font-semibold text-cinema-accent transition hover:bg-cinema-amber/20"
                     >
-                      ▶ {t('movie.watchTrailer')}
+                      <Play size={16} aria-hidden="true" /> {t('movie.watchTrailer')}
                     </a>
                   ) : (
                     <video controls preload="none" src={movie.trailerUrl} className="w-full max-w-2xl rounded-xl border border-cinema-border" />
@@ -249,7 +252,7 @@ export default function MovieDetails() {
                         {a.photoUrl ? (
                           <img src={resolveMediaUrl(a.photoUrl)} alt={a.name} className="h-8 w-8 rounded-full object-cover" />
                         ) : (
-                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-red/70 text-xs font-bold text-cinema-ink">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber/70 to-cinema-gold/70 text-xs font-bold text-cinema-ink">
                             {a.name.charAt(0).toUpperCase()}
                           </span>
                         )}
@@ -284,12 +287,12 @@ export default function MovieDetails() {
                   {m.posterUrl ? (
                     <img src={resolveMediaUrl(m.posterUrl)} alt="" loading="lazy" className="h-24 w-16 shrink-0 rounded-lg object-cover" />
                   ) : (
-                    <span className={`flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${posterGradient(m.id)}`}>🎬</span>
+                    <span className={`flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${posterGradient(m.id)}`}><Clapperboard size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
                   )}
                   <div className="min-w-0 py-1">
                     <h3 className="line-clamp-2 text-sm font-bold text-cinema-text group-hover:text-cinema-accent">{m.title}</h3>
                     <p className="mt-1 text-xs text-cinema-muted">{[m.year, m.ageRating].filter(Boolean).join(' · ')}</p>
-                    {m.averageRating > 0 && <p className="mt-2 text-xs font-bold text-cinema-accent">★ {m.averageRating.toFixed(1)}</p>}
+                    {m.averageRating > 0 && <p className="mt-2 text-xs font-bold text-cinema-accent"><Star size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {m.averageRating.toFixed(1)}</p>}
                   </div>
                 </Link>
               ))}

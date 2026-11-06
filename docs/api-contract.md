@@ -1,7 +1,10 @@
-# AbsoluteCinema — API Contract (shared source of truth for backend & frontend)
+# AbsoluteCinema — API Contract (implemented backend/frontend contract)
+
+Reviewed 2026-11-05 against the current controllers, services and types. This describes implementation, not proof of full ТЗ/РГР2 compliance. See [requirements](4_Functional_Requirements.md), [implementation](implementation-status.md), and [gaps](verification-and-gaps.md). In particular, head-administrator authorization and movie hide/unhide are not implemented.
 
 Base URL: `http://localhost:4000/api`
 Auth: `Authorization: Bearer <accessToken>` on protected endpoints.
+For native video requests, `?token=<accessToken>` is also supported by JWT extraction. The extractor currently accepts this form beyond the stream route; avoid logging query strings. The normal API client uses Bearer headers. Payment access never changes the administrative user role.
 All responses JSON unless noted. Errors follow NestJS shape:
 
 ```json
@@ -27,6 +30,7 @@ interface UserDto {
   name: string;
   role: 'viewer' | 'admin';
   isBlocked: boolean;
+  googleLinked: boolean; // whether a Google identity is linked
   avatarUrl: string | null;      // shown in navbar/profile (FR-35)
   hasActiveSubscription: boolean;
   activeSubscription: SubscriptionDto | null;
@@ -41,8 +45,10 @@ interface MovieDto {
   description: string;
   year: number;
   country: string;
+  countryId: number | null;
   ageRating: string;   // e.g. "12+", "16+", "18+"
   director: string;
+  directorId: number | null;
   runtimeMinutes: number | null; // FR-33
   trailerUrl: string | null;     // FR-33
   keywords: string[];  // tags array
@@ -78,6 +84,8 @@ interface SubscriptionDto {
 interface WatchProgressDto {
   movieId: number;
   movieTitle: string;
+  year: number;
+  genres: { id: number; name: string }[];
   posterUrl: string;
   positionSeconds: number;
   durationSeconds: number;
@@ -120,8 +128,10 @@ interface DeviceSessionDto {
 | POST | `/auth/register` | — | `{ email, password (min 8), name }` | `{ user: UserDto, accessToken }` + welcome email |
 | POST | `/auth/login` | — | `{ email, password }` | `{ user: UserDto, accessToken }` (updates lastLoginAt) |
 | POST | `/auth/logout` | Bearer | — | `{ message }` — revokes all issued tokens (FR-36) |
-| GET | `/auth/google` | — | — | redirects to Google |
-| GET | `/auth/google/callback` | — | `?code=...` | 302 → `CLIENT_URL/auth/oauth-success#token=<jwt>` |
+| GET | `/auth/google` | — | `?returnTo=/movie/1` (internal path only) | browser-bound state cookie and redirect to Google; errors return to OAuth UI |
+| GET | `/auth/google/callback` | state + browser cookie | `?code=...&state=...` or denial | 302 → `CLIENT_URL/auth/oauth-success#code=<one-use-code>`; JWT is never put in the URL |
+| POST | `/auth/google/exchange` | same browser cookie | `{ code }` | `{ accessToken, returnTo }`; code expires after one minute and is consumed once |
+| POST | `/auth/google/link` | Bearer | — | `{ url }`; explicit link to the signed-in account, checked again at callback |
 | GET | `/auth/me` | Bearer | — | `UserDto` |
 | POST | `/auth/forgot-password` | — | `{ email }` | `{ message }` (always 200; email with reset link `/reset-password?token=...`) |
 | POST | `/auth/reset-password` | — | `{ token, newPassword }` | `{ message }` (token valid 24h) |
@@ -135,17 +145,18 @@ Password rules (РГР2 FR-2): at least 8 Unicode code points, at most 72 UTF-8 
 | GET | `/users` | admin | `?page=1&limit=20&search=` | `{ items: UserDto[], total, page, limit }` |
 | GET | `/users/me` | Bearer | — | `UserDto` |
 | PATCH | `/users/me` | Bearer | JSON `{ name?, avatarUrl?, password?, currentPassword? }` or multipart with the same fields plus `file?` (avatar image). `currentPassword` required for a password change. | `UserDto` |
-| PATCH | `/users/:id/role` | admin | `{ role: 'viewer'|'admin' }` | `UserDto` |
+| PATCH | `/users/:id/role` | admin | `{ role: 'viewer'\|'admin' }` | `UserDto` |
 | PATCH | `/users/:id/block` | admin | `{ isBlocked: boolean }` | `UserDto` |
-| DELETE | `/users/:id` | admin | — | 204 |
+| DELETE | `/users/:id` | admin | — | 200 with empty body (current Nest default; no explicit 204 decorator) |
 
 Blocked users: login returns 403 `Account is blocked`.
+All admin users currently have role/block/delete endpoints. The last active admin cannot lose access, but this does not implement the head-admin restriction in ТЗ 4.1.1–4.1.2 / РГР2 FR-42. Register and Google link use the default POST status 201; login/logout/Google exchange/forgot/reset explicitly return 200. The unknown-email recovery response has the same status/body as the known-email response.
 
 ## Media (`/media`)
 
 | Method | Path | Auth | Body/Query | Returns |
 |---|---|---|---|---|
-| GET | `/media` | — | `?search=&genre=<name>&year=&yearFrom=&yearTo=&country=&ageRating=&sort=popularity|rating|newest&page=1&limit=20` | `{ items: MovieDto[], total, page, limit }` |
+| GET | `/media` | — | `?search=&genre=<legacy-name>&genreIds=1,2&year=&yearFrom=&yearTo=&country=&ageRating=&sort=popularity\|rating\|newest&page=1&limit=20` | `{ items: MovieDto[], total, page, limit }` |
 | GET | `/media/:id` | — (isFavorite/userRating only when auth) | — | `MovieDto` |
 | GET | `/media/:id/similar` | — | — | `MovieDto[]` (up to 8, ranked by shared genres, FR-33) |
 | GET | `/media/genres` | — | — | `GenreDto[]` |
@@ -153,8 +164,9 @@ Blocked users: login returns 403 `Account is blocked`.
 | GET | `/media/countries` | — | — | `CountryDto[]` (FR-38) |
 | GET | `/media/directors` | — | — | `DirectorDto[]` (FR-39) |
 | GET | `/media/posters/:filename` | — | — | image file |
-| GET | `/media/:id/stream` | Bearer + active subscription | `?quality=480p|720p|1080p&deviceId=<uuid>`, Range header supported | `206 Partial Content` video/mp4 stream (`Accept-Ranges: bytes`). If the requested quality is not ready yet (transcoding in progress) the best ready quality **within the plan cap** is served instead; `409` only when no rendition is ready. Plan enforcement: `?quality` above the tier's cap → `402` `{ code: 'UPGRADE_REQUIRED', requestedQuality, maxQuality }`; `deviceId` identifies the streaming device (see `/devices`) and a not-yet-registered device beyond the tier's `maxDevices` → `409` `{ code: 'DEVICE_LIMIT', maxDevices, activeDevices }` |
-| POST | `/media/:id/favorites` | Bearer | — | `{ isFavorite: true }` (toggle) |
+| GET | `/media/:id/stream` | Bearer + active subscription | `?quality=480p\|720p\|1080p&deviceId=<uuid>`, Range header supported | `206 Partial Content` video/mp4 stream (`Accept-Ranges: bytes`). If the requested quality is not ready yet (transcoding in progress) the best ready quality **within the plan cap** is served instead; `409` only when no rendition is ready. Plan enforcement: `?quality` above the tier's cap → `402` `{ code: 'UPGRADE_REQUIRED', requestedQuality, maxQuality }`; `deviceId` identifies the streaming device (see `/devices`) and a not-yet-registered device beyond the tier's `maxDevices` → `409` `{ code: 'DEVICE_LIMIT', maxDevices, activeDevices }` |
+| POST | `/media/:id/playback` | Bearer + active subscription | `{ playbackId: string }` (16–100 letters/digits/underscores/hyphens) | `{ message }`; idempotent per user/movie/session |
+| POST | `/media/:id/favorites` | Bearer | — | `{ isFavorite: boolean }` (toggle) |
 | GET | `/media/favorites` | Bearer | — | `MovieDto[]` |
 | PUT | `/media/:id/rating` | Bearer | `{ value: 1..10 }` | `{ averageRating, userRating }` |
 | DELETE | `/media/:id/rating` | Bearer | — | `{ averageRating, userRating: null }` |
@@ -164,11 +176,11 @@ Blocked users: login returns 403 `Account is blocked`.
 ### Admin media CRUD (role: admin)
 | Method | Path | Body (JSON unless noted) |
 |---|---|---|
-| POST | `/media` | multipart/form-data: `file?` (poster image), plus fields `title, originalTitle?, description, year, country, ageRating, director, runtimeMinutes?, trailerUrl?, keywords? (comma string), posterUrl? (http URL alternative), masterVideoUrl? (http master video URL — transcoded server-side), genreIds: number[], actorIds?: number[]` → `MovieDto` |
+| POST | `/media` | multipart/form-data: `file?` (poster image), plus fields `title, originalTitle?, description, year, countryId?, ageRating?, directorId?, runtimeMinutes?, trailerUrl?, keywords? (comma string), posterUrl? (http URL alternative), masterVideoUrl? (http master video URL — transcoded server-side), genreIds: number[], actorIds?: number[]` → `MovieDto` |
 | PATCH | `/media/:id` | same multipart shape (all optional) |
-| DELETE | `/media/:id` | 204 |
-| POST | `/media/:id/master-video` | multipart: `file` (single master video, any ffmpeg-readable container) → `MovieDto` with `transcodeStatus: 'processing'`; the server renders 480p/720p/1080p H.264/AAC variants in the background and links them to the movie |
-| GET | `/media/:id/transcode` | `{ movieId, status: none|processing|ready|failed, qualities: string[], error? }` — live background-job state for polling |
+| DELETE | `/media/:id` | 200 with empty body (no explicit 204 decorator) |
+| POST | `/media/:id/master-video` | multipart: `file`, up to 8 GiB, MP4 (H.264/H.265 with AAC when audio is present) or WebM → `MovieDto` with `transcodeStatus: 'processing'`; background processing creates 480p/720p/1080p variants no higher than the source |
+| GET | `/media/:id/transcode` | `{ movieId, status: none\|processing\|ready\|failed, qualities: string[], error? }` — live background-job state for polling |
 | POST | `/media/genres` / PATCH `/media/genres/:id` / DELETE | `{ name }` |
 | POST | `/media/actors` / PATCH `/media/actors/:id` / DELETE | JSON `{ name, photoUrl? }` or multipart `{ name, photoUrl?, file? }` (actor image) |
 | POST | `/media/countries` / PATCH `/media/countries/:id` / DELETE | `{ name }` (FR-38) |
@@ -180,7 +192,7 @@ Video pipeline: administrators provide ONE master source (upload or URL). A dura
 
 | Method | Path | Auth | Returns |
 |---|---|---|---|
-| GET | `/recommendations` | Bearer (optional) | `MovieDto[]` (12 items; content-based from ratings ≥6 + watch history via SQL scoring on genres/director/actors/keywords; fallback = popular+newest for guests / no-history users) |
+| GET | `/recommendations` | Bearer (optional) | `MovieDto[]` (up to 12 items; content-based from ratings ≥6 + watch history via SQL scoring on genres/director/actors/keywords; fallback = popular+newest for guests / no-history users) |
 
 ## Payments (`/payments`)
 
@@ -213,7 +225,7 @@ Concurrent-device enforcement. The SPA generates a persistent `deviceId` (localS
 
 | Method | Path | Returns |
 |---|---|---|
-| GET | `/admin/analytics?days=30` | `{ totalUsers, totalMovies, activeSubscriptions, intervalDays, newUsersInPeriod, topMovies: { id, title, viewCount, averageRating }[], genrePopularity: { genre, views, movies, averageRating }[], revenueByMonth: { month, total }[] }` — revenue/new-users are filtered to the interval; genre popularity covers all time (FR-43/44) |
+| GET | `/admin/analytics?days=30` | `{ totalUsers, totalMovies, activeSubscriptions, intervalDays, periodFrom, periodTo, viewsInPeriod, averageRatingInPeriod, newUsersInPeriod, topMovies: { id, title, viewCount, averageRating }[], genrePopularity: { genre, views, movies, averageRating }[], revenueByMonth: { month, total }[] }` — views, audience ratings, genre popularity, revenue and new users use the selected period; global totals show the current state (FR-43/44) |
 
 ## Image attachments
 
@@ -227,3 +239,74 @@ Transactional emails via SMTP (Mailpit at http://localhost:8025 in dev): welcome
 - CORS enabled for `CLIENT_URL`.
 - Video streaming endpoint requires `Range` support (`206`, `Content-Range`, `Accept-Ranges: bytes`).
 - Seeded accounts: `admin@cinema.local` / `Admin12345` (admin), `viewer@cinema.local` / `Viewer12345` (viewer).
+
+### Media filter, dictionary and analytics semantics
+
+- `genreIds` is a comma-separated list of positive IDs (ANY: at least one selected genre). It combines with all other filters. All genres of each matched movie are returned. The legacy single `genre=<name>` remains supported; non-empty `genreIds` takes precedence.
+- Movie writes accept existing `countryId` and `directorId`; null/empty clears the relation. Legacy `country`/`director` names resolve existing dictionary entries; do not provide both the name and ID for a field. Renames are reflected through relations. Deleting a dictionary record used by a movie returns 409; missing records return 404.
+- Create/PATCH accept JSON or multipart metadata. Relation lists accept JSON arrays (the frontend uses this format) or legacy comma-separated values. Invalid or unknown IDs return 400; omitted PATCH fields remain unchanged and empty lists clear relations. Unknown metadata fields return 400. Title/name: 1–255 trimmed characters; year: integer 1890–2100; runtime: integer 1–600 minutes or empty/null; age rating: 0+/6+/12+/16+/18+/21+; description: up to 20000 characters; URLs: HTTP(S), up to 2048 characters; up to 50 tags of at most 100 characters.
+- Playback events are reported after actual Play, once per player session. Retry with the same playbackId does not increment views. Pauses, quality changes and Range/HEAD requests do not count additional views. Lifetime counters are preserved; period reports use only recorded events since migration.
+- Period bounds are `[periodFrom, periodTo)`. For each user/movie, the latest rating action within the period is counted once; a clear action excludes that rating. Genre averages weight individual ratings equally. Multi-genre views contribute to every associated genre and must not be summed as unique global views. Deleting the user/movie cascades to their event history.
+
+Google OAuth uses verified provider profiles and identifies returning users by Google ID. A matching email alone never merges accounts: password users sign in normally and link Google in Profile. Blocked accounts and revoked linking sessions are rejected. Provider IDs are unique; DTOs expose only `googleLinked`. State expires after ten minutes, is consumed once and must match an HttpOnly, SameSite=Lax browser cookie (Secure for HTTPS callbacks). Concurrent/replayed exchanges cannot issue the token twice. Missing credentials, denied consent, state errors and account conflicts return localized authentication UI messages.
+
+## Streaming details and health endpoints
+
+`GET /api` returns service information. `GET /api/health/ready` executes `SELECT 1`, returning 200 `{ status: 'ok' }` or 503. There is no separate `/api/health` handler. Swagger is exposed at `/api/docs` only outside production.
+
+`HEAD /media/:id/stream` uses the same JWT/subscription/device/quality checks as GET and returns content headers without a body. GET with a valid single Range returns 206; without Range it returns 200. Unsatisfiable or malformed ranges (including unsupported multi-range) return 416. A missing deviceId is 400; no active subscription is 403. Legacy remote rendition paths can redirect with 302. Fresh master uploads produce local MP4 renditions.
+
+## Resumable video uploads (`/media/uploads`, admin + owner)
+
+The frontend uses this transport for large files. It combines tus 1.0 headers with application-specific JSON creation and explicit completion; it is not a generic tus server API. Chunk size is 16 MiB, maximum file size 8 GiB. The manifest contains lowercase hex SHA-256 for the whole file and each chunk.
+
+| Method | Path | Input | Result |
+|---|---|---|---|
+| OPTIONS | `/media/uploads` | Authorized request | 204; Tus-Version 1.0.0, creation/checksum/termination extensions, sha1/sha256, Tus-Max-Size |
+| GET | `/media/uploads` | Bearer | Current admin's upload sessions |
+| POST | `/media/uploads/:movieId` | Tus-Resumable 1.0.0; JSON `{ filename, size, sha256, chunks: string[] }` | 201 upload session, Location, Upload-Offset |
+| HEAD | `/media/uploads/:id` | Tus-Resumable 1.0.0 | Upload-Offset and Upload-Length |
+| GET | `/media/uploads/:id` | Bearer | Session state and current job when available |
+| PATCH | `/media/uploads/:id` | Tus-Resumable 1.0.0; Upload-Offset; Upload-Checksum; Content-Type application/offset+octet-stream; binary chunk | 204 with durable Upload-Offset |
+| POST | `/media/uploads/:id/complete` | Bearer | 202; start whole-file verification and transcode |
+| DELETE | `/media/uploads/:id` | Bearer | 204; cancel/remove when processing has not started |
+
+The SPA sends `Upload-Checksum: sha256 <base64 digest>`. Incorrect tus version is 412; offset/state conflicts are 409. Reconcile an uncertain PATCH using HEAD. Upload IDs are UUID-like and owner-scoped. States: uploading → verifying → processing → ready, or failed. After browser reload, resuming may require selecting the same file again. Upload records expire after seven days of inactivity, with active verification/processing protected from cleanup.
+
+```ts
+interface UploadSession {
+  id: string;
+  movieId: number;
+  movieTitle: string;
+  filename: string;
+  size: number;
+  sha256: string;
+  offset: number;
+  state: 'uploading' | 'verifying' | 'processing' | 'ready' | 'failed';
+  chunkSize: number;
+  expiresAt: string;
+  error?: string;
+  job?: TranscodeJobDto;
+}
+interface TranscodeJobDto {
+  movieId: number;
+  status: 'none' | 'processing' | 'ready' | 'failed';
+  qualities: string[];
+  progress: number | null;
+  phase: 'queued' | 'probing' | 'audio' | 'converting' | 'finalizing' | 'ready' | 'failed' | 'unavailable' | 'none';
+  currentQuality: '480p' | '720p' | '1080p' | null;
+  targetQualities: string[];
+  renditions?: Array<{
+    quality: string; progress: number | null;
+    state: 'queued' | 'converting' | 'finalizing' | 'ready' | 'failed';
+    mode: 'copy' | 'encode';
+  }>;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  elapsedSeconds?: number;
+  remainingSeconds?: number | null;
+  error?: string;
+}
+```
+
+Job progress/ETA are runtime estimates; source and movie lifecycle persist across restart, while detailed in-memory progress is reconstructed. `null` progress/ETA means unavailable, not zero. Upload byte completion and playable video readiness are separate phases.

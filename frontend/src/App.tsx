@@ -4,6 +4,7 @@ import { ToastProvider } from '@/context/ToastContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { UploadProvider, useUploads } from '@/context/UploadContext';
 import { lazy, Suspense } from 'react';
+import { Link } from 'react-router-dom';
 import { Navbar } from '@/components/Navbar';
 import AppRoutes from '@/routes/AppRoutes';
 
@@ -19,6 +20,10 @@ function SiteFooter() {
     <footer className="border-t border-cinema-border bg-cinema-black py-8">
       <div className="mx-auto flex max-w-7xl flex-col items-center gap-2 px-4 text-center">
         <p className="text-sm font-semibold text-cinema-soft">{t('footer.tagline')}</p>
+        <nav aria-label={t('privacy.links')} className="flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-semibold text-cinema-accent">
+          <Link to="/privacy" className="hover:underline">{t('privacy.link')}</Link>
+          <Link to="/terms" className="hover:underline">{t('terms.link')}</Link>
+        </nav>
         <p className="text-xs text-cinema-muted">{t('footer.copyright', { year: new Date().getFullYear() })}</p>
       </div>
     </footer>

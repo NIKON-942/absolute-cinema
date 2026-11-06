@@ -14,6 +14,8 @@ import { UserEntity } from '../users/user.entity';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { GoogleCallbackGuard } from './google-callback.guard';
+import { GoogleFlowService } from './google-flow.service';
 import { GoogleStrategy } from './google.strategy';
 import { JwtStrategy } from './jwt.strategy';
 
@@ -37,10 +39,12 @@ import { JwtStrategy } from './jwt.strategy';
   controllers: [AuthController],
   providers: [
     AuthService,
+    GoogleFlowService,
+    GoogleCallbackGuard,
     JwtStrategy,
     // GoogleStrategy throws at construction without credentials, so it is
     // registered only when OAuth is actually configured.
-    ...(process.env.GOOGLE_CLIENT_ID ? [GoogleStrategy] : []),
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? [GoogleStrategy] : []),
   ],
   exports: [AuthService],
 })

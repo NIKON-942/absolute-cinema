@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useUploads } from '@/context/UploadContext';
@@ -25,7 +26,7 @@ function UploadItem({ task, now }: { task: UploadTask; now: number }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0"><p className="truncate text-sm font-bold" title={task.title}>{task.title}</p>
           <p className="truncate text-xs text-cinema-muted" title={task.filename}>{task.filename}</p></div>
-        {terminal && <button className={button} onClick={() => manager.dismiss(task.key)} aria-label={t('uploads.dismiss')}>×</button>}
+        {terminal && <button className={button} onClick={() => manager.dismiss(task.key)} aria-label={t('uploads.dismiss')}><X size={14} aria-hidden="true" /></button>}
       </div>
       <ProgressBar label={task.phase === 'processing' && task.job ? t(`admin.movies.phase.${task.job.phase}`) : t(`uploads.phase.${task.phase}`)} progress={progress} />
       {task.phase === 'processing' && task.job && <TranscodeDetails job={task.job} />}
@@ -68,7 +69,7 @@ export function UploadPanel() {
   return (
     <aside aria-label={t('uploads.title')} className="fixed bottom-3 right-3 z-[60] w-[calc(100%-1.5rem)] max-w-sm overflow-hidden rounded-xl border border-cinema-border bg-cinema-panel text-cinema-text shadow-card sm:bottom-5 sm:right-5">
       <button type="button" className="flex w-full items-center justify-between gap-3 px-4 py-3 text-sm font-bold" aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}>
-        <span>{t('uploads.title')} · {tasks.length}</span><span aria-hidden="true">{collapsed ? '▴' : '▾'}</span>
+        <span>{t('uploads.title')} · {tasks.length}</span>{collapsed ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
       </button>
       {collapsed ? <p className="px-4 pb-3 text-xs text-cinema-muted" role="status">{t(`uploads.phase.${tasks[tasks.length - 1].phase}`)}{tasks[tasks.length - 1].phase === 'uploading' ? ` · ${Math.floor(tasks[tasks.length - 1].loaded / tasks[tasks.length - 1].size * 100)}%` : ''}</p>
         : <div className="max-h-[65dvh] overflow-y-auto">

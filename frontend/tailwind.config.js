@@ -13,10 +13,12 @@ export default {
           text: 'rgb(var(--cinema-text) / <alpha-value>)',
           strong: 'rgb(var(--cinema-strong) / <alpha-value>)',
           soft: 'rgb(var(--cinema-soft) / <alpha-value>)',
-          amber: '#f5b942',
+          amber: 'rgb(var(--cinema-amber) / <alpha-value>)',
+          gold: 'rgb(var(--cinema-gold) / <alpha-value>)',
           accent: 'rgb(var(--cinema-accent) / <alpha-value>)',
-          ink: '#0b0c10',
+          ink: 'rgb(var(--cinema-ink) / <alpha-value>)',
           red: 'rgb(var(--cinema-red) / <alpha-value>)',
+          danger: 'rgb(var(--cinema-danger) / <alpha-value>)',
           success: 'rgb(var(--cinema-success) / <alpha-value>)',
           error: 'rgb(var(--cinema-error) / <alpha-value>)',
           notice: 'rgb(var(--cinema-notice) / <alpha-value>)',
@@ -25,7 +27,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: ['Manrope', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
       },
       boxShadow: {
         glow: 'var(--cinema-glow)',

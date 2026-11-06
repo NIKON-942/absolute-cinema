@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { safeReturnTo } from '@/utils/authReturn';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
@@ -17,7 +18,7 @@ export default function Login() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  const from = (location.state as { from?: string } | null)?.from ?? '/';
+  const from = safeReturnTo((location.state as { from?: string } | null)?.from ?? new URLSearchParams(location.search).get('returnTo'));
   const sessionExpired = searchParams.get('expired') === '1';
 
   const [email, setEmail] = useState('');

@@ -1,66 +1,61 @@
-# System Architecture (C4 Model)
+# Архітектура AbsoluteCinema
 
-The system follows a separated **Client-Server Architecture** communicating over a secure **REST API**. The architecture is documented using the **C4 Model** (Context, Container, and Component levels).
+Стан коду на 05.11.2026. Джерела: РГР2 1.2.2, 3.1–3.2; ТЗ 4.2, 4.5. Деталі: [implementation-status.md](implementation-status.md).
 
----
+## Контекст і контейнери
 
-## 1. Context Diagram (C4 - Level 1)
+Гість, глядач і адміністратор працюють через браузер. Зовнішні системи — Google OAuth, Stripe та SMTP. React відображає інтерфейс; NestJS перевіряє доступ і виконує бізнес-логіку; PostgreSQL зберігає структуровані дані. Відео й зображення лежать у файловому сховищі, БД містить посилання на них.
 
-![C4 Context Diagram](diagrams/C4_level1.png)
+```mermaid
+flowchart LR
+  Browser[Браузер React SPA] -->|HTTPS у deployment| Caddy[Caddy]
+  Caddy -->|статичні файли| SPA[Frontend dist]
+  Caddy -->|/api| API[NestJS API]
+  API --> DB[(PostgreSQL 17)]
+  API --> Media[(storage masters videos posters)]
+  API --> Jobs[Послідовна черга FFmpeg]
+  Jobs --> Media
+  API --> Google[Google OAuth]
+  API --> Stripe[Stripe або mock]
+  API --> SMTP[SMTP]
+  API -. OTLP за наявності collector .-> Jaeger[Jaeger]
+```
 
-### Actors:
-* **Guest [Person]:** Unauthenticated visitor. Browses public catalog, initiates registration or authorization.
-* **Viewer [Person]:** Authenticated primary user. Streams video content, purchases subscriptions, receives recommendations, manages profile.
-* **Administrator [Person]:** Platform employee. Manages media library, dictionaries (genres/actors), and user accounts.
+Це один модульний backend, без мікросервісів, Redis, CDN чи S3. Черга перекодування й upload locks належать одному процесу. Джерело незавершеного перекодування зберігається в БД, стан докачування — на диску; вони відновлюються після restart, але не є розподіленою чергою. Горизонтальне масштабування потребуватиме окремого проєктування.
 
-### External Systems:
-* **Google API [Software System]:** Identity provider for Single Sign-On via OAuth 2.0 (HTTPS).
-* **Payment Gateway [Software System] (e.g., Stripe):** Handles secure payment processing for subscriptions (HTTPS).
-* **Email Service [Software System]:** Third-party SMTP provider for automated transactional emails (welcome emails, password resets, payment receipts).
+## Компоненти backend
 
-### Core System:
-* **AbsoluteCinema [Software System]:** Central software system managing search, streaming, recommendations, authentication, and subscription lifecycle.
+| Модуль | Відповідальність | Файли від кореня репозиторію |
+|---|---|---|
+| auth | Реєстрація, login lock, JWT, reset, OAuth state/exchange/link | `backend/src/modules/auth/` |
+| users | Профілі, ролі, блокування, видалення, subscription DTO | `backend/src/modules/users/` |
+| media | Каталог, довідники, обране, оцінки, progress, events, Range | `backend/src/modules/media/media.service.ts` та контролери поруч |
+| media uploads | Chunks, checksums, resume, фінальна перевірка | `backend/src/modules/media/uploads.service.ts` |
+| media transcode | Черга, ffprobe, аудіо, renditions, поступова публікація | `backend/src/modules/media/transcode.service.ts`, `media-processing.ts` |
+| payments | Checkout/webhooks, підписки, retries/expiry, тарифні ліміти | `backend/src/modules/payments/` |
+| devices | Конкурентні слоти перегляду з TTL | `backend/src/modules/devices/` |
+| recommendations | SQL content-based scoring та fallback | `backend/src/modules/recommendations/` |
+| admin | Агрегати активності за період | `backend/src/modules/admin/` |
+| mail | Welcome, reset, receipt | `backend/src/modules/mail/` |
 
----
+HTTP controllers → services → TypeORM repositories/параметризований SQL. `AppModule` підключає модулі, конфігурацію, TypeORM та scheduler. `main.ts` задає `/api`, CORS, ValidationPipe, exception filter, logging і Swagger поза production. Медіаметадані додатково мають спільний parser `media-input.ts`.
 
-## 2. Container Diagram (C4 - Level 2)
+JWT strategy знову читає користувача, `tokenVersion`, блокування та підписку з БД. `RolesGuard` перевіряє admin; `SubscriptionGuard` — оплачений доступ. Frontend guards потрібні для UX, авторитетна перевірка — на сервері.
 
-![C4 Container Diagram](diagrams/C4_level2.png)
+## Компоненти frontend
 
-The platform consists of three main containers:
+`App.tsx` поєднує контексти авторизації, мови, теми, toast і завантажень. `routes/AppRoutes.tsx` задає маршрути. Сторінки використовують API через `services/`; `MoviePlayback` координує доступ/пристрої/історію, `VideoPlayer` керує HTML5 video. `UploadContext` і `uploadManager` підтримують upload під час SPA-навігації; Web Worker рахує хеші без блокування UI.
 
-1. **Client Web Application (`[Container: React / TypeScript]`):**
-   * Executes in the user's browser (SPA).
-   * Renders the dynamic UI, handles video playback controls, and captures user actions.
-   * Communicates with backend via **JSON / HTTPS**.
-2. **Server Application (`[Container: NestJS / Node.js]`):**
-   * Central backend API node.
-   * Encapsulates all business logic, authentication, recommendation algorithms, and video streaming endpoints (`HTTP Range Requests`).
-   * Connects to external services (Google OAuth via JSON/HTTPS, Payment Gateway via JSON/HTTPS, Email Service via SMTP/HTTPS).
-3. **Database (`[Container: PostgreSQL]`):**
-   * Primary relational store for user profiles, movie metadata, and financial transactions.
-   * Communicates with the server application via **SQL / TCP**.
+Публічні `/privacy` і `/terms` відображаються SPA та генеруються як статичні двомовні HTML із тих самих JSON. Це вузький build-time механізм для політик, не загальний SSR.
 
----
+## Розгортання й дані
 
-## 3. Backend Component Diagram (C4 - Level 3)
+Локальний `docker-compose.yml` запускає лише PostgreSQL, Mailpit і Jaeger. API та Vite працюють через npm на хості. `deploy/compose.yml` запускає PostgreSQL, backend і Caddy/frontend; зовнішні порти — 80/443, окремі volumes — БД, медіа, Caddy data/config.
 
-![C4 Component Diagram](diagrams/C4_level3.png)
+Сховище обчислюється від `process.cwd()`: стандартний npm-запуск backend використовує `backend/storage`, Docker — `/app/storage`. Існування кореневої `storage/` не означає, що API її використовує. Переміщення БД без media volume дає метадані без відео.
 
-The NestJS backend application is architected into three distinct layers:
+Схема керується сімома TypeORM-міграціями; `synchronize=false`. Таблиці playback/rating events і Google OAuth flows створені SQL-міграціями без окремих entities. [Модель даних](data-model.md) пояснює зв'язки, транзакції й міграції.
 
-### Layer 1: Controllers (HTTP Entrypoints)
-* **Auth Controller (`[NestJS Controller]`):** Handles login, registration, SSO callbacks.
-* **Media Controller (`[NestJS Controller]`):** Handles movie search requests, metadata retrieval, and video stream requests.
-* **Payment Controller (`[NestJS Controller]`):** Handles subscription checkout, webhook events, and billing status requests.
+## C4-зображення
 
-### Layer 2: Services (Business Logic)
-* **Auth Service (`[NestJS Service / JWT]`):** Validates credentials, manages password hashing, issues JSON Web Tokens, triggers email notifications.
-* **Media Service (`[NestJS Service / fs]`):** Prepares video chunks for streaming (`HTTP Range Requests`), manages media assets.
-* **Recommendation Service (`[NestJS Service]`):** Executes Content-Based Filtering based on viewing history and ratings.
-* **Payment Service (`[NestJS Service]`):** Interacts with external Payment Gateway, validates transactions, and updates subscription state.
-
-### Layer 3: Repositories (Data Access Layer - TypeORM)
-* **User Repository (`[TypeORM Repository]`):** Handles CRUD operations on user entity records.
-* **Movie Repository (`[TypeORM Repository]`):** Handles querying and persistence of movies, genres, and actor relations.
-* **Subscription Repository (`[TypeORM Repository]`):** Manages financial transactions, billing logs, and active subscription intervals.
+[Context](diagrams/C4_level1.png), [Containers](diagrams/C4_level2.png), [Components](diagrams/C4_level3.png) збережено як проєктні матеріали. Їх не переробляли й не перевіряли візуально в цьому проході; актуальний склад deployment, upload pipeline та OAuth описано текстом вище.

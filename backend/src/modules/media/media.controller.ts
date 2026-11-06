@@ -28,6 +28,7 @@ import { QUALITY_RANK, PlanLimitsService } from '../payments/plan-limits.service
 import { SubscriptionTierEnum } from '../users/user.entity';
 import { POSTERS_DIR } from './media.constants';
 import { MediaService } from './media.service';
+import { idList } from './media-input';
 import { VideoQuality } from './entities/movie.entity';
 
 @Controller('media')
@@ -52,10 +53,12 @@ export class MediaController {
     @Query('sort') sort?: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
+    @Query('genreIds') genreIds?: string,
   ) {
     return this.mediaService.listMovies({
       search,
       genre,
+      genreIds: genreIds === undefined ? undefined : idList(genreIds, 'genreIds'),
       year,
       yearFrom,
       yearTo,
@@ -131,16 +134,22 @@ export class MediaController {
     @Body() body: { value: number },
   ) {
     const v = Number(body?.value);
-    if (!Number.isFinite(v) || v < 1 || v > 10) {
+    if (!Number.isInteger(v) || v < 1 || v > 10) {
       throw new BadRequestException('Rating must be an integer between 1 and 10');
     }
-    return this.mediaService.setRating(id, currentUserId(req), Math.round(v));
+    return this.mediaService.setRating(id, currentUserId(req), v);
   }
 
   @Delete(':id/rating')
   @UseGuards(JwtAuthGuard)
   unrate(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
     return this.mediaService.deleteRating(id, currentUserId(req));
+  }
+
+  @Post(':id/playback')
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  playback(@Param('id', ParseIntPipe) id: number, @Req() req: Request, @Body() body: { playbackId: string }) {
+    return this.mediaService.recordPlayback(id, currentUserId(req), body?.playbackId);
   }
 
   @Put(':id/progress')

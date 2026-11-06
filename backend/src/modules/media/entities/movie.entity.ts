@@ -5,10 +5,14 @@ import {
   Index,
   JoinTable,
   ManyToMany,
+  ManyToOne,
+  JoinColumn,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { CountryEntity } from './country.entity';
+import { DirectorEntity } from './director.entity';
 import { ActorEntity } from './actor.entity';
 import { GenreEntity } from './genre.entity';
 import { RatingEntity } from './rating.entity';
@@ -40,14 +44,26 @@ export class MovieEntity {
   @Column({ type: 'int' })
   year: number;
 
-  @Column({ default: '' })
-  country: string;
+  @Column({ type: 'int', nullable: true })
+  countryId: number | null;
+
+  @ManyToOne(() => CountryEntity, { eager: true, nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'country_id' })
+  countryRecord: CountryEntity | null;
+
+  get country(): string { return this.countryRecord?.name ?? ''; }
 
   @Column({ default: '16+' })
   ageRating: string;
 
-  @Column({ default: '' })
-  director: string;
+  @Column({ type: 'int', nullable: true })
+  directorId: number | null;
+
+  @ManyToOne(() => DirectorEntity, { eager: true, nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'director_id' })
+  directorRecord: DirectorEntity | null;
+
+  get director(): string { return this.directorRecord?.name ?? ''; }
 
   @Column({ type: 'text', array: true, default: [] })
   keywords: string[];

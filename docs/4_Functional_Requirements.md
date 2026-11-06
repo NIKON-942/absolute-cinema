@@ -1,87 +1,117 @@
-# Functional Requirements Specification (FRS)
+# Функціональні вимоги та трасування реалізації
 
-This document provides the exhaustive breakdown of all 44 functional requirements (FR-1 through FR-44) for the **AbsoluteCinema** Video on Demand (VoD) platform.
+Оновлено 05.11.2026 за РГР2, таблицями 2.12–2.13 (усі FR-1–FR-44), UC-01–UC-19 та ТЗ 4.1–4.2. Вимоги стисло переказано з джерел; стан коду перевірено окремо. «Є» означає наявність реалізації, а не успішне приймальне випробування чи підтвердження зовнішнього сервісу.
 
----
+Шляхи модулів нижче — від `backend/src/modules/`, сторінок — від `frontend/src/pages/`. Механізми: [implementation-status.md](implementation-status.md). Прогалини й перевірки: [verification-and-gaps.md](verification-and-gaps.md).
 
-## 1. User Registration & Authentication (FR-1 – FR-7, FR-19 – FR-22)
+## Реєстрація, авторизація та відновлення
 
-- **FR-1 (User Registration System):** The system must provide a mechanism for creating new user accounts to grant access to the online cinema platform services.
-- **FR-2 (Credential Validation):** The system must validate email formatting (valid RFC format with `@` and domain), password complexity (minimum 8 characters including letters and special characters), and verify the uniqueness of the email in the database.
-- **FR-3 (User Profile Creation):** The system must create a new record in the relational database, securely hash passwords using a strong cryptographic algorithm (e.g., Bcrypt), and initialize the default user profile.
-- **FR-4 (Registration Email Dispatch):** The system must trigger an automated service confirmation email to the user's email address upon successful account creation.
-- **FR-5 (User Authentication System):** The system must provide an identification and authentication mechanism for registered users to log into their personal account.
-- **FR-6 (Password Verification & Access Rejection):** The system must verify the submitted password against the stored cryptographic hash, locking out unauthorized access and displaying descriptive error messages on failure.
-- **FR-7 (Active Session & Token Management):** The system must generate, issue, and manage secure JSON Web Tokens (JWT) / session tokens to persist the authenticated user's state across requests.
-- **FR-19 (Third-Party Identity Providers):** The system must support accelerated single-click authentication via external identity providers without requiring manual form input.
-- **FR-20 (Google OAuth 2.0 Integration):** The system must implement the OAuth 2.0 protocol with Google API to authenticate users securely and retrieve basic account data (email, name, avatar).
-- **FR-21 (Account Recovery System):** The system must provide a secure workflow for resetting lost passwords and setting new credentials.
-- **FR-22 (Security Token Generation & Reset Email):** The system must generate a unique, single-use, time-limited security token (24-hour expiration window) and dispatch password reset instructions to the registered email address.
+| ID | Вимога РГР2 | Реалізація та статус |
+|---|---|---|
+| FR-1 | Створення облікового запису | Є: auth service, Register |
+| FR-2 | Валідна пошта, пароль ≥8 символів, унікальність email | Є: DTO, validator, unique index; додаткова межа ≤72 UTF-8 байти |
+| FR-3 | Профіль у реляційній БД, хеш пароля | Є: users, bcrypt, default viewer |
+| FR-4 | Ініціювання листа про створення акаунта | Є: mail service; welcome, не обов'язкова активація email |
+| FR-5 | Вхід зареєстрованого користувача | Є: auth service, Login |
+| FR-6 | Порівняння з хешем, відмова при помилці | Є: bcrypt, credentials/blocked/locked errors |
+| FR-7 | Генерація й підтримка JWT/session | Є: JWT + tokenVersion у БД |
+| FR-19 | Прискорений сторонній вхід | Є: Google; інших провайдерів немає |
+| FR-20 | Google OAuth і базові дані email | Код є: verified profile, browser-bound state, exchange; потрібна конфігурація Google |
+| FR-21 | Безпечне скидання пароля | Є: ForgotPassword, ResetPassword, auth service |
+| FR-22 | Тимчасовий token на 24 години, email | Є: random token, SHA-256 у БД, атомарне одноразове використання |
 
----
+FR-2 у таблиці 2.13 вимагає мінімум 8 символів. Бізнес-процес РГР2 1.3 додатково згадує спецсимволи, а шаблонний тест 4.2 — 10–64 символи, літеру/число/спецсимвол і blacklist 10000 паролів. Це внутрішня неузгодженість РГР2: код реалізує правило таблиці 2.13, без обов'язкового спецсимволу чи blacklist. Не приписуйте суворіше правило FR-2 і не вважайте шаблонний тест доказом його виконання.
 
-## 2. Media Content Playback & Streaming (FR-8 – FR-12)
+## Перегляд і рекомендації
 
-- **FR-8 (Media Content Playback):** The system must provide streaming transmission of high-definition video files from cloud/network storage directly into the client-side video player.
-- **FR-9 (Access Rights & Subscription Validation):** The system must verify the user's active subscription status in the database prior to initializing video stream delivery.
-- **FR-10 (Continuous Video Streaming):** The system must deliver continuous video data utilizing chunked data transfers (HTTP Range Requests / partial content) with adaptive client-side buffering for playback stability.
-- **FR-11 (Stream Quality Control):** The system must provide a UI interface within the custom video player allowing manual resolution switching (e.g., 480p, 720p, 1080p, 4K).
-- **FR-12 (Watch History & Content Rating):** The system must automatically persist playback events and timestamp positions (in seconds) to the user's profile history and enable users to rate content on a 10-point scale.
+| ID | Вимога РГР2 | Реалізація та статус |
+|---|---|---|
+| FR-8 | Потокове відтворення зі сховища у браузері | Є: media controller/service, MoviePlayback, VideoPlayer |
+| FR-9 | Перевірка активної підписки перед потоком | Є: JWT → SubscriptionGuard → тариф/пристрій; admin не має автоматичного обходу |
+| FR-10 | Потік із буферизацією фрагментів | Є: HTTP Range/206 і HTML5 video; без HLS/DASH |
+| FR-11 | Ручні 480p/720p/1080p | Є: готові renditions у межах тарифу; 4K не є вимогою таблиці 2.13 |
+| FR-12 | Історія та оцінка 1–10 | Є: progress, playback events, ratings; позиція у секундах — також ТЗ |
+| FR-16 | Рекомендації за попередньою активністю | Є: recommendations service |
+| FR-17 | Схожість за вподобаннями, жанрами й акторами | Є: зважені збіги жанрів/режисера/акторів/keywords у SQL |
+| FR-18 | Популярні/нові фільми без історії | Є: fallback, дедуплікація, до 12 фільмів |
 
----
+## Підписки й оплата
 
-## 3. Subscription & Payment Management (FR-13 – FR-15)
+| ID | Вимога РГР2 | Реалізація та статус |
+|---|---|---|
+| FR-13 | Тарифи, ціна, вибір періоду | Є: Basic/Plus/Premium, monthly/yearly; у ТЗ середній тариф «Стандарт» |
+| FR-14 | Захищений обмін із зовнішнім картковим шлюзом | Код Stripe Checkout/webhook є; mock не доводить реальну оплату |
+| FR-15 | Автоматичне надання доступу/строку після оплати | Є через subscriptions; users.role не змінюється. Відхилення від буквального «змінювати роль» зі збереженням бізнес-мети |
 
-- **FR-13 (Subscription Tier Management):** The system must display available subscription plans (Basic, Standard, Premium), pricing details, functional tier perks, and allow switching between monthly and annual billing cycles.
-- **FR-14 (External Payment Gateway Integration):** The system must facilitate secure payment processing via an external PCI DSS-compliant payment gateway (e.g., Stripe) using credit/debit cards.
-- **FR-15 (Automatic Role & Access Granting):** The system must automatically update the user's role, permissions, and subscription expiration timestamp in the database immediately upon receiving a successful payment confirmation webhook.
+UC-04 містить передачу картки системі; ТЗ 4.1.4 вимагає зовнішній шлюз і забороняє зберігати повні номери/CVV. Реалізація вводить картку на Stripe-hosted checkout, API її не приймає. Розбіжності тайм-ауту та кількості спроб із BPMN РГР2 1.3 описані в [алгоритмах](6_Algorithms_and_Business_Logic.md).
 
----
+## Каталог, обране й профіль
 
-## 4. Recommendation Engine (FR-16 – FR-18)
+| ID | Вимога РГР2 | Реалізація та статус |
+|---|---|---|
+| FR-23 | Пошук і фільтрація | Є: Catalog, media list |
+| FR-24 | Частковий/повний збіг назви без регістру | Є: ILIKE назви/оригінальної назви; не семантичний пошук |
+| FR-25 | Жанри, діапазон років, країна, віковий рейтинг | Є: genreIds із ANY, інші критерії поєднані AND |
+| FR-26 | Додавання до обраного | Є: user/movie M:N |
+| FR-27 | Перегляд і видалення з обраного | Є: список і toggle |
+| FR-31 | Каталог із пагінацією | Є: default 20, серверна верхня межа 50 |
+| FR-32 | Сітка карток із метаданими | Є: Catalog, MovieCard |
+| FR-33 | Деталі, трейлер, актори, рік/тривалість/країна | Є: /movie/:id, рекомендації; /watch/:id перенаправляє |
+| FR-34 | Персоналізація профілю | Є: Profile, контексти мови/теми |
+| FR-35 | Ім'я, аватар, статус підписки | Є: PATCH me, image upload/URL, subscription DTO |
+| FR-36 | Зміна пароля й безпечний вихід | Є: поточний пароль, bcrypt, відкликання старих JWT |
 
-- **FR-16 (Personalized Recommendation System):** The system must suggest relevant movies to the user based on algorithmic analysis of their previous platform activity and expressed preferences.
-- **FR-17 (Dynamic Content-Based Recommendations):** The system must calculate attribute similarity vectors (matching genres, directors, and cast) against the user's viewing history and ratings to generate a tailored recommendation feed.
-- **FR-18 (Cold-Start Fallback Recommendations):** The system must generate a fallback feed of platform-wide top trending, highest-rated, or newly released movies for users who have no accumulated viewing history.
+## Адміністрування й аналітика
 
----
+| ID | Вимога РГР2 | Реалізація та статус |
+|---|---|---|
+| FR-28 | Адміністративний інтерфейс медіатеки | Є: AdminPanel, серверні role guards |
+| FR-29 | Завантаження відео й постерів | Є: multipart, URL, resumable chunks, ffprobe/FFmpeg, серверне сховище |
+| FR-30 | Повний CRUD фільмів | Є: admin-media controller; видалення залежностей/файлів |
+| FR-37 | Централізовані довідники | Є: жанри, країни, актори, режисери |
+| FR-38 | Жанри/країни | Є: CRUD, захист використаних записів |
+| FR-39 | Актори/режисери, зв'язки з фільмами | Є: actor M:N, director FK, міграція старих назв |
+| FR-40 | Управління користувачами | Частково: таблиця/block/delete є; розмежування admin/head admin немає |
+| FR-41 | Реєстрація, останній вхід, підписка у списку | Є: users list, search за ID/email/name |
+| FR-42 | Зміна ролей лише головним адміністратором | Не виконано повністю: кожен admin може змінити роль; є лише захист останнього активного admin |
+| FR-43 | Збір і відображення статистики | Є: admin service, вкладка аналітики |
+| FR-44 | Перегляди, середні оцінки, жанри за період | Є: playback/rating events, інтервал у днях; без вигаданої історичної backfill |
 
-## 5. Catalog Navigation, Discovery & Favorites (FR-23 – FR-27, FR-31 – FR-33)
+## Додаткові вимоги ТЗ
 
-- **FR-23 (Catalog Search & Filtration System):** The system must provide tools for rapid catalog navigation and content discovery matching custom search parameters.
-- **FR-24 (Metadata & Title Search):** The system must perform case-insensitive substring and exact keyword searches against movie titles in the database.
-- **FR-25 (Faceted Filtering):** The system must filter media catalog items by arbitrary combinations of criteria, including genre lists, release year ranges, origin country, and age classification ratings.
-- **FR-26 (Favorites List Management):** The system must allow users to bookmark individual movie items into a personalized "Favorites" / "Watchlist" collection for quick retrieval.
-- **FR-27 (Favorites Editing & Deletion):** The system must allow users to view, manage, and remove individual entries from their saved favorites collection.
-- **FR-31 (Catalog Navigation & Pagination):** The system must structure the media library with optimized pagination (e.g., 20 items per page) to ensure minimal network payload and fast page rendering.
-- **FR-32 (Catalog Overview & Card Grid):** The system must render a responsive grid of movie cards displaying essential metadata (poster image, title, release year, audience rating).
-- **FR-33 (Movie Details Page Generation):** The system must generate a comprehensive movie view containing detailed descriptions, trailers, full actor/director credits, runtime, genre tags, and related movie suggestions.
+| Джерело | Вимога | Стан |
+|---|---|---|
+| 4.1.1 | Жанрові каруселі, об'єднана сторінка відтворення, поширення | Є: Home/MovieDetails/share |
+| 4.1.1–4.1.2 | Admin блокує/видаляє звичайних користувачів; ролі змінює головний admin | Розмежування немає: admin може впливати на інших admin, крім останнього активного |
+| 4.1.2 | 1 година блокування після 5 невдалих паролів | Є: лічильник/час у БД, транзакційний row lock |
+| 4.1.3 | Позиція в секундах, продовження на іншому пристрої | Є: user/movie progress; потрібен браузерний acceptance |
+| 4.1.3 | Видалення або тимчасове приховування фільму | Видалення є; стану приховування та його UI/API немає |
+| 4.1.3, 4.5.1 | Типи/розмір upload; JPG/JPEG/PNG/WebP до 5 МБ; MP4 H.264/H.265 + AAC або WebM | Перевірка bytes/кодеків є; фактичний image cap 5 MiB, video cap 8 GiB. MiB і МБ не тотожні |
+| 4.1.4 | Скасування автоподовження, завершення доступу після строку | Є в Stripe lifecycle; mock не має автоматичних списань |
+| 4.2 | Клієнтська/серверна валідація, підтвердження критичних дій, транзакції | Механізми є; acceptance має перевірити конкретні сценарії |
 
----
+## Зв'язок зі сценаріями РГР2
 
-## 6. User Profile & Account Settings (FR-34 – FR-36)
+| Use case | FR |
+|---|---|
+| UC-01 Реєстрація | FR-1–4 |
+| UC-02 Авторизація | FR-5–7 |
+| UC-03 Перегляд | FR-8–12 |
+| UC-04 Підписка | FR-13–15 |
+| UC-05 Рекомендації | FR-16–18 |
+| UC-06 Google | FR-19–20 |
+| UC-07 Відновлення | FR-21–22 |
+| UC-08 Пошук | FR-23–25 |
+| UC-09 Обране | FR-26–27 |
+| UC-10 Фільми | FR-28–30 |
+| UC-11 Каталог | FR-31–33 |
+| UC-12 Профіль | FR-34–36 |
+| UC-13 Перевірка підписки | FR-9 |
+| UC-14 Якість | FR-11 |
+| UC-15 Оцінювання | FR-12 |
+| UC-16 Транзакція | FR-14–15 |
+| UC-17 Довідники | FR-37–39 |
+| UC-18 Користувачі | FR-40–42 |
+| UC-19 Аналітика | FR-43–44 |
 
-- **FR-34 (Personal Profile Management):** The system must provide an authenticated user dashboard to customize personal preferences and display settings.
-- **FR-35 (View & Edit Personal Information):** The system must allow users to update display names, avatars, and review current subscription plan status and renewal dates.
-- **FR-36 (Account Security Settings):** The system must provide interfaces for changing account passwords and performing secure logout (revoking active access tokens).
-
----
-
-## 7. Media Library & Taxonomy Administration (FR-28 – FR-30, FR-37 – FR-39)
-
-- **FR-28 (Media Library Administration):** The system must provide administrators with an authenticated dashboard for comprehensive management of all platform media assets.
-- **FR-29 (Media Asset Upload & Asset Storage):** The system must support uploading high-definition video files (H.264/H.265/WebM) and poster graphics (JPG, PNG, WebP) via Drag-and-Drop or direct URL input into dedicated server/cloud storage.
-- **FR-30 (Movie Records CRUD Operations):** The system must provide administrators with complete Create, Read, Update, and Delete (CRUD) capabilities for movie entity records in the database.
-- **FR-37 (System Dictionaries Administration):** The system must provide centralized control over auxiliary dictionary datasets to preserve relational data integrity.
-- **FR-38 (Static Taxonomy Management):** The system must allow administrators to manage, create, and edit standardized lists of genres and countries.
-- **FR-39 (Cast & Crew Directory Management):** The system must maintain a registry of actors and directors with relational links to associated movie records.
-
----
-
-## 8. User Moderation & Analytics (FR-40 – FR-44)
-
-- **FR-40 (User Management Console):** The system must provide administrator tools to monitor platform activity and audit all registered user accounts.
-- **FR-41 (Registered User Directory):** The system must render a searchable table of registered users displaying registration dates, last login timestamps, and current subscription statuses.
-- **FR-42 (User Role Administration):** The system must allow super-administrators to escalate or revoke privileges and assign roles (e.g., `User`, `Moderator`, `Administrator`).
-- **FR-43 (Analytics & Reporting Dashboard):** The system must aggregate and visualize operational metrics and business intelligence data.
-- **FR-44 (Content Popularity & Metrics Analytics):** The system must generate analytical reports detailing total video views, average audience ratings, and genre popularity over selectable time intervals.
+Це робоча текстова карта, не відтворення графічної матриці з РГР2.

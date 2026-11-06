@@ -1,3 +1,4 @@
+import { Clapperboard, LockKeyhole, TriangleAlert, Tv } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -14,12 +15,12 @@ import { getDeviceId, limitsForTier, qualityRank } from '@/utils/plans';
 import type { MovieDto, Quality } from '@/types';
 
 /** Playback and subscription states shared by the public movie page. */
-export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
+export function MoviePlayback({ initialMovie, autoPlay = false }: { initialMovie: MovieDto; autoPlay?: boolean }) {
   const movieId = initialMovie.id;
   const { t } = useLanguage();
   const { user, isAuthenticated } = useAuth();
   const [movie, setMovie] = useState(initialMovie);
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(() => autoPlay && Boolean(user?.hasActiveSubscription));
   const [streamForbidden, setStreamForbidden] = useState(false);
   const [streamError, setStreamError] = useState(false);
   const [deviceLimit, setDeviceLimit] = useState(false);
@@ -72,6 +73,8 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
   const deviceId = getDeviceId();
   const heartbeatTimer = useRef<number | null>(null);
   const deviceLimitHit = useRef(false);
+  const playbackId = useRef(`play-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
+  const playbackRecorded = useRef(false);
 
   const stopHeartbeat = useCallback(() => {
     if (!started) return;
@@ -88,20 +91,24 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
     (playing: boolean) => {
       if (playing) {
         if (deviceLimitHit.current || heartbeatTimer.current != null) return;
-        const beat = () =>
-          devicesService.heartbeat(deviceId).catch((err) => {
-            if (err?.response?.status === 409) {
-              deviceLimitHit.current = true;
-              setDeviceLimit(true);
-            }
-          });
+        const beat = () => devicesService.heartbeat(deviceId).then(() => {
+          if (!playbackRecorded.current) {
+            playbackRecorded.current = true;
+            void mediaService.recordPlayback(movieId, playbackId.current).catch(() => { playbackRecorded.current = false; });
+          }
+        }).catch((err) => {
+          if (err?.response?.status === 409) {
+            deviceLimitHit.current = true;
+            setDeviceLimit(true);
+          }
+        });
         beat();
         heartbeatTimer.current = window.setInterval(beat, 60_000);
       } else {
         stopHeartbeat();
       }
     },
-    [deviceId, stopHeartbeat],
+    [deviceId, stopHeartbeat, movieId],
   );
 
   // free the device slot when playback is cut off (panel replaces the player)
@@ -164,7 +171,7 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
           </div>
         ) : (
           <EmptyState
-            icon="🎬"
+            icon={<Clapperboard size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />}
             title={t('watch.noQualitiesTitle')}
             subtitle={t('watch.noQualitiesText')}
             action={<Link to="/catalog" className="rounded-lg bg-cinema-amber px-5 py-2.5 font-bold text-cinema-ink">{t('common.backToCatalog')}</Link>}
@@ -176,12 +183,12 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
             <div className="absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full bg-cinema-amber/40" />
           </div>
           <div className="relative mx-auto max-w-md">
-            <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-cinema-amber/50 bg-cinema-amber/10 text-3xl">🔒</span>
+            <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-cinema-amber/50 bg-cinema-amber/10 text-3xl"><LockKeyhole size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
             <h2 className="mb-2 text-2xl font-extrabold text-cinema-strong">{t('watch.upsellTitle')}</h2>
             <p className="mb-6 text-sm leading-relaxed text-cinema-muted">{t('watch.upsellText')}</p>
             <Link
               to={isAuthenticated ? "/plans" : "/login"}
-              state={isAuthenticated ? undefined : { from: `/movie/${movieId}` }}
+              state={isAuthenticated ? undefined : { from: `/movie/${movieId}${autoPlay ? '?play=1#movie-player' : ''}` }}
               className="inline-flex items-center gap-2 rounded-xl bg-cinema-amber px-7 py-3 font-bold text-cinema-ink transition hover:shadow-glow"
             >
               {t(isAuthenticated ? 'watch.seePlans' : 'nav.login')}
@@ -194,7 +201,7 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
       ) : deviceLimit ? (
         <div className="relative overflow-hidden rounded-2xl border border-cinema-red/40 bg-gradient-to-b from-cinema-panel to-cinema-black p-8 text-center sm:p-14">
           <div className="relative mx-auto max-w-md">
-            <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-cinema-red/50 bg-cinema-red/10 text-3xl">📺</span>
+            <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-cinema-red/50 bg-cinema-red/10 text-3xl"><Tv size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
             <h2 className="mb-2 text-2xl font-extrabold text-cinema-strong">{t('watch.deviceLimitTitle')}</h2>
             <p className="mb-6 text-sm leading-relaxed text-cinema-muted">
               {t('watch.deviceLimitText', { maxDevices: limitsForTier(user?.activeSubscription?.tier).maxDevices })}
@@ -229,7 +236,7 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
         </div>
       ) : streamError ? (
         <div className="rounded-2xl border border-cinema-red/50 bg-cinema-red/10 p-8 text-center">
-          <span className="mb-3 block text-4xl">⚠️</span>
+          <span className="mb-3 block text-4xl"><TriangleAlert size="1em" aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
           <h2 className="mb-1 text-lg font-bold text-cinema-error">{t('watch.streamError')}</h2>
           <p className="mb-4 text-sm text-cinema-error">{t('watch.streamErrorText')}</p>
           <button
@@ -247,7 +254,7 @@ export function MoviePlayback({ initialMovie }: { initialMovie: MovieDto }) {
           type="button"
           onClick={() => setStarted(true)}
           aria-label={t('movie.watch')}
-          className="group relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-cinema-border bg-cinema-black"
+          className="media-surface group relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-cinema-border bg-cinema-black"
         >
           {movie.posterUrl && <img src={resolveMediaUrl(movie.posterUrl)} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
           <span className="relative flex flex-col items-center gap-3 text-white">

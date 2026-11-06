@@ -1,3 +1,4 @@
+import { ArrowLeft, Check, ChevronRight, LockKeyhole, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
@@ -46,7 +47,7 @@ function PlayerSheet({ title, onClose, children, target }: {
       <div className="px-4 pt-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3">
           <h2 id={titleId} className="text-base font-bold">{title}</h2>
-          <button type="button" onClick={onClose} aria-label={t('common.close')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-cinema-card">✕</button>
+          <button type="button" onClick={onClose} aria-label={t('common.close')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-cinema-card"><X size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /></button>
         </div>
         <div className="pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">{children}</div>
       </div>
@@ -55,12 +56,7 @@ function PlayerSheet({ title, onClose, children, target }: {
 }
 
 function LockIcon() {
-  return (
-    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
-      <rect x="4" y="11" width="16" height="10" rx="2" />
-      <path d="M8 11V7a4 4 0 0 1 8 0v4" strokeLinecap="round" />
-    </svg>
-  );
+  return <LockKeyhole size={12} aria-hidden="true" />;
 }
 
 interface VideoPlayerProps {
@@ -451,7 +447,7 @@ export function VideoPlayer({
         >
           <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/20">
             <div className="absolute h-full rounded-full bg-white/30" style={{ width: `${buffered * 100}%` }} />
-            <div className="absolute h-full rounded-full bg-cinema-red" style={{ width: `${displayRatio * 100}%` }} />
+            <div className="absolute h-full rounded-full bg-cinema-amber" style={{ width: `${displayRatio * 100}%` }} />
           </div>
           <div
             className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-cinema-amber shadow-glow transition-transform group-hover/bar:scale-125"
@@ -656,24 +652,24 @@ export function VideoPlayer({
           )}
           {mobilePanel === 'settings' && (
             <div className="space-y-2">
-              <button type="button" onClick={() => setMobilePanel('quality')} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg bg-cinema-card px-4 py-3 text-sm"><span>{t('player.quality')}</span><span className="text-cinema-accent">{quality} ›</span></button>
-              <button type="button" onClick={() => setMobilePanel('speed')} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg bg-cinema-card px-4 py-3 text-sm"><span>{t('player.speed')}</span><span className="text-cinema-accent">{speed}× ›</span></button>
+              <button type="button" onClick={() => setMobilePanel('quality')} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg bg-cinema-card px-4 py-3 text-sm"><span>{t('player.quality')}</span><span className="inline-flex items-center gap-1 text-cinema-accent">{quality} <ChevronRight size={16} aria-hidden="true" /></span></button>
+              <button type="button" onClick={() => setMobilePanel('speed')} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg bg-cinema-card px-4 py-3 text-sm"><span>{t('player.speed')}</span><span className="inline-flex items-center gap-1 text-cinema-accent">{speed}× <ChevronRight size={16} aria-hidden="true" /></span></button>
             </div>
           )}
           {(mobilePanel === 'quality' || mobilePanel === 'speed') && (
             <div className="space-y-1">
-              <button type="button" onClick={() => setMobilePanel('settings')} className="mb-2 min-h-11 rounded-lg px-4 text-sm text-cinema-soft">← {t('player.settings')}</button>
+              <button type="button" onClick={() => setMobilePanel('settings')} className="mb-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-4 text-sm text-cinema-soft"><ArrowLeft size={16} aria-hidden="true" /> {t('player.settings')}</button>
               {mobilePanel === 'quality' ? (['480p', '720p', '1080p'] as Quality[]).filter((q) => transcoding || qualities.includes(q)).map((q) => {
                 const ready = qualities.includes(q);
                 const locked = qualityRank(q) > qualityRank(maxQuality);
                 return (
                   <button key={q} type="button" disabled={!ready} aria-pressed={q === quality} onClick={() => { setMobilePanel(null); if (locked) onLockedQuality?.(q); else onQualityChange(q); }} className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left text-sm disabled:opacity-50 ${q === quality ? 'bg-cinema-amber text-cinema-ink' : 'bg-cinema-card'}`}>
-                    <span className="flex items-center gap-2">{q}{locked && <LockIcon />}{q === quality && ' ✓'}</span>
+                    <span className="flex items-center gap-2">{q}{locked && <LockIcon />}{q === quality && <Check size={12} aria-hidden="true" className="inline-block shrink-0 align-middle ml-1" />}</span>
                     {!ready ? <span className="text-xs">{t('player.qualityProcessing')}</span> : locked ? <span className="text-xs">{t('player.qualityLocked')}</span> : null}
                   </button>
                 );
               }) : SPEEDS.map((s) => (
-                <button key={s} type="button" aria-pressed={s === speed} onClick={() => { changeSpeed(s); setMobilePanel(null); }} className={`flex min-h-11 w-full items-center justify-between rounded-lg px-4 py-3 text-sm ${s === speed ? 'bg-cinema-amber text-cinema-ink' : 'bg-cinema-card'}`}>{s}×{s === speed && <span>✓</span>}</button>
+                <button key={s} type="button" aria-pressed={s === speed} onClick={() => { changeSpeed(s); setMobilePanel(null); }} className={`flex min-h-11 w-full items-center justify-between rounded-lg px-4 py-3 text-sm ${s === speed ? 'bg-cinema-amber text-cinema-ink' : 'bg-cinema-card'}`}>{s}×{s === speed && <span><Check size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>}</button>
               ))}
             </div>
           )}

@@ -6,11 +6,9 @@ COPY frontend/ ./
 ENV VITE_API_URL=/api
 RUN npm run build
 
-# Reuse this stage's installed dependencies instead of npm ci on the runner.
-ARG CHECK_SESSIONS=false
-ARG CHECK_UPLOADS=false
-RUN if [ "$CHECK_SESSIONS" = "true" ]; then npm run test:auth; fi \
-    && if [ "$CHECK_UPLOADS" = "true" ]; then npm run test:upload; fi
+# Run both fast suites for every web build, including player and shared helpers.
+# Docker reuses this layer when the frontend sources have not changed.
+RUN npm run test:auth && npm run test:upload
 
 FROM caddy:2.11.7-alpine AS runtime
 COPY deploy/Caddyfile /etc/caddy/Caddyfile

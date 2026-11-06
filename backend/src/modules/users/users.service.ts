@@ -23,6 +23,7 @@ export interface SerializedUser {
   role: string;
   isBlocked: boolean;
   avatarUrl: string | null;
+  googleLinked: boolean;
   hasActiveSubscription: boolean;
   activeSubscription: {
     id: number;
@@ -80,6 +81,7 @@ export class UsersService {
       role: user.role,
       isBlocked: user.isBlocked,
       avatarUrl: user.avatarUrl ?? null,
+      googleLinked: Boolean(user.googleId),
       hasActiveSubscription,
       activeSubscription: activeSubscription
         ? {

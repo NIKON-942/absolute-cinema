@@ -16,37 +16,33 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
+import { Transform } from 'class-transformer';
 import { extname } from 'path';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'fs';
 import { rm } from 'fs/promises';
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, Length, MaxLength } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { POSTERS_DIR, MASTERS_DIR, slugify } from './media.constants';
+import { MASTERS_DIR } from './media.constants';
 import { MediaService } from './media.service';
-import { POSTER_MAX_BYTES, POSTER_TYPES, validatePoster } from './upload-validation';
+import { movieInput } from './media-input';
 import { discardImage, imageUploadOptions, storeImage } from './image-upload';
 
-class GenreDto {
+class DictionaryDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString()
+  @Length(1, 255)
   name!: string;
 }
 
-class ActorDto {
-  @IsString()
-  name!: string;
-
+class ActorDto extends DictionaryDto {
   @IsOptional()
   @IsString()
+  @MaxLength(2048)
   photoUrl?: string;
 }
-
-const imageFilter = (_req: any, file: Express.Multer.File, cb: any) => {
-  if (POSTER_TYPES[extname(file.originalname).toLowerCase()] === file.mimetype) cb(null, true);
-  else cb(new BadRequestException('Only JPG, PNG and WebP posters are allowed'), false);
-};
 
 /** ТЗ 4.5.1: MP4 (H.264/H.265 and AAC), or WebM. */
 const videoFilter = (_req: any, file: Express.Multer.File, cb: any) => {
@@ -59,48 +55,31 @@ const videoFilter = (_req: any, file: Express.Multer.File, cb: any) => {
 export class AdminMediaController {
   constructor(private mediaService: MediaService) {}
 
+  private async savePoster(file: Express.Multer.File | undefined, body: Record<string, unknown>, id?: number) {
+    movieInput(body, id === undefined);
+    await storeImage(file, 'poster');
+    try {
+      return id === undefined
+        ? await this.mediaService.createMovie(body, file?.filename)
+        : await this.mediaService.updateMovie(id, body, file?.filename);
+    } catch (error) {
+      if (file?.filename && !await this.mediaService.posterIsUsed(file.filename).catch(() => true)) await discardImage(file);
+      throw error;
+    }
+  }
+
   @Post()
   @Roles('admin')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: POSTERS_DIR,
-        filename: (_req, file, cb) => {
-          const title = String(_req.body?.title ?? 'poster');
-          cb(null, `${slugify(title)}-${randomUUID()}${extname(file.originalname).toLowerCase()}`);
-        },
-      }),
-      fileFilter: imageFilter,
-      limits: { fileSize: POSTER_MAX_BYTES },
-    }),
-  )
-  async create(@UploadedFile() file: Express.Multer.File, @Body() body: Record<string, unknown>) {
-    await validatePoster(file);
-    return this.mediaService.createMovie(body, file?.filename ?? null);
+  @UseInterceptors(FileInterceptor('file', imageUploadOptions))
+  create(@UploadedFile() file: Express.Multer.File | undefined, @Body() body: Record<string, unknown>) {
+    return this.savePoster(file, body);
   }
 
   @Patch(':id')
   @Roles('admin')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: POSTERS_DIR,
-        filename: (_req, file, cb) => {
-          const title = String(_req.body?.title ?? 'poster');
-          cb(null, `${slugify(title)}-${randomUUID()}${extname(file.originalname).toLowerCase()}`);
-        },
-      }),
-      fileFilter: imageFilter,
-      limits: { fileSize: POSTER_MAX_BYTES },
-    }),
-  )
-  async update(
-    @Param('id', ParseIntPipe) id: number,
-    @UploadedFile() file: Express.Multer.File,
-    @Body() body: Record<string, unknown>,
-  ) {
-    await validatePoster(file);
-    return this.mediaService.updateMovie(id, body, file?.filename);
+  @UseInterceptors(FileInterceptor('file', imageUploadOptions))
+  update(@Param('id', ParseIntPipe) id: number, @UploadedFile() file: Express.Multer.File | undefined, @Body() body: Record<string, unknown>) {
+    return this.savePoster(file, body, id);
   }
 
   /**
@@ -158,13 +137,13 @@ export class AdminMediaController {
 
   @Post('genres')
   @Roles('admin')
-  createGenre(@Body() dto: GenreDto) {
+  createGenre(@Body() dto: DictionaryDto) {
     return this.mediaService.createGenre(dto.name);
   }
 
   @Patch('genres/:id')
   @Roles('admin')
-  updateGenre(@Param('id', ParseIntPipe) id: number, @Body() dto: GenreDto) {
+  updateGenre(@Param('id', ParseIntPipe) id: number, @Body() dto: DictionaryDto) {
     return this.mediaService.updateGenre(id, dto.name);
   }
 
@@ -201,13 +180,13 @@ export class AdminMediaController {
   // ----- countries (FR-38) -----
   @Post('countries')
   @Roles('admin')
-  createCountry(@Body() dto: GenreDto) {
+  createCountry(@Body() dto: DictionaryDto) {
     return this.mediaService.createCountry(dto.name);
   }
 
   @Patch('countries/:id')
   @Roles('admin')
-  updateCountry(@Param('id', ParseIntPipe) id: number, @Body() dto: GenreDto) {
+  updateCountry(@Param('id', ParseIntPipe) id: number, @Body() dto: DictionaryDto) {
     return this.mediaService.updateCountry(id, dto.name);
   }
 
@@ -220,13 +199,13 @@ export class AdminMediaController {
   // ----- directors (FR-39) -----
   @Post('directors')
   @Roles('admin')
-  createDirector(@Body() dto: GenreDto) {
+  createDirector(@Body() dto: DictionaryDto) {
     return this.mediaService.createDirector(dto.name);
   }
 
   @Patch('directors/:id')
   @Roles('admin')
-  updateDirector(@Param('id', ParseIntPipe) id: number, @Body() dto: GenreDto) {
+  updateDirector(@Param('id', ParseIntPipe) id: number, @Body() dto: DictionaryDto) {
     return this.mediaService.updateDirector(id, dto.name);
   }
 

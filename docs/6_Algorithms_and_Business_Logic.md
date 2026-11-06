@@ -1,20 +1,57 @@
-# Algorithms and Business Logic
+# Алгоритми та бізнес-логіка
 
-## 1. Recommendation Engine (Content-Based Filtering)
-To solve the "cold start" problem for new users, the platform implements a **Content-Based Filtering** algorithm rather than Collaborative Filtering. 
-* **Mechanism:** The algorithm matches the attributes of movies (metadata: genres, directors, cast, keywords) with the user's previously demonstrated interests (watch history and ratings).
-* **Fallback:** If a user has no watch history, the system dynamically falls back to generating a standardized list of the most popular or newly added films.
-* **Database Synergy:** This approach integrates perfectly with the strict relational ORM structure, executing logic via optimized SQL queries.
+Стан на 05.11.2026. Вимоги: РГР2 1.2.2, 1.3, 2.1–2.3; ТЗ 4.1. Нижче — алгоритми коду з явними розбіжностями.
 
-## 2. Subscription and Payment Flow
-1. User selects a tier and initiates payment.
-2. System creates a pending order and redirects to the external payment gateway.
-3. System waits for a webhook/callback (20-minute timeout). 
-4. If payment fails, the user is given up to 3 retries.
-5. Upon success, the system updates the user's role to grant Premium access.
+## Рекомендації
 
-## 3. Registration Flow
-1. User submits email/password.
-2. System validates format and checks for uniqueness.
-3. System hashes the password and saves the user.
-4. System triggers the external Email Service to send a welcome/confirmation email.
+RecommendationsService виконує content-based scoring одним SQL CTE-запитом. Сигнали: оцінка ≥6 дає вагу 2; запис watch_progress — 1. Якщо є обидва сигнали, UNION ALL додає їхні ваги. Низькі оцінки не дають негативної ваги; тривалість перегляду не зважується.
+
+Score кандидата: спільні жанри ×3, той самий director_id ×2, актори ×1, keywords ×1, помножені на накопичені ваги профілю. Фільми-сигнали виключаються; до 12 результатів із додатним score. Це зважений збіг ознак, не ML-модель чи cosine similarity.
+
+Без результатів, для гостя чи при SQL-помилці беруться 8 популярних за view_count і 8 нових за created_at, об'єднуються без дублікатів та обрізаються до 12. MediaService.similar — окремий алгоритм, до 8 фільмів за спільними жанрами.
+
+## Реєстрація та сесії
+
+1. Клієнт і сервер перевіряють поля, email, пароль (≥8 Unicode code points, ≤72 UTF-8 bytes).
+2. Email нормалізується; unique index закриває race паралельних реєстрацій.
+3. bcrypt cost 10 зберігає хеш у users; default role — viewer.
+4. Ініціюється welcome email; SMTP-помилка логується без rollback користувача.
+5. API повертає DTO та JWT, клієнт одразу входить. Це відмінність від шаблонного тесту РГР2 4.2 з поверненням на login.
+
+Login має транзакційний row lock: після п'ятої помилки встановлює lock на 60 хв. Успішний вхід скидає лічильник і оновлює lastLoginAt. JWT містить sub/email/tv; strategy читає користувача й підписку, звіряє tv/tokenVersion, перевіряє блокування. Logout/зміна/reset пароля збільшують версію й відкликають старі JWT на всіх пристроях.
+
+Reset token — 32 random bytes у hex; у БД SHA-256 та expiry +24 год. Conditional UPDATE атомарно змінює пароль, споживає токен і відкликає JWT. Невідома й відома пошта мають однакове зовнішнє повідомлення.
+
+Google: state + browser cookie → verified profile → одноразовий exchange code у fragment → POST exchange із тим самим cookie → JWT. State живе 10 хв, code — 1 хв. Return path тільки внутрішній. Збіг email не прив'язує акаунти: password-користувач спочатку входить і явно обирає Link Google.
+
+## Платіжний цикл
+
+1. Сервер читає тариф із БД, створює pending subscription/transaction зі строком 20 хв.
+2. STRIPE_ENABLED=true: hosted Checkout; false: mock. Увімкнений Stripe без обох ключів зупиняє startup.
+3. Підписаний webhook перевіряється за raw body. Redirect браузера не активує підписку.
+4. Paid transaction і доступ commit-яться разом під advisory lock користувача. Повторне paid підтвердження не дублює результат. Дати Stripe авторитетні; mock додає календарний місяць/рік із обмеженням кінцем місяця.
+5. Scheduler закриває прострочені замовлення; retry на дію користувача створює нову спробу й закриває старий checkout, не переписує createdAt.
+6. Paid renewal invoices продовжують доступ; скасування auto-renew зберігає оплачений період. Guard перевіряє строк незалежно від cron.
+
+| РГР2 1.3 / FR-15 | Поточний код | Розбіжність |
+|---|---|---|
+| Тайм-аут → «Скасовано» | transaction failed, pending subscription cancelled | Інший стан замовлення |
+| Спроб <3 — повтор; ≥3 — кінець | 1 початкова + до 3 retries = до 4 checkout-спроб | Інша межа спроб |
+| Повторне перенаправлення після помилки | Явний user-triggered retry | Відмінність UX |
+| «Зміна ролі» для premium access | Оновлення subscriptions; users.role = viewer/admin | Платний доступ відокремлений від адмінповноважень |
+
+## Відео та пристрої
+
+Адміністратор створює метадані, передає один master (файл/URL), далі працює background job. Новий фільм публікує завершені renditions поступово; заміна переключає набір після повного успіху. Без upscaling, source заввишки ≥480. Сумісне H.264 можна remux-нути; інше перекодовується. Аудіо готується один раз для всіх renditions.
+
+При Play: JWT → активна підписка → якість → пристрій. Вище тарифу: 402 UPGRADE_REQUIRED; новий пристрій понад ліміт: 409 DEVICE_LIMIT. Неготова якість може замінитися готовою в межах тарифу. Це fallback готовності, не bitrate adaptation.
+
+DeviceId — browser UUID у localStorage. Heartbeat під час перегляду приблизно раз на хвилину; TTL слота — 5 хв. Це браузерні сесії, не апаратна ідентифікація чи DRM. Конкурентні запити серіалізуються advisory lock.
+
+## Історія й аналітика
+
+Watch_progress зберігає останню позицію user/movie. Клієнт надсилає checkpoint приблизно раз на 10 с із debounce 1,5 с, додатково на pause/quality change/unmount. Запис best-effort: закриття вкладки/втрата мережі можуть залишити секунди незбереженими. Якщо до кінця менше 15 с, resume починається з початку.
+
+Playback_events фіксує Play після успішного heartbeat раз на player session. UNIQUE(user, movie, playbackId) робить retry ідемпотентним. Range/HEAD/pause/зміна якості самі не додають перегляду. View_count — довічний лічильник; звіти за період використовують події після міграції.
+
+Інтервал аналітики — [periodFrom, periodTo), trailing 1–730 днів. Для user/movie береться остання rating action всередині вікна; null — скасована оцінка. Це не snapshot усіх історичних оцінок на кінець періоду. Жанрові середні зважені окремими оцінками; multi-genre перегляд входить до кожного жанру, тому сума жанрів не дорівнює глобальним переглядам.

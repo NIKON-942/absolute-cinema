@@ -18,11 +18,14 @@ import Profile from '@/pages/Profile';
 import NotFound from '@/pages/NotFound';
 
 const AdminPanel = lazy(() => import('@/pages/AdminPanel'));
+const Privacy = lazy(() => import('@/pages/Privacy'));
 
 export default function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/terms" element={<Suspense fallback={<LoadingBlock />}><Privacy document="terms" /></Suspense>} />
+      <Route path="/privacy" element={<Suspense fallback={<LoadingBlock />}><Privacy /></Suspense>} />
       <Route path="/catalog" element={<Catalog />} />
       <Route path="/movie/:id" element={<MovieDetails />} />
       <Route path="/watch/:id" element={<Watch />} />

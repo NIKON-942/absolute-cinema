@@ -121,7 +121,7 @@ export function Navbar() {
                 {user.avatarUrl ? (
                   <img src={resolveMediaUrl(user.avatarUrl)} alt={user.name} className="h-7 w-7 rounded-full object-cover" />
                 ) : (
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber to-cinema-red text-sm font-bold text-cinema-ink">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cinema-amber to-cinema-gold text-sm font-bold text-cinema-ink">
                     {user.name.charAt(0).toUpperCase()}
                   </span>
                 )}
