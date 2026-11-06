@@ -44,6 +44,7 @@ function posterUrl(path: string | null): string {
 export interface MovieDto {
   id: number;
   title: string;
+  isHidden: boolean;
   originalTitle: string;
   description: string;
   year: number;
@@ -102,13 +103,17 @@ export class MediaService {
     sort?: string;
     page: number;
     limit: number;
-  }, userId?: number) {
+  }, userId?: number, visibility: 'published' | 'hidden' | 'all' = 'published') {
     const qb = this.moviesRepo
       .createQueryBuilder('movie')
       .leftJoinAndSelect('movie.genres', 'genre')
       .leftJoinAndSelect('movie.actors', 'actor')
       .leftJoinAndSelect('movie.countryRecord', 'countryRecord')
       .leftJoinAndSelect('movie.directorRecord', 'directorRecord');
+
+    if (visibility !== 'all') {
+      qb.andWhere('movie.isHidden = :isHidden', { isHidden: visibility === 'hidden' });
+    }
 
     if (filters.search) {
       qb.andWhere(
@@ -172,9 +177,9 @@ export class MediaService {
     };
   }
 
-  async getMovie(id: number, userId?: number): Promise<MovieDto> {
+  async getMovie(id: number, userId?: number, includeHidden = false): Promise<MovieDto> {
     const movie = await this.moviesRepo.findOne({
-      where: { id },
+      where: { id, ...(includeHidden ? {} : { isHidden: false }) },
       relations: ['genres', 'actors'],
     });
     if (!movie) throw new NotFoundException('Movie not found');
@@ -185,6 +190,19 @@ export class MediaService {
     const movie = await this.moviesRepo.findOne({ where: { id } });
     if (!movie) throw new NotFoundException('Movie not found');
     return movie;
+  }
+
+  /** Public access must check visibility even when the caller knows the ID. */
+  async getPublishedMovieEntity(id: number): Promise<MovieEntity> {
+    const movie = await this.moviesRepo.findOne({ where: { id, isHidden: false } });
+    if (!movie) throw new NotFoundException('Movie not found');
+    return movie;
+  }
+
+  async setVisibility(id: number, isHidden: boolean): Promise<MovieDto> {
+    const result = await this.moviesRepo.update(id, { isHidden });
+    if (!result.affected) throw new NotFoundException('Movie not found');
+    return this.getMovie(id, undefined, true);
   }
 
   async genres(): Promise<GenreEntity[]> {
@@ -206,7 +224,7 @@ export class MediaService {
   /** FR-33: related movies — most shared genres, then popularity. */
   async similar(movieId: number, userId?: number): Promise<MovieDto[]> {
     const base = await this.moviesRepo.findOne({
-      where: { id: movieId },
+      where: { id: movieId, isHidden: false },
       relations: ['genres'],
     });
     if (!base) throw new NotFoundException('Movie not found');
@@ -218,7 +236,8 @@ export class MediaService {
       .leftJoinAndSelect('movie.actors', 'actor')
       .leftJoinAndSelect('movie.countryRecord', 'countryRecord')
       .leftJoinAndSelect('movie.directorRecord', 'directorRecord')
-      .where('movie.id != :id', { id: movieId });
+      .where('movie.id != :id', { id: movieId })
+      .andWhere('movie.isHidden = :isHidden', { isHidden: false });
 
     if (genreIds.length > 0) {
       qb.andWhere('genre.id IN (:...genreIds)', { genreIds }).addSelect(
@@ -243,8 +262,7 @@ export class MediaService {
   // ---------- favorites / ratings / progress ----------
 
   async toggleFavorite(movieId: number, userId: number) {
-    const movie = await this.moviesRepo.findOne({ where: { id: movieId } });
-    if (!movie) throw new NotFoundException('Movie not found');
+    await this.getPublishedMovieEntity(movieId);
     // Single-statement writes on the join table — the previous
     // load-modify-save of the whole favoritedBy relation lost updates when
     // two requests toggled concurrently.
@@ -272,6 +290,7 @@ export class MediaService {
       .createQueryBuilder('movie')
       .innerJoin('user_favorites', 'uf', 'uf.movies_id = movie.id')
       .where('uf.users_id = :userId', { userId })
+      .andWhere('movie.isHidden = :isHidden', { isHidden: false })
       .leftJoinAndSelect('movie.genres', 'genre')
       .leftJoinAndSelect('movie.actors', 'actor')
       .leftJoinAndSelect('movie.countryRecord', 'countryRecord')
@@ -281,8 +300,7 @@ export class MediaService {
   }
 
   async setRating(movieId: number, userId: number, value: number) {
-    const movie = await this.moviesRepo.findOne({ where: { id: movieId } });
-    if (!movie) throw new NotFoundException('Movie not found');
+    await this.getPublishedMovieEntity(movieId);
     integer(value, 'rating', 1, 10);
     await this.moviesRepo.manager.transaction(async em => {
       await em.query('SELECT pg_advisory_xact_lock($1, $2)', [movieId, userId]);
@@ -296,6 +314,7 @@ export class MediaService {
   }
 
   async deleteRating(movieId: number, userId: number) {
+    await this.getPublishedMovieEntity(movieId);
     await this.moviesRepo.manager.transaction(async em => {
       // Serialize updates and removals of the same user's rating.
       await em.query('SELECT pg_advisory_xact_lock($1, $2)', [movieId, userId]);
@@ -314,6 +333,7 @@ export class MediaService {
     positionSeconds: number,
     durationSeconds: number,
   ) {
+    await this.getPublishedMovieEntity(movieId);
     let progress = await this.progressRepo.findOne({
       where: { movieId, userId },
     });
@@ -328,7 +348,7 @@ export class MediaService {
 
   async listProgress(userId: number) {
     const rows = await this.progressRepo.find({
-      where: { userId },
+      where: { userId, movie: { isHidden: false } },
       relations: ['movie'],
       order: { updatedAt: 'DESC' },
     });
@@ -484,7 +504,7 @@ export class MediaService {
     if (typeof playbackId !== 'string' || !/^[a-zA-Z0-9_-]{16,100}$/.test(playbackId)) {
       throw new BadRequestException('playbackId must contain 16–100 letters, digits, underscores or hyphens');
     }
-    await this.getMovieEntity(movieId);
+    await this.getPublishedMovieEntity(movieId);
     await this.moviesRepo.manager.transaction(async em => {
       const rows = await em.query(`INSERT INTO playback_events (movie_id, user_id, playback_id)
         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING id`, [movieId, userId, playbackId]);
@@ -525,6 +545,7 @@ export class MediaService {
     return {
       id: movie.id,
       title: movie.title,
+      isHidden: movie.isHidden ?? false,
       originalTitle: movie.originalTitle,
       description: movie.description,
       year: movie.year,
@@ -605,7 +626,7 @@ export class MediaService {
       return em.save(movie);
     });
     if (input.masterVideoUrl) await this.setMasterVideoUrl(saved.id, input.masterVideoUrl);
-    return this.getMovie(saved.id);
+    return this.getMovie(saved.id, undefined, true);
   }
 
   /**
@@ -622,14 +643,14 @@ export class MediaService {
       throw new BadRequestException('Uploaded file is not a valid MP4 or WebM video');
     }
     await this.transcodeService.enqueue(movie.id, masterFilename);
-    return this.getMovie(id);
+    return this.getMovie(id, undefined, true);
   }
 
   /** Same pipeline, but the master is a remote URL (ffmpeg reads it directly). */
   async setMasterVideoUrl(id: number, url: string): Promise<MovieDto> {
     await this.getMovieEntity(id);
     await this.transcodeService.enqueue(id, url);
-    return this.getMovie(id);
+    return this.getMovie(id, undefined, true);
   }
 
   async transcodeJob(movieId: number) {
@@ -660,7 +681,7 @@ export class MediaService {
       await em.save(movie);
     });
     if (input.masterVideoUrl) await this.setMasterVideoUrl(id, input.masterVideoUrl);
-    return this.getMovie(id);
+    return this.getMovie(id, undefined, true);
   }
 
   async removeMovie(id: number) {

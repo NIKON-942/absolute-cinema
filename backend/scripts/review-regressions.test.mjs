@@ -447,3 +447,139 @@ test('Google OAuth state and exchange codes are short-lived, browser-bound and s
   assert.equal(await new GoogleCallbackGuard(service).canActivate(context), false);
   assert.equal(new URL(redirected).searchParams.get('error'), 'cancelled');
 });
+
+test('movie visibility protects every public route and preserves data when republished', async () => {
+  const { NestFactory } = require('@nestjs/core');
+  const { ValidationPipe } = require('@nestjs/common');
+  const { JwtService } = require('@nestjs/jwt');
+  const { AppModule } = require('../dist/app.module.js');
+  const { AllExceptionsFilter } = require('../dist/common/filters/all-exceptions.filter.js');
+  const { VIDEOS_DIR } = require('../dist/modules/media/media.constants.js');
+  const { UploadsService } = require('../dist/modules/media/uploads.service.js');
+  const app = await NestFactory.create(AppModule, { logger: false });
+  app.setGlobalPrefix('api');
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalFilters(new AllExceptionsFilter());
+  const viewer = await newUser();
+  const recommendationViewer = await newUser();
+  const administrator = await newUser();
+  await repo(UserEntity).update(administrator.id, { role: 'admin' });
+  const tokenFor = user => app.get(JwtService).sign({ sub: user.id, email: user.email, tv: 0 });
+  const viewerToken = tokenFor(viewer);
+  const viewerHeaders = { Authorization: 'Bearer ' + viewerToken };
+  const adminHeaders = { Authorization: 'Bearer ' + tokenFor(administrator) };
+  const recommendationHeaders = { Authorization: 'Bearer ' + tokenFor(recommendationViewer) };
+  const prefix = 'Visibility-' + randomUUID();
+  const videoFilename = prefix + '.mp4';
+  let movie, seed, genre, uploadId;
+  try {
+    genre = await media.createGenre(prefix);
+    movie = await media.createMovie({ title: prefix + '-target', year: 2026, genreIds: [genre.id] });
+    seed = await media.createMovie({ title: prefix + '-seed', year: 2026, genreIds: [genre.id] });
+    assert.equal(movie.isHidden, false, 'New movies remain published by default');
+    await mkdir(VIDEOS_DIR, { recursive: true });
+    await writeFile(join(VIDEOS_DIR, videoFilename), Buffer.alloc(100, 1));
+    await repo(MovieEntity).update(movie.id, { video480: videoFilename, viewCount: 1000000 });
+    await media.toggleFavorite(movie.id, viewer.id);
+    await media.setRating(movie.id, viewer.id, 8);
+    await media.saveProgress(movie.id, viewer.id, 45, 120);
+    await media.setRating(seed.id, recommendationViewer.id, 9);
+    await repo(SubscriptionEntity).save({ userId: viewer.id, tier: 'basic', period: 'monthly', status: 'active', startsAt: new Date(Date.now() - 60000), endsAt: new Date(Date.now() + 86400000) });
+    await app.listen(0, '127.0.0.1');
+    const base = 'http://127.0.0.1:' + app.getHttpServer().address().port + '/api';
+    const request = (path, options = {}) => fetch(base + path, options);
+    const json = async (path, options = {}, status = 200) => {
+      const response = await request(path, options);
+      assert.equal(response.status, status, path + ': ' + await response.clone().text());
+      return response.json();
+    };
+    const setVisibility = isHidden => json('/admin/media/' + movie.id + '/visibility', {
+      method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ isHidden }),
+    });
+    const hasMovie = rows => rows.some(row => row.id === movie.id);
+    assert.equal(hasMovie(await json('/recommendations')), true, 'Popular fallback initially includes the movie');
+    const personalized = await json('/recommendations', { headers: recommendationHeaders });
+    assert.equal(hasMovie(personalized), true);
+    assert.equal(personalized.some(row => row.id === seed.id), false, 'Personalized SQL excludes its profile signal');
+    assert.equal(hasMovie(await json('/media/' + seed.id + '/similar')), true);
+
+    for (const headers of [{}, viewerHeaders]) {
+      const status = headers.Authorization ? 403 : 401;
+      assert.equal((await request('/admin/media', { headers })).status, status);
+      assert.equal((await request('/admin/media/' + movie.id, { headers })).status, status);
+      assert.equal((await request('/admin/media/' + movie.id + '/visibility', { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: '{"isHidden":true}' })).status, status);
+    }
+    for (const body of [{}, { isHidden: 'false' }, { isHidden: null }, { isHidden: 1 }]) {
+      assert.equal((await request('/admin/media/' + movie.id + '/visibility', { method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).status, 400);
+    }
+    assert.equal((await media.getMovie(movie.id)).isHidden, false);
+    assert.equal((await setVisibility(true)).isHidden, true);
+    assert.equal((await setVisibility(true)).isHidden, true, 'Repeating a hide request is idempotent');
+
+    const all = await json('/admin/media?search=' + prefix, { headers: adminHeaders });
+    assert.equal(all.total, 2);
+    assert.equal((await json('/admin/media?search=' + prefix + '&visibility=hidden', { headers: adminHeaders })).total, 1);
+    assert.equal((await json('/admin/media?search=' + prefix + '&visibility=published', { headers: adminHeaders })).total, 1);
+    assert.equal((await request('/admin/media?visibility=invalid', { headers: adminHeaders })).status, 400);
+    assert.equal((await json('/admin/media/' + movie.id, { headers: adminHeaders })).isHidden, true);
+    for (const headers of [{}, viewerHeaders, adminHeaders]) {
+      for (const suffix of ['', '/similar']) {
+        assert.equal((await request('/media/' + movie.id + suffix, { headers })).status, 404);
+      }
+      const catalog = await json('/media?search=' + prefix + '&limit=1&visibility=all&includeHidden=true', { headers });
+      assert.equal(catalog.total, 1, 'Visibility filtering happens before pagination and ignores public bypass parameters');
+      assert.equal(hasMovie(catalog.items), false);
+    }
+    assert.equal(hasMovie(await json('/media/' + seed.id + '/similar')), false);
+    for (const headers of [{}, recommendationHeaders]) {
+      assert.equal(hasMovie(await json('/recommendations', { headers })), false);
+    }
+    assert.equal(hasMovie(await json('/media/favorites', { headers: viewerHeaders })), false);
+    assert.equal((await json('/media/progress', { headers: viewerHeaders })).some(row => row.movieId === movie.id), false);
+    for (const method of ['GET', 'HEAD']) {
+      assert.equal((await request('/media/' + movie.id + '/stream?quality=480p&deviceId=visibility-device', { method, headers: { ...viewerHeaders, Range: 'bytes=0-9' } })).status, 404);
+      assert.equal((await request('/media/' + movie.id + '/stream?quality=480p&deviceId=visibility-device&token=' + viewerToken, { method })).status, 404);
+    }
+    for (const [suffix, method, body] of [
+      ['/favorites', 'POST', {}], ['/rating', 'PUT', { value: 10 }], ['/rating', 'DELETE', {}],
+      ['/progress', 'PUT', { positionSeconds: 90, durationSeconds: 120 }], ['/playback', 'POST', { playbackId: 'hidden-movie-playback-123' }],
+    ]) {
+      assert.equal((await request('/media/' + movie.id + suffix, { method, headers: { ...viewerHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).status, 404, suffix);
+    }
+    const edited = await json('/media/' + movie.id, { method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: prefix + '-edited' }) });
+    assert.equal(edited.isHidden, true, 'Editing a hidden movie does not publish it');
+    await json('/media/' + movie.id + '/transcode', { headers: adminHeaders });
+    const hash = createHash('sha256').update('x').digest('hex');
+    const upload = await json('/media/uploads/' + movie.id, { method: 'POST', headers: { ...adminHeaders, 'Content-Type': 'application/json', 'Tus-Resumable': '1.0.0' }, body: JSON.stringify({ filename: 'hidden.mp4', size: 1, sha256: hash, chunks: [hash] }) }, 201);
+    uploadId = upload.id;
+    assert.equal(upload.movieId, movie.id, 'Administrators can still upload video to a hidden movie');
+    assert.equal((await request('/media/uploads/' + uploadId, { method: 'DELETE', headers: adminHeaders })).status, 204);
+    uploadId = undefined;
+
+    assert.equal((await setVisibility(false)).isHidden, false);
+    assert.equal((await setVisibility(false)).isHidden, false);
+    const restored = await json('/media/' + movie.id, { headers: viewerHeaders });
+    assert.equal(restored.title, prefix + '-edited');
+    assert.equal(restored.isFavorite, true);
+    assert.equal(restored.userRating, 8);
+    assert.equal(restored.viewCount, 1000000);
+    assert.equal(hasMovie(await json('/media/favorites', { headers: viewerHeaders })), true);
+    assert.equal((await json('/media/progress', { headers: viewerHeaders })).find(row => row.movieId === movie.id).positionSeconds, 45);
+    assert.equal(hasMovie(await json('/recommendations')), true);
+    assert.equal(hasMovie(await json('/recommendations', { headers: recommendationHeaders })), true);
+    for (const method of ['GET', 'HEAD']) {
+      const response = await request('/media/' + movie.id + '/stream?quality=480p&deviceId=visibility-device', { method, headers: { ...viewerHeaders, ...(method === 'GET' ? { Range: 'bytes=0-9' } : {}) } });
+      assert.equal(response.status, method === 'GET' ? 206 : 200);
+      await response.arrayBuffer();
+    }
+  } finally {
+    if (uploadId) await app.get(UploadsService).remove(uploadId, administrator.id).catch(() => {});
+    await app.close();
+    if (movie) await media.removeMovie(movie.id);
+    if (seed) await media.removeMovie(seed.id);
+    if (genre) await media.deleteGenre(genre.id);
+    await repo(UserEntity).update(administrator.id, { role: 'viewer' });
+    for (const user of [viewer, recommendationViewer, administrator]) await users.remove(user.id);
+    await rm(join(VIDEOS_DIR, videoFilename), { force: true });
+  }
+});

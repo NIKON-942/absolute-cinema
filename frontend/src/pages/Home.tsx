@@ -102,6 +102,7 @@ export default function Home() {
     .slice(0, 10);
   const continueWatchingMovies: MovieDto[] = continueWatching.map((p) => ({
     id: p.movieId,
+    isHidden: false,
     title: p.movieTitle,
     originalTitle: '',
     description: '',

@@ -1,6 +1,6 @@
 # AbsoluteCinema — API Contract (implemented backend/frontend contract)
 
-Reviewed 2026-11-05 against the current controllers, services and types. This describes implementation, not proof of full ТЗ/РГР2 compliance. See [requirements](4_Functional_Requirements.md), [implementation](implementation-status.md), and [gaps](verification-and-gaps.md). In particular, head-administrator authorization and movie hide/unhide are not implemented.
+Reviewed 2026-11-05; movie visibility added 2026-11-06. This describes implementation, not proof of full ТЗ/РГР2 compliance. See [requirements](4_Functional_Requirements.md), [implementation](implementation-status.md), and [gaps](verification-and-gaps.md). Head-administrator authorization is not implemented.
 
 Base URL: `http://localhost:4000/api`
 Auth: `Authorization: Bearer <accessToken>` on protected endpoints.
@@ -40,6 +40,7 @@ interface UserDto {
 
 interface MovieDto {
   id: number;
+  isHidden: boolean; // false on public routes; admin reads also include hidden movies
   title: string;
   originalTitle: string;
   description: string;
@@ -176,6 +177,9 @@ All admin users currently have role/block/delete endpoints. The last active admi
 ### Admin media CRUD (role: admin)
 | Method | Path | Body (JSON unless noted) |
 |---|---|---|
+| GET | `/admin/media` | Query: `search?, page=1, limit=20, visibility=all\|published\|hidden` → `{ items: MovieDto[], total, page, limit }`; visibility defaults to all |
+| GET | `/admin/media/:id` | `MovieDto`, including hidden movies |
+| PATCH | `/admin/media/:id/visibility` | `{ isHidden: boolean }` → `MovieDto`; explicitly sets the state and is safe to repeat |
 | POST | `/media` | multipart/form-data: `file?` (poster image), plus fields `title, originalTitle?, description, year, countryId?, ageRating?, directorId?, runtimeMinutes?, trailerUrl?, keywords? (comma string), posterUrl? (http URL alternative), masterVideoUrl? (http master video URL — transcoded server-side), genreIds: number[], actorIds?: number[]` → `MovieDto` |
 | PATCH | `/media/:id` | same multipart shape (all optional) |
 | DELETE | `/media/:id` | 200 with empty body (no explicit 204 decorator) |
@@ -187,6 +191,8 @@ All admin users currently have role/block/delete endpoints. The last active admi
 | POST | `/media/directors` / PATCH `/media/directors/:id` / DELETE | `{ name }` (FR-39) |
 
 Video pipeline: administrators provide ONE master source (upload or URL). A durable pending source is stored in PostgreSQL; the single-process queue resumes interrupted jobs on startup. Direct FFmpeg subprocesses render resolutions no higher than the source as faststart H.264/AAC MP4s. New movies publish completed renditions progressively; replacements preserve the previous video until every new rendition succeeds. Remote sources are downloaded with public-address validation, DNS pinning, redirect checks, an 8 GiB limit and a 15-minute download deadline. FFmpeg/ffprobe accept local files only. Uploaded masters must be MP4 (H.264/H.265, AAC if audio is present) or WebM; posters must be JPG/PNG/WebP up to 5 MiB, with byte-signature validation.
+
+Visibility: new and existing movies are published by default. Hidden movies are excluded from the public catalog, similar movies, recommendations, favorites and viewing-progress lists. Public details, similar-movie requests, favorite/rating/progress/playback mutations and GET/HEAD streams return 404 for hidden movies, including requests made with an administrator token. Only the protected admin catalog exposes hidden records. Hiding preserves movie files, ratings, favorite links, progress and statistics; republishing restores access. Admin metadata editing, uploads and transcoding remain available while hidden. Apply migration `1793988000000-MovieVisibility` before starting the updated backend.
 
 ## Recommendations (`/recommendations`)
 

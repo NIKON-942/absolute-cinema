@@ -177,8 +177,8 @@ export class MediaController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
+    const movie = await this.mediaService.getPublishedMovieEntity(id);
     const maxQuality = await this.enforceStreamLimits(req, quality, deviceId);
-    const movie = await this.mediaService.getMovieEntity(id);
     this.mediaService.stream(
       movie,
       validQuality(quality),
@@ -198,8 +198,8 @@ export class MediaController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
+    const movie = await this.mediaService.getPublishedMovieEntity(id);
     const maxQuality = await this.enforceStreamLimits(req, quality, deviceId);
-    const movie = await this.mediaService.getMovieEntity(id);
     this.mediaService.headStream(movie, validQuality(quality), res, maxQuality);
   }
 

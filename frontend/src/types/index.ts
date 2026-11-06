@@ -45,6 +45,7 @@ export interface SubscriptionDto {
 }
 
 export interface MovieDto {
+  isHidden: boolean;
   id: number;
   title: string;
   originalTitle: string;

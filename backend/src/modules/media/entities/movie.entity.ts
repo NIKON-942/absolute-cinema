@@ -35,6 +35,9 @@ export class MovieEntity {
   @Column()
   title: string;
 
+  @Column({ default: false })
+  isHidden: boolean;
+
   @Column({ default: '' })
   originalTitle: string;
 

@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, ChartNoAxesCombined, Clapperboard, CreditCard, Play, Star, TriangleAlert, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChartNoAxesCombined, Clapperboard, CreditCard, Eye, EyeOff, Play, Star, TriangleAlert, UserPlus, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import type { FormEvent } from 'react';
@@ -12,6 +12,7 @@ import { mediaService } from '@/services/mediaService';
 import type { MovieUpsertPayload } from '@/services/mediaService';
 import { usersService } from '@/services/usersService';
 import { adminService } from '@/services/adminService';
+import type { MovieVisibility } from '@/services/adminService';
 import { errorStatusKey, extractServerMessage } from '@/services/api';
 import { AdminTable } from '@/components/AdminTable';
 import type { Column } from '@/components/AdminTable';
@@ -192,6 +193,8 @@ function MoviesTab() {
   const debouncedSearch = useDebounce(search, 400);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<Paginated<MovieDto> | null>(null);
+  const [visibility, setVisibility] = useState<MovieVisibility>('all');
+  const [visibilityBusy, setVisibilityBusy] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -218,14 +221,14 @@ function MoviesTab() {
   const reload = (p = page) => {
     setLoading(true);
     setLoadError(false);
-    mediaService
-      .list({ search: debouncedSearch.trim() || undefined, page: p, limit: PAGE_SIZE })
+    adminService
+      .movies({ search: debouncedSearch.trim() || undefined, page: p, limit: PAGE_SIZE, visibility })
       .then(setData)
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   };
 
-  useEffect(reload, [debouncedSearch, page]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(reload, [debouncedSearch, page, visibility]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     mediaService.genres().then(setGenres).catch(() => undefined);
@@ -271,7 +274,7 @@ function MoviesTab() {
     if (!requestedMovie || !/^[1-9]\d*$/.test(requestedMovie) || !Number.isSafeInteger(id)) return;
     let cancelled = false;
     // Load by ID: the uploaded movie may be outside the current table page/filter.
-    mediaService.getById(id).then(movie => {
+    adminService.movie(id).then(movie => {
       if (!cancelled) openEdit(movie);
     }).catch(error => {
       if (!cancelled) errorToast(extractServerMessage(error) ?? t(errorStatusKey(error)));
@@ -402,6 +405,20 @@ function MoviesTab() {
     });
   };
 
+  const changeVisibility = async (movie: MovieDto) => {
+    setVisibilityBusy(movie.id);
+    try {
+      const updated = await adminService.setMovieVisibility(movie.id, !movie.isHidden);
+      setData(prev => prev ? { ...prev, items: prev.items.map(item => item.id === updated.id ? updated : item) } : prev);
+      success(t(updated.isHidden ? 'admin.movies.hiddenSuccess' : 'admin.movies.publishedSuccess'));
+      reload();
+    } catch (err) {
+      errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
+    } finally {
+      setVisibilityBusy(null);
+    }
+  };
+
   // Poll visible jobs even after the movie form is closed.
   const processingIds = [...new Set([
     ...(data?.items ?? []).filter(m => m.transcodeStatus === 'processing').map(m => m.id),
@@ -421,7 +438,7 @@ function MoviesTab() {
         const terminal = job.status === 'ready' || job.status === 'failed';
         const signature = `${job.status}:${job.qualities.join(',')}`;
         if ((terminal || job.qualities.length > 0) && synced.get(job.movieId) !== signature) {
-          const updated = await mediaService.getById(job.movieId);
+          const updated = await adminService.movie(job.movieId);
           if (cancelled) return;
           synced.set(job.movieId, signature);
           setEditing(prev => prev?.id === updated.id ? updated : prev);
@@ -456,7 +473,13 @@ function MoviesTab() {
           </div>
           <div className="min-w-0">
             <p className="truncate font-semibold text-cinema-text">{m.title}</p>
-            <p className="truncate text-xs text-cinema-muted">#{m.id}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-cinema-muted">#{m.id}</span>
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${m.isHidden ? 'bg-cinema-card text-cinema-muted' : 'bg-cinema-success/10 text-cinema-success'}`}>
+                {m.isHidden ? <EyeOff size={12} aria-hidden="true" /> : <Eye size={12} aria-hidden="true" />}
+                {t(m.isHidden ? 'admin.movies.hidden' : 'admin.movies.published')}
+              </span>
+            </div>
           </div>
         </div>
       ),
@@ -516,6 +539,16 @@ function MoviesTab() {
           aria-label={t('common.search')}
         />
         <span className="flex-1 text-sm text-cinema-muted">{data ? t('catalog.foundCount', { count: data.total }) : ''}</span>
+        <select
+          value={visibility}
+          onChange={(e) => { setVisibility(e.target.value as MovieVisibility); setPage(1); }}
+          aria-label={t('admin.movies.visibility')}
+          className={`${inputClass} w-auto`}
+        >
+          <option value="all">{t('admin.movies.allVisibility')}</option>
+          <option value="published">{t('admin.movies.published')}</option>
+          <option value="hidden">{t('admin.movies.hidden')}</option>
+        </select>
         <button type="button" onClick={openCreate} className={primaryBtn} disabled={saving}>
           + {t('admin.movies.add')}
         </button>
@@ -542,6 +575,17 @@ function MoviesTab() {
             emptyMessage={t('admin.movies.empty')}
             actions={(m) => (
               <div className="flex justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => changeVisibility(m)}
+                  disabled={saving || visibilityBusy !== null}
+                  aria-label={t(m.isHidden ? 'admin.movies.publish' : 'admin.movies.hide')}
+                  title={t(m.isHidden ? 'admin.movies.publish' : 'admin.movies.hide')}
+                  aria-busy={visibilityBusy === m.id}
+                  className="cursor-pointer rounded-md border border-cinema-border p-1.5 text-cinema-soft transition hover:border-cinema-amber/60 hover:text-cinema-accent disabled:cursor-default disabled:opacity-50"
+                >
+                  {m.isHidden ? <Eye size={15} aria-hidden="true" /> : <EyeOff size={15} aria-hidden="true" />}
+                </button>
                 <button
                   type="button"
                   onClick={() => openEdit(m)}

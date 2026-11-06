@@ -90,7 +90,7 @@ export class UploadsService implements OnModuleInit {
   }
   async create(movieId: number, ownerId: number, input: { filename: string; size: number; sha256: string; chunks: string[] }) {
     return this.locked(`movie-${movieId}`, async () => {
-      const movie = await this.media.getMovie(movieId);
+      const movie = await this.media.getMovie(movieId, undefined, true);
       if (!input || typeof input.filename !== 'string' || input.filename.length > 255 || !/\.(mp4|webm)$/i.test(input.filename)
         || !Number.isSafeInteger(input.size) || input.size <= 0 || input.size > MAX_UPLOAD_SIZE
         || !HASH.test(input.sha256) || !Array.isArray(input.chunks)

@@ -10,6 +10,7 @@ import { MovieEntity } from './entities/movie.entity';
 import { RatingEntity } from './entities/rating.entity';
 import { WatchProgressEntity } from './entities/watch-progress.entity';
 import { AdminMediaController } from './admin-media.controller';
+import { AdminMediaCatalogController } from './admin-media-catalog.controller';
 import { MediaController } from './media.controller';
 import { MediaService } from './media.service';
 import { TranscodeService } from './transcode.service';
@@ -30,7 +31,7 @@ import { UploadsService } from './uploads.service';
       WatchProgressEntity,
     ]),
   ],
-  controllers: [UploadsController, MediaController, AdminMediaController],
+  controllers: [UploadsController, MediaController, AdminMediaController, AdminMediaCatalogController],
   providers: [MediaService, TranscodeService, UploadsService],
   exports: [MediaService],
 })

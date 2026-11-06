@@ -55,7 +55,7 @@ export class RecommendationsService {
        + COALESCE((SELECT SUM(kww.w) * 1 FROM unnest(m.keywords) AS kk JOIN keyword_w kww ON kww.kw = kk), 0)
         ) AS score
         FROM movies m
-       WHERE m.id NOT IN (SELECT mid FROM sig)
+       WHERE m.is_hidden = false AND m.id NOT IN (SELECT mid FROM sig)
     )
     SELECT s.id, s.score FROM scored s
      WHERE s.score > 0
@@ -77,7 +77,7 @@ export class RecommendationsService {
         const ids = rows.map((r) => Number(r.id));
         if (ids.length > 0) {
           const movies = await this.moviesRepo.find({
-            where: { id: In(ids) },
+            where: { id: In(ids), isHidden: false },
             relations: ['genres', 'actors'],
           });
           const byId = new Map(movies.map((m) => [m.id, m]));
@@ -100,11 +100,13 @@ export class RecommendationsService {
   private async fallback(userId?: number) {
     const [popular, newest] = await Promise.all([
       this.moviesRepo.find({
+        where: { isHidden: false },
         order: { viewCount: 'DESC' },
         take: 8,
         relations: ['genres', 'actors'],
       }),
       this.moviesRepo.find({
+        where: { isHidden: false },
         order: { createdAt: 'DESC' },
         take: 8,
         relations: ['genres', 'actors'],
