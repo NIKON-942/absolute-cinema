@@ -61,8 +61,23 @@ test('head administrator bootstrap, explicit promotion and migration rollback pr
     await isolated.undoLastMigration();
     assert.equal((await isolated.query('SELECT role FROM users WHERE id = $1', [initial.id]))[0].role, 'admin');
     run('run-migrations.js');
-    assert.match(run('bootstrap.js', [], false).stderr, /Assign an active head administrator explicitly/);
     await isolated.query("INSERT INTO users (email, name) VALUES ('viewer-bootstrap@example.com', 'Viewer')");
+    await isolated.query("INSERT INTO users (email, name, role) VALUES ('other-admin@example.com', 'Other admin', 'admin')");
+    env.INITIAL_ADMIN_EMAIL = 'missing@example.com';
+    run('bootstrap.js', [], false);
+    env.INITIAL_ADMIN_EMAIL = 'viewer-bootstrap@example.com';
+    run('bootstrap.js', [], false);
+    env.INITIAL_ADMIN_EMAIL = '  ' + email.toUpperCase() + '  ';
+    env.INITIAL_ADMIN_PASSWORD = '';
+    run('bootstrap.js');
+    const [automatic] = await isolated.query('SELECT role, password_hash FROM users WHERE id = $1', [initial.id]);
+    assert.equal(automatic.role, 'head_admin');
+    assert.equal(automatic.password_hash, initial.password_hash);
+    env.INITIAL_ADMIN_EMAIL = 'other-admin@example.com';
+    run('bootstrap.js');
+    assert.equal((await isolated.query("SELECT role FROM users WHERE email = 'other-admin@example.com'"))[0].role, 'admin', 'Repeated bootstrap does not create additional heads');
+    env.INITIAL_ADMIN_EMAIL = email;
+    await isolated.query("UPDATE users SET role = 'admin' WHERE id = $1", [initial.id]);
     run('promote-head-admin.js', ['--email', 'viewer-bootstrap@example.com'], false);
     run('promote-head-admin.js', ['--email', email]);
     run('promote-head-admin.js', ['--email', email]);
@@ -71,6 +86,7 @@ test('head administrator bootstrap, explicit promotion and migration rollback pr
     assert.equal(promoted.role, 'head_admin');
     assert.equal(promoted.password_hash, initial.password_hash);
     await isolated.query('UPDATE users SET is_blocked = true WHERE id = $1', [initial.id]);
+    run('bootstrap.js', [], false);
     run('promote-head-admin.js', ['--email', email], false);
   } finally {
     if (isolated?.isInitialized) await isolated.destroy();

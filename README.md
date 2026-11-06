@@ -126,8 +126,10 @@ operations preserve an active head administrator.
 
 Apply migrations and build before enabling the updated backend. On a fresh
 installation bootstrap creates the initial head administrator from INITIAL_ADMIN_EMAIL
-and INITIAL_ADMIN_PASSWORD. Existing administrators keep their roles; select an
-existing, unblocked admin explicitly from the repository root:
+and INITIAL_ADMIN_PASSWORD. When no active head administrator exists, bootstrap promotes the existing,
+unblocked admin matching INITIAL_ADMIN_EMAIL without changing its password.
+Other admins keep their roles. Viewers and blocked accounts are never promoted.
+For an explicit manual assignment from the repository root:
 
 ```sh
 node backend/dist/database/promote-head-admin.js --email existing-admin@example.com
@@ -135,8 +137,8 @@ node backend/dist/database/promote-head-admin.js --email existing-admin@example.
 
 In the production container use `node dist/database/promote-head-admin.js --email ...`.
 The command preserves credentials, rejects viewers and blocked accounts, and is
-safe to repeat. Bootstrap stops with this instruction if only ordinary admins
-exist. New demo seed accounts use head_admin; existing seed accounts are not
+safe to repeat. Bootstrap stops with this instruction if admins exist but none matches the
+configured email. New demo seed accounts use head_admin; existing seed accounts are not
 automatically promoted. Rolling back the role migration converts head_admin to admin.
 
 ## Oracle Cloud and CI/CD
