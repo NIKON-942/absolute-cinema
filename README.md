@@ -123,10 +123,12 @@ The `dev` branch is the Oracle test environment; `main` holds the reviewed stabl
 code. Runtime changes in pull requests and pushes to both branches build the
 containers and run the basic login, API, subscription, streaming and device-limit
 smoke checks. Changes only to documentation skip builds and deployment.
-Additional checks are selected from the changed paths: auth/payment regressions,
-image/resumable uploads, FFmpeg processing, and migration/bootstrap repeatability.
-Frontend tests reuse the Docker build stage's dependencies instead of installing
-them again on the runner. The Actions summary shows the selected scopes.
+All backend source changes enable integration regressions. Additional checks are
+selected from the changed paths: movie posters/image/resumable uploads, Stripe,
+FFmpeg processing, migration/bootstrap repeatability, and legacy migration
+backfill/rollback on a fresh disposable database. Both frontend test suites run
+in every web image build using the build stage's dependencies and Docker cache.
+The Actions summary shows the selected scopes.
 
 Pull requests into `main`, direct runtime pushes to `main`, and manual runs execute
 the full suite. Dependency manifests/lockfiles, Docker/build configuration and CI

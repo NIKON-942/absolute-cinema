@@ -108,9 +108,6 @@ jobs:
         with:
           context: .
           file: frontend/Dockerfile
-          build-args: |
-            CHECK_SESSIONS=${{ needs.changes.outputs.auth }}
-            CHECK_UPLOADS=${{ needs.changes.outputs.uploads }}
           load: true
           tags: ${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -140,6 +137,18 @@ jobs:
           dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
           dc run --rm --no-deps backend node dist/database/run-migrations.js
           dc run --rm --no-deps backend node dist/database/bootstrap.js
+      - name: Check legacy migration backfill and rollback on a fresh database
+        if: needs.changes.outputs.deployment == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
+          # This fixture needs an empty cinema_review database. Remove it
+          # afterward so backend regressions can create their own fresh one.
+          dc exec -T postgres createdb -U cinema cinema_review
+          dc run --rm --no-deps -e DB_NAME=cinema_review -e ALLOW_SMOKE_FIXTURES=true \
+            -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/requirements-migration.mjs
+          dc exec -T postgres dropdb -U cinema cinema_review
       - name: Check SPA, authentication, payments, streaming and device limits
         shell: bash
         run: |
@@ -155,7 +164,7 @@ jobs:
           docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml \
             run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true -e SMOKE_GROUP=dependencies \
             -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-dependencies.mjs
-      - name: Check image attachments and resumable uploads
+      - name: Check movie posters, image attachments and resumable uploads
         if: needs.changes.outputs.uploads == 'true'
         shell: bash
         run: |
@@ -164,7 +173,7 @@ jobs:
           dc run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true -e SMOKE_GROUP=images -e SMOKE_API_URL=http://backend:4000/api \
             -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-dependencies.mjs
           dc run --rm --no-deps -v "$PWD/backend/scripts:/app/scripts:ro" \
-            backend node --test scripts/uploads.test.mjs
+            backend node --test scripts/movie-posters.test.mjs scripts/uploads.test.mjs
       - name: Check FFmpeg processing and video upload
         if: needs.changes.outputs.video == 'true'
         shell: bash
@@ -183,7 +192,7 @@ jobs:
           dc() { docker compose --env-file "$DEPLOY_ROOT/.env" -f deploy/compose.yml "$@"; }
           dc run --rm --no-deps -e ALLOW_SMOKE_FIXTURES=true \
             -v "$PWD/backend/scripts:/app/scripts:ro" backend node scripts/smoke-stripe.mjs
-      - name: Check auth and payment regressions on a separate database
+      - name: Check backend regressions on a separate database
         if: needs.changes.outputs.regressions == 'true'
         shell: bash
         run: |
