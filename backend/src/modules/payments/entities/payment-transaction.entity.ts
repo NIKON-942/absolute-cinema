@@ -51,6 +51,13 @@ export class PaymentTransactionEntity {
   @Column({ type: 'enum', enum: TransactionStatusEnum, default: TransactionStatusEnum.PENDING })
   status: TransactionStatusEnum;
 
+  @Column({ type: 'varchar', nullable: true })
+  cancellationReason: 'expired' | 'user_cancelled' | 'superseded' | null;
+
+  /** Each Checkout can have at most one successor in its retry chain. */
+  @Column({ type: 'varchar', nullable: true, unique: true })
+  retryOf: string | null;
+
   @Column({ type: 'int', default: 0 })
   retries: number;
 

@@ -5,6 +5,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/context/ToastContext';
 import { paymentsService } from '@/services/paymentsService';
+import type { CancelledCheckoutDto } from '@/services/paymentsService';
 import { errorStatusKey, extractServerMessage } from '@/services/api';
 import { Spinner } from '@/components/Spinner';
 import { EmptyState } from '@/components/EmptyState';
@@ -23,6 +24,18 @@ export default function SubscriptionPlans() {
   const [searchParams] = useSearchParams();
   const retryId = searchParams.get('retry');
   const [retrying, setRetrying] = useState(false);
+  const [returnedOrder, setReturnedOrder] = useState<CancelledCheckoutDto | null>(null);
+  useEffect(() => {
+    let ignore = false;
+    setReturnedOrder(null);
+    if (retryId && isAuthenticated) {
+      // Returning from hosted Checkout cancels that order; retry stays explicit.
+      paymentsService.cancel(retryId).then(order => { if (!ignore) setReturnedOrder(order); })
+        .catch(err => { if (!ignore) errorToast(extractServerMessage(err) ?? t(errorStatusKey(err))); });
+    }
+    return () => { ignore = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryId, isAuthenticated]);
   const retry = async () => {
     if (!retryId) return;
     setRetrying(true);
@@ -81,12 +94,18 @@ export default function SubscriptionPlans() {
       </header>
 
       {/* current subscription notice */}
-      {retryId && isAuthenticated && (
+      {retryId && isAuthenticated && returnedOrder && (
         <div className="mb-6 text-center">
+          <p role="status" className="mb-3 text-sm text-cinema-muted">
+            {t(returnedOrder.status === 'paid' ? 'checkout.alreadyPaid' : returnedOrder.cancellationReason === 'expired'
+              ? 'checkout.expired' : returnedOrder.status === 'failed' ? 'checkout.failed' : 'checkout.cancelledText')}
+          </p>
+          {returnedOrder.canRetry ? (
           <button type="button" onClick={() => void retry()} disabled={retrying}
             className="rounded-xl border border-cinema-border px-5 py-3 font-bold disabled:opacity-50">
             {t('checkout.retryPayment')}
           </button>
+          ) : returnedOrder.status !== 'paid' && <p className="text-sm text-cinema-muted">{t('checkout.retryUnavailable')}</p>}
         </div>
       )}
       {hasActive && activeSub && (

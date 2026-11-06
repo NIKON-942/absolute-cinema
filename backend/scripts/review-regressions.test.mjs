@@ -58,6 +58,9 @@ test('head administrator bootstrap, explicit promotion and migration rollback pr
     const [initial] = await isolated.query('SELECT id, role, password_hash FROM users WHERE email = $1', [email]);
     assert.equal(initial.role, 'head_admin');
     assert.equal((await isolated.query('SELECT count(*)::int AS n FROM users'))[0].n, 1);
+    while ((await isolated.query('SELECT name FROM migrations ORDER BY id DESC LIMIT 1'))[0].name !== 'HeadAdministrator1793990000000') {
+      await isolated.undoLastMigration();
+    }
     await isolated.undoLastMigration();
     assert.equal((await isolated.query('SELECT role FROM users WHERE id = $1', [initial.id]))[0].role, 'admin');
     run('run-migrations.js');
@@ -222,19 +225,129 @@ test('payment failure rolls back all writes; webhook retries and concurrent comp
   assert.equal((await users.findWithSubscription(user.id)).activeSubscription.cancelAtPeriodEnd, true);
 });
 
-test('failed orders allow three explicit retries without rewriting creation timestamps', async () => {
+test('timeouts cancel orders with a reason; retry chain contains at most three Checkouts', async () => {
   const user = await newUser();
   let url = (await payments.createCheckout(user.id, 'basic', 'monthly')).checkoutUrl;
-  for (let retry = 0; retry < 4; retry++) {
+  for (let retry = 0; retry < 3; retry++) {
     const id = url.split('/').at(-1);
     const initial = await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: id });
     await repo(PaymentTransactionEntity).update(initial.id, { expiresAt: new Date(Date.now() - 1) });
     await payments.expireStalePendingOrders();
     const expired = await repo(PaymentTransactionEntity).findOneByOrFail({ id: initial.id });
-    assert.equal(expired.status, 'failed'); assert.equal(+expired.createdAt, +initial.createdAt);
-    if (retry === 3) await assert.rejects(payments.retry(user.id, id), /cannot be retried/);
-    else url = (await payments.retry(user.id, id)).checkoutUrl;
+    assert.equal(expired.status, 'cancelled'); assert.equal(expired.cancellationReason, 'expired');
+    assert.equal(expired.retries, retry); assert.equal(+expired.createdAt, +initial.createdAt);
+    assert.equal((await repo(SubscriptionEntity).findOneByOrFail({ id: initial.subscriptionId })).status, 'cancelled');
+    if (retry === 2) await assert.rejects(payments.retry(user.id, id), /cannot be retried/);
+    else {
+      url = (await payments.retry(user.id, id)).checkoutUrl;
+      await assert.rejects(payments.retry(user.id, id), /cannot be retried/);
+      assert.equal((await repo(PaymentTransactionEntity).findOneByOrFail({ id: initial.id })).cancellationReason, 'expired');
+    }
   }
+  assert.equal(await repo(PaymentTransactionEntity).countBy({ userId: user.id }), 3);
+});
+
+test('user cancellation is owned, idempotent and concurrent retries cannot fork the chain', async () => {
+  const user = await newUser(), other = await newUser();
+  const id = (await payments.createCheckout(user.id, 'basic', 'monthly')).checkoutUrl.split('/').at(-1);
+  await assert.rejects(payments.cancel(id, other.id), /Order not found/);
+  await payments.cancel(id, user.id);
+  await payments.cancel(id, user.id);
+  const tx = await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: id });
+  assert.equal(tx.status, 'cancelled'); assert.equal(tx.cancellationReason, 'user_cancelled');
+  await assert.rejects(payments.complete(id, user.id), /cancelled/);
+  const results = await Promise.allSettled([payments.retry(user.id, id), payments.retry(user.id, id)]);
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+  assert.equal(await repo(PaymentTransactionEntity).countBy({ retryOf: id }), 1);
+});
+
+test('provider failure stays failed after retry, and expiration callbacks keep their own reason', async () => {
+  const user = await newUser();
+  const id = (await payments.createCheckout(user.id, 'basic', 'monthly')).checkoutUrl.split('/').at(-1);
+  const session = { id: 'cs_' + randomUUID(), status: 'complete', payment_status: 'unpaid', metadata: { sessionId: id } };
+  await repo(PaymentTransactionEntity).update({ sessionId: id }, { stripeCheckoutId: session.id });
+  payments.stripe = { checkout: { sessions: { retrieve: async () => session } }, webhooks: { constructEvent: b => JSON.parse(b) } };
+  const event = type => Buffer.from(JSON.stringify({ type, data: { object: session } }));
+  try {
+    await payments.handleWebhook(event('checkout.session.async_payment_failed'), '');
+    await payments.handleWebhook(event('checkout.session.async_payment_failed'), '');
+    const failed = await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: id });
+    assert.equal(failed.status, 'failed'); assert.equal(failed.cancellationReason, null);
+    payments.stripe = null;
+    const next = (await payments.retry(user.id, id)).checkoutUrl.split('/').at(-1);
+    assert.equal((await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: id })).status, 'failed');
+    session.id = 'cs_' + randomUUID(); session.status = 'expired'; session.metadata.sessionId = next;
+    await repo(PaymentTransactionEntity).update({ sessionId: next }, { stripeCheckoutId: session.id });
+    payments.stripe = { checkout: { sessions: { retrieve: async () => session } }, webhooks: { constructEvent: b => JSON.parse(b) } };
+    await payments.handleWebhook(event('checkout.session.expired'), '');
+    assert.equal((await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: next })).cancellationReason, 'expired');
+  } finally { payments.stripe = null; }
+});
+
+test('timeout reconciles paid Checkout after a retrieve/expire race and duplicate webhooks activate once', async () => {
+  const user = await newUser();
+  const id = (await payments.createCheckout(user.id, 'basic', 'monthly')).checkoutUrl.split('/').at(-1);
+  const start = Math.floor(Date.now() / 1000);
+  const external = { id: 'sub_' + randomUUID(), metadata: { sessionId: id }, cancel_at_period_end: false,
+    items: { data: [{ current_period_start: start, current_period_end: start + 3600 }] } };
+  const session = { id: 'cs_' + randomUUID(), metadata: { sessionId: id }, subscription: external.id, status: 'open', payment_status: 'unpaid' };
+  await repo(PaymentTransactionEntity).update({ sessionId: id }, { stripeCheckoutId: session.id, expiresAt: new Date(Date.now() - 1) });
+  let receipts = 0;
+  const originalReceipt = mail.sendReceipt;
+  mail.sendReceipt = () => { receipts++; };
+  payments.stripe = { checkout: { sessions: { retrieve: async () => ({ ...session }), expire: async () => {
+    session.status = 'complete'; session.payment_status = 'paid'; throw new Error('Checkout already completed');
+  } } }, subscriptions: { retrieve: async () => external }, webhooks: { constructEvent: b => JSON.parse(b) } };
+  try {
+    await payments.expireStalePendingOrders();
+    assert.equal((await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: id })).status, 'paid');
+    const payload = Buffer.from(JSON.stringify({ type: 'checkout.session.completed', data: { object: session } }));
+    await Promise.all([payments.handleWebhook(payload, ''), payments.handleWebhook(payload, '')]);
+    assert.equal(await repo(SubscriptionEntity).countBy({ userId: user.id, status: 'active' }), 1);
+    assert.equal(receipts, 1);
+  } finally { payments.stripe = null; mail.sendReceipt = originalReceipt; }
+});
+
+test('late provider confirmation restores an expired order but mock completion cannot bypass timeout', async () => {
+  const user = await newUser();
+  const id = (await payments.createCheckout(user.id, 'basic', 'monthly')).checkoutUrl.split('/').at(-1);
+  await repo(PaymentTransactionEntity).update({ sessionId: id }, { expiresAt: new Date(Date.now() - 1) });
+  await assert.rejects(payments.complete(id, user.id), /expired/);
+  await payments.expireStalePendingOrders();
+  const start = Math.floor(Date.now() / 1000);
+  const session = { id: 'cs_' + randomUUID(), payment_status: 'paid', metadata: { sessionId: id }, subscription: 'sub_' + randomUUID() };
+  await repo(PaymentTransactionEntity).update({ sessionId: id }, { stripeCheckoutId: session.id });
+  payments.stripe = { subscriptions: { retrieve: async () => ({ id: session.subscription,
+    items: { data: [{ current_period_start: start, current_period_end: start + 3600 }] } }) }, webhooks: { constructEvent: b => JSON.parse(b) } };
+  try {
+    await payments.handleWebhook(Buffer.from(JSON.stringify({ type: 'checkout.session.completed', data: { object: session } })), '');
+    const tx = await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: id });
+    assert.equal(tx.status, 'paid'); assert.equal(tx.cancellationReason, null);
+    assert.equal(await repo(SubscriptionEntity).countBy({ userId: user.id, status: 'active' }), 1);
+  } finally { payments.stripe = null; }
+});
+
+test('provider outages and processing payments stay pending; unrelated expiration cannot cancel an order', async () => {
+  const user = await newUser();
+  const id = (await payments.createCheckout(user.id, 'basic', 'monthly')).checkoutUrl.split('/').at(-1);
+  const session = { id: 'cs_' + randomUUID(), metadata: { sessionId: id }, status: 'complete', payment_status: 'unpaid' };
+  await repo(PaymentTransactionEntity).update({ sessionId: id }, { stripeCheckoutId: session.id, expiresAt: new Date(Date.now() - 1) });
+  let unavailable = true, expirations = 0;
+  payments.stripe = { checkout: { sessions: { retrieve: async () => {
+    if (unavailable) throw new Error('simulated provider outage');
+    return session;
+  }, expire: async () => { expirations++; } } }, webhooks: { constructEvent: b => JSON.parse(b) } };
+  try {
+    await payments.expireStalePendingOrders();
+    assert.equal((await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: id })).status, 'pending');
+    unavailable = false;
+    await payments.expireStalePendingOrders();
+    assert.equal((await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: id })).status, 'pending');
+    const payload = Buffer.from(JSON.stringify({ type: 'checkout.session.expired', data: { object: { ...session, id: 'cs_unrelated' } } }));
+    await payments.handleWebhook(payload, '');
+    assert.equal((await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: id })).status, 'pending');
+    assert.equal(expirations, 0);
+  } finally { payments.stripe = null; }
 });
 
 test('Stripe renewal invoices are idempotent; cancellation reaches the provider and preserves paid access', async () => {
@@ -425,6 +538,16 @@ test('HTTP metadata validation, multipart relations and playback guards work thr
     await app.listen(0, '127.0.0.1');
     const base = 'http://127.0.0.1:' + app.getHttpServer().address().port + '/api';
     const request = (path, options = {}) => fetch(base + path, { ...options, headers: { ...headers, ...options.headers } });
+    const checkout = (await payments.createCheckout(viewer.id, 'basic', 'monthly')).checkoutUrl.split('/').at(-1);
+    const cancelPath = '/payments/cancel/' + checkout;
+    assert.equal((await fetch(base + cancelPath, { method: 'POST' })).status, 401);
+    assert.equal((await request(cancelPath, { method: 'POST' })).status, 404, 'Another user cannot cancel the order');
+    const cancelled = await request(cancelPath, { method: 'POST', headers: viewerHeaders });
+    assert.equal(cancelled.status, 200);
+    const order = await cancelled.json();
+    assert.equal(order.status, 'cancelled'); assert.equal(order.cancellationReason, 'user_cancelled'); assert.equal(order.canRetry, true);
+    assert.equal((await request('/payments/retry/' + checkout, { method: 'POST', headers: viewerHeaders })).status, 200);
+    assert.equal((await (await request(cancelPath, { method: 'POST', headers: viewerHeaders })).json()).canRetry, false);
     const headHeaders = { Authorization: 'Bearer ' + tokenFor(testHead), 'Content-Type': 'application/json' };
     assert.equal((await request('/users/' + viewer.id + '/role', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{"role":"admin"}' })).status, 403);
     assert.equal((await request('/users/' + administrator.id + '/block', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{"isBlocked":true}' })).status, 403);

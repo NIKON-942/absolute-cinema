@@ -209,12 +209,15 @@ Visibility: new and existing movies are published by default. Hidden movies are 
 | POST | `/payments/mock-complete/:sessionId` | Bearer | — | `{ message }` — mock mode only: simulates the gateway webhook (activates subscription, grants access, sends receipt email) |
 | POST | `/payments/mock-cancel/:sessionId` | Bearer | — | `{ message }` — mock mode only: marks order cancelled |
 | POST | `/payments/subscription/cancel` | Bearer | — | `{ message }` — turns off Stripe automatic renewal, preserves access until `endsAt`, cancels pending checkouts |
-| POST | `/payments/retry/:sessionId` | Bearer, order owner | — | `{ checkoutUrl }` — closes an abandoned checkout and creates a new attempt, up to 3 retries per order chain |
+| POST | `/payments/retry/:sessionId` | Bearer, order owner | — | `{ checkoutUrl }` — creates a new attempt; maximum 3 Checkout sessions per chain (initial + 2 retries); each attempt can have only one successor |
+| POST | `/payments/cancel/:sessionId` | Bearer, order owner | — | `{ message, status, cancellationReason, canRetry }` — closes an abandoned Checkout, reconciling confirmed payment first; called on return from hosted Checkout |
 | POST | `/payments/webhook` | Stripe sig header | raw body | 200; verifies signatures, handles paid Checkout, paid renewal invoices, checkout expiration and subscription updates/deletion; duplicate payments are idempotent |
 
 Subscription activation and the paid transaction commit together under a per-user lock. Stripe billing dates are authoritative; mock calendar dates clamp to the last day of the target month. Pending checkouts expire after 20 minutes (cron); retries require a user action and never rewrite the original `createdAt`. Stripe mode requires both secret key and webhook secret; missing credentials stop startup instead of enabling mock payments.
 
 Configure the Stripe event destination for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `invoice.paid`, `customer.subscription.updated`, and `customer.subscription.deleted`. Existing live subscriptions created before external IDs were stored require reconciliation with Stripe; the migration cannot infer these IDs.
+
+Payment states (updated 2026-11-06): confirmed payments become `paid`; terminal provider failures become `failed`; unpaid orders expire after 20 minutes as `cancelled` with `cancellationReason: expired`. User cancellation records `user_cancelled`; choosing another Checkout records `superseded`. Cron runs every minute and checks Stripe before closing an order; a completed payment awaiting confirmation stays pending. Late signed payment confirmation can settle an earlier terminal order, clears its cancellation reason, and repeated confirmation does not duplicate access or receipts. Retry is a manual action and preserves previous results and creation timestamps. This limit counts hosted Checkout sessions, not card submissions within Stripe. Existing historical rows retain their original status; the migration adds nullable reason and retry-link columns without inferring missing history.
 
 ## Devices (`/devices`, Bearer)
 

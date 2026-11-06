@@ -86,6 +86,13 @@ export class PaymentsController {
     return this.paymentsService.retry((req.user as { id: number }).id, sessionId);
   }
 
+  @Post('cancel/:sessionId')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  cancel(@Req() req: Request, @Param('sessionId') sessionId: string) {
+    return this.paymentsService.cancel(sessionId, (req.user as { id: number }).id);
+  }
+
   @Post('webhook')
   @HttpCode(200)
   webhook(
