@@ -1,6 +1,6 @@
 # AbsoluteCinema — API Contract (implemented backend/frontend contract)
 
-Reviewed 2026-11-05; movie visibility added 2026-11-06. This describes implementation, not proof of full ТЗ/РГР2 compliance. See [requirements](4_Functional_Requirements.md), [implementation](implementation-status.md), and [gaps](verification-and-gaps.md). Head-administrator authorization is not implemented.
+Reviewed 2026-11-05; movie visibility added 2026-11-06. This describes implementation, not proof of full ТЗ/РГР2 compliance. See [requirements](4_Functional_Requirements.md), [implementation](implementation-status.md), and [gaps](verification-and-gaps.md). Head-administrator authorization added 2026-11-06.
 
 Base URL: `http://localhost:4000/api`
 Auth: `Authorization: Bearer <accessToken>` on protected endpoints.
@@ -28,7 +28,7 @@ interface UserDto {
   id: number;
   email: string;
   name: string;
-  role: 'viewer' | 'admin';
+  role: 'viewer' | 'admin' | 'head_admin';
   isBlocked: boolean;
   googleLinked: boolean; // whether a Google identity is linked
   avatarUrl: string | null;      // shown in navbar/profile (FR-35)
@@ -146,12 +146,12 @@ Password rules (РГР2 FR-2): at least 8 Unicode code points, at most 72 UTF-8 
 | GET | `/users` | admin | `?page=1&limit=20&search=` | `{ items: UserDto[], total, page, limit }` |
 | GET | `/users/me` | Bearer | — | `UserDto` |
 | PATCH | `/users/me` | Bearer | JSON `{ name?, avatarUrl?, password?, currentPassword? }` or multipart with the same fields plus `file?` (avatar image). `currentPassword` required for a password change. | `UserDto` |
-| PATCH | `/users/:id/role` | admin | `{ role: 'viewer'\|'admin' }` | `UserDto` |
+| PATCH | `/users/:id/role` | head_admin | `{ role: 'viewer'\|'admin'\|'head_admin' }` | `UserDto` |
 | PATCH | `/users/:id/block` | admin | `{ isBlocked: boolean }` | `UserDto` |
 | DELETE | `/users/:id` | admin | — | 200 with empty body (current Nest default; no explicit 204 decorator) |
 
 Blocked users: login returns 403 `Account is blocked`.
-All admin users currently have role/block/delete endpoints. The last active admin cannot lose access, but this does not implement the head-admin restriction in ТЗ 4.1.1–4.1.2 / РГР2 FR-42. Register and Google link use the default POST status 201; login/logout/Google exchange/forgot/reset explicitly return 200. The unknown-email recovery response has the same status/body as the known-email response.
+The head_admin role inherits every admin permission. Only head administrators can assign roles or block/delete administrators; ordinary admins can moderate viewers only. Self-management of role/block/delete is forbidden. Actor and target are re-read under a transaction lock; concurrent operations preserve an active head administrator. JWT authorization reads current roles from the database on every request. Register and Google link use the default POST status 201; login/logout/Google exchange/forgot/reset explicitly return 200. The unknown-email recovery response has the same status/body as the known-email response.
 
 ## Media (`/media`)
 

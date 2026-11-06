@@ -44,8 +44,8 @@ class UpdateMeDto {
 }
 
 class SetRoleDto {
-  @IsIn(['viewer', 'admin'])
-  role!: 'viewer' | 'admin';
+  @IsIn(['viewer', 'admin', 'head_admin'])
+  role!: 'viewer' | 'admin' | 'head_admin';
 }
 
 class SetBlockedDto {
@@ -95,10 +95,10 @@ export class UsersController {
   }
 
   @Patch(':id/role')
-  @Roles('admin')
-  async setRole(@Param('id', ParseIntPipe) id: number, @Body() dto: SetRoleDto) {
+  @Roles('head_admin')
+  async setRole(@Param('id', ParseIntPipe) id: number, @Body() dto: SetRoleDto, @Req() req: Request) {
     return this.usersService.serialize(
-      await this.usersService.setRole(id, dto.role),
+      await this.usersService.setRole(id, dto.role, currentUserId(req)),
     );
   }
 
@@ -107,15 +107,16 @@ export class UsersController {
   async setBlocked(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SetBlockedDto,
+    @Req() req: Request,
   ) {
     return this.usersService.serialize(
-      await this.usersService.setBlocked(id, dto.isBlocked),
+      await this.usersService.setBlocked(id, dto.isBlocked, currentUserId(req)),
     );
   }
 
   @Delete(':id')
   @Roles('admin')
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    await this.usersService.remove(id);
+  async remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+    await this.usersService.remove(id, currentUserId(req));
   }
 }

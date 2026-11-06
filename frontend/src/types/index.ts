@@ -1,6 +1,6 @@
 // DTO shapes from docs/api-contract.md — single source of truth for the frontend.
 
-export type Role = 'viewer' | 'admin';
+export type Role = 'viewer' | 'admin' | 'head_admin';
 export type SubscriptionTier = 'basic' | 'plus' | 'premium';
 export type SubscriptionPeriod = 'monthly' | 'yearly';
 export type SubscriptionStatus = 'pending' | 'active' | 'expired' | 'cancelled';

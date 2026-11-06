@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { DataSource, EntityManager, Repository } from 'typeorm';
@@ -160,27 +160,28 @@ export class UsersService {
     return this.requireWithSubscription(userId);
   }
 
-  async setRole(userId: number, role: 'viewer' | 'admin') {
+  async setRole(userId: number, role: 'viewer' | 'admin' | 'head_admin', actorId: number) {
+    if (!Object.values(UserRoleEnum).includes(role as UserRoleEnum)) throw new BadRequestException('Invalid role');
     await this.dataSource.transaction(async em => {
-      const user = await this.protectLastAdmin(em, userId, role !== 'admin');
-      await em.update(UserEntity, user.id, { role: role === 'admin' ? UserRoleEnum.ADMIN : UserRoleEnum.VIEWER });
+      const user = await this.authorizeManagement(em, actorId, userId, true, role !== 'head_admin');
+      await em.update(UserEntity, user.id, { role: role as UserRoleEnum });
     });
     return this.requireWithSubscription(userId);
   }
 
-  async setBlocked(userId: number, isBlocked: boolean) {
+  async setBlocked(userId: number, isBlocked: boolean, actorId: number) {
     await this.dataSource.transaction(async em => {
-      const user = await this.protectLastAdmin(em, userId, isBlocked);
+      const user = await this.authorizeManagement(em, actorId, userId, false, isBlocked);
       await em.update(UserEntity, user.id, { isBlocked });
     });
     return this.requireWithSubscription(userId);
   }
 
-  async remove(userId: number) {
+  async remove(userId: number, actorId: number) {
     // Dependent rows must go first — their FKs are ON DELETE NO ACTION, so
     // deleting a user with ratings/history/orders would otherwise fail.
     await this.dataSource.transaction(async (em) => {
-      await this.protectLastAdmin(em, userId, true);
+      await this.authorizeManagement(em, actorId, userId, false, true);
       await em.query('DELETE FROM ratings WHERE user_id = $1', [userId]);
       await em.query('DELETE FROM watch_progress WHERE user_id = $1', [userId]);
       await em.query('DELETE FROM user_favorites WHERE users_id = $1', [userId]);
@@ -194,15 +195,25 @@ export class UsersService {
     });
   }
 
-  private async protectLastAdmin(em: EntityManager, userId: number, removesAccess: boolean): Promise<UserEntity> {
-    // Serialize role/block/delete mutations across admins, including two
-    // administrators trying to remove each other's access simultaneously.
+  private async authorizeManagement(em: EntityManager, actorId: number, userId: number, changesRole: boolean, removesAccess: boolean): Promise<UserEntity> {
+    if (!Number.isSafeInteger(actorId) || actorId <= 0) throw new ForbiddenException('Administrative access required');
+    if (!Number.isSafeInteger(userId) || userId <= 0) throw new BadRequestException('Invalid user ID');
+    // Re-read both identities after the lock: a request admitted by a guard
+    // may have lost its privileges while another management request committed.
     await em.query('SELECT pg_advisory_xact_lock(1702, 1)');
+    const actor = await em.findOneBy(UserEntity, { id: actorId });
+    if (!actor || actor.isBlocked || ![UserRoleEnum.ADMIN, UserRoleEnum.HEAD_ADMIN].includes(actor.role)) {
+      throw new ForbiddenException('Administrative access required');
+    }
+    if (actorId === userId) throw new ForbiddenException('You cannot change your own administrative access');
     const user = await em.findOneBy(UserEntity, { id: userId });
     if (!user) throw new NotFoundException('User not found');
-    if (removesAccess && user.role === UserRoleEnum.ADMIN && !user.isBlocked
-      && await em.countBy(UserEntity, { role: UserRoleEnum.ADMIN, isBlocked: false }) <= 1) {
-      throw new BadRequestException('Cannot remove access from the last active administrator');
+    if (actor.role !== UserRoleEnum.HEAD_ADMIN && (changesRole || user.role !== UserRoleEnum.VIEWER)) {
+      throw new ForbiddenException('Only a head administrator can manage administrative access');
+    }
+    if (removesAccess && user.role === UserRoleEnum.HEAD_ADMIN && !user.isBlocked
+      && await em.countBy(UserEntity, { role: UserRoleEnum.HEAD_ADMIN, isBlocked: false }) <= 1) {
+      throw new BadRequestException('Cannot remove access from the last active head administrator');
     }
     return user;
   }

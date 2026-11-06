@@ -11,7 +11,11 @@ async function main(): Promise<void> {
   try {
     await AppDataSource.transaction(async (manager) => {
       const users = manager.getRepository(UserEntity);
-      if (!(await users.existsBy({ role: UserRoleEnum.ADMIN }))) {
+      await manager.query('SELECT pg_advisory_xact_lock(1702, 1)');
+      if (!(await users.existsBy({ role: UserRoleEnum.HEAD_ADMIN, isBlocked: false }))) {
+        if (await users.existsBy([{ role: UserRoleEnum.ADMIN }, { role: UserRoleEnum.HEAD_ADMIN }])) {
+          throw new Error('Assign an active head administrator explicitly: node dist/database/promote-head-admin.js --email existing-admin@example.com');
+        }
         const email = (process.env.INITIAL_ADMIN_EMAIL ?? '').trim().toLowerCase();
         const password = process.env.INITIAL_ADMIN_PASSWORD ?? '';
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 16) {
@@ -25,7 +29,7 @@ async function main(): Promise<void> {
           email,
           name: 'Administrator',
           passwordHash: await bcrypt.hash(password, 12),
-          role: UserRoleEnum.ADMIN,
+          role: UserRoleEnum.HEAD_ADMIN,
         }));
         console.log('Initial administrator created');
       }

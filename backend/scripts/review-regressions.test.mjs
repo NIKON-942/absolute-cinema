@@ -32,10 +32,55 @@ const { validatePoster, validateUploadedVideo } = require('../dist/modules/media
 const repo = entity => db.getRepository(entity);
 const config = { get: key => key === 'stripe' ? { enabled: false } : 'http://localhost' };
 const mail = { sendWelcome() {}, sendPasswordReset() {}, sendReceipt() {} };
-let auth, users, payments, media;
+let auth, users, payments, media, testHead;
+const removeUser = id => users.remove(id, testHead.id);
+
+test('head administrator bootstrap, explicit promotion and migration rollback preserve existing accounts', async () => {
+  const { spawnSync } = require('node:child_process');
+  const { DataSource } = require('typeorm');
+  const database = 'cinema_head_' + randomUUID().replaceAll('-', '');
+  const email = 'head-bootstrap@example.com';
+  const env = { ...process.env, DB_NAME: database, INITIAL_ADMIN_EMAIL: email, INITIAL_ADMIN_PASSWORD: 'isolated-head-password-12345' };
+  const run = (file, args = [], success = true) => {
+    const result = spawnSync(process.execPath, [join(process.cwd(), 'dist/database', file), ...args], { env, encoding: 'utf8' });
+    if (result.error) throw result.error;
+    assert.equal(result.status === 0, success, result.stderr + result.stdout);
+    return result;
+  };
+  let isolated;
+  await db.query(`CREATE DATABASE "${database}"`);
+  try {
+    run('run-migrations.js');
+    run('bootstrap.js');
+    run('bootstrap.js');
+    isolated = new DataSource({ ...db.options, database });
+    await isolated.initialize();
+    const [initial] = await isolated.query('SELECT id, role, password_hash FROM users WHERE email = $1', [email]);
+    assert.equal(initial.role, 'head_admin');
+    assert.equal((await isolated.query('SELECT count(*)::int AS n FROM users'))[0].n, 1);
+    await isolated.undoLastMigration();
+    assert.equal((await isolated.query('SELECT role FROM users WHERE id = $1', [initial.id]))[0].role, 'admin');
+    run('run-migrations.js');
+    assert.match(run('bootstrap.js', [], false).stderr, /Assign an active head administrator explicitly/);
+    await isolated.query("INSERT INTO users (email, name) VALUES ('viewer-bootstrap@example.com', 'Viewer')");
+    run('promote-head-admin.js', ['--email', 'viewer-bootstrap@example.com'], false);
+    run('promote-head-admin.js', ['--email', email]);
+    run('promote-head-admin.js', ['--email', email]);
+    run('bootstrap.js');
+    const [promoted] = await isolated.query('SELECT role, password_hash FROM users WHERE id = $1', [initial.id]);
+    assert.equal(promoted.role, 'head_admin');
+    assert.equal(promoted.password_hash, initial.password_hash);
+    await isolated.query('UPDATE users SET is_blocked = true WHERE id = $1', [initial.id]);
+    run('promote-head-admin.js', ['--email', email], false);
+  } finally {
+    if (isolated?.isInitialized) await isolated.destroy();
+    await db.query(`DROP DATABASE "${database}"`);
+  }
+});
 
 before(async () => {
   await db.initialize();
+  testHead = await repo(UserEntity).save({ email: randomUUID() + '@example.com', name: 'Fixture head administrator', role: 'head_admin' });
   users = new UsersService(repo(UserEntity), repo(SubscriptionEntity), db);
   auth = new AuthService({ sign: value => JSON.stringify(value) }, config, users, mail, repo(UserEntity));
   payments = new PaymentsService(config, mail, repo(SubscriptionPlanEntity), repo(SubscriptionEntity), repo(PaymentTransactionEntity));
@@ -44,6 +89,56 @@ before(async () => {
 });
 after(async () => { if (db.isInitialized) await db.destroy(); });
 const newUser = async () => (await auth.register({ email: `${randomUUID()}@example.com`, name: 'Test viewer', password: 'abcdefgh' })).user;
+
+test('administrative permissions validate actor and target and forbid self-management', async () => {
+  const make = role => repo(UserEntity).save({ email: randomUUID() + '@example.com', name: 'Permission fixture', role });
+  const admin = await make('admin'), peer = await make('admin'), viewer = await make('viewer');
+  const forbidden = error => error.getStatus() === 403;
+  try {
+    await assert.rejects(users.setRole(viewer.id, 'admin', undefined), forbidden);
+    await assert.rejects(users.setRole(viewer.id, 'admin', admin.id), forbidden);
+    await assert.rejects(users.setRole(admin.id, 'head_admin', admin.id), forbidden);
+    for (const target of [peer, testHead]) {
+      await assert.rejects(users.setBlocked(target.id, true, admin.id), forbidden);
+      await assert.rejects(users.remove(target.id, admin.id), forbidden);
+    }
+    await assert.rejects(users.setBlocked(admin.id, true, viewer.id), forbidden);
+    for (const operation of [() => users.setRole(testHead.id, 'viewer', testHead.id), () => users.setBlocked(testHead.id, true, testHead.id), () => users.remove(testHead.id, testHead.id)]) {
+      await assert.rejects(operation(), forbidden);
+    }
+    await users.setBlocked(viewer.id, true, admin.id);
+    await users.setBlocked(viewer.id, false, admin.id);
+    await users.setRole(viewer.id, 'head_admin', testHead.id);
+    await users.setRole(viewer.id, 'viewer', testHead.id);
+    await users.setRole(admin.id, 'viewer', testHead.id);
+    await assert.rejects(users.setBlocked(peer.id, true, admin.id), forbidden, 'Demoted actors lose privileges immediately');
+    await users.setBlocked(peer.id, true, testHead.id);
+    await assert.rejects(users.setBlocked(viewer.id, true, peer.id), forbidden);
+    await users.setBlocked(peer.id, false, testHead.id);
+    await users.remove(viewer.id, peer.id);
+  } finally {
+    for (const user of [admin, peer, viewer]) if (await repo(UserEntity).existsBy({ id: user.id })) await removeUser(user.id);
+  }
+});
+
+test('concurrent demotion, blocking and deletion preserve an active head administrator', async () => {
+  for (const action of ['demote', 'block', 'delete']) {
+    const heads = await Promise.all([1, 2].map(() => repo(UserEntity).save({ email: randomUUID() + '@example.com', name: 'Concurrent head', role: 'head_admin' })));
+    try {
+      await repo(UserEntity).update(testHead.id, { isBlocked: true });
+      const act = (target, actor) => action === 'demote' ? users.setRole(target.id, 'admin', actor.id)
+        : action === 'block' ? users.setBlocked(target.id, true, actor.id) : users.remove(target.id, actor.id);
+      const results = await Promise.allSettled([act(heads[0], heads[1]), act(heads[1], heads[0])]);
+      assert.equal(results.filter(result => result.status === 'fulfilled').length, 1, action);
+      assert.equal(await repo(UserEntity).countBy({ role: 'head_admin', isBlocked: false }), 1, action);
+      const survivor = await repo(UserEntity).findOneByOrFail({ role: 'head_admin', isBlocked: false });
+      await assert.rejects(act(survivor, survivor), error => error.getStatus() === 403);
+    } finally {
+      await repo(UserEntity).update(testHead.id, { isBlocked: false });
+      for (const user of heads) if (await repo(UserEntity).existsBy({ id: user.id })) await removeUser(user.id);
+    }
+  }
+});
 
 test('fifth failed login locks the account for an hour, including concurrent attempts', async () => {
   const user = await newUser();
@@ -188,21 +283,6 @@ test('upload validation checks poster bytes and video codecs, not only MIME name
   assert.throws(() => validateUploadedVideo({ format: 'avi', codec: 'h264' }, 'video.avi'), /Upload MP4/);
 });
 
-test('the last active administrator cannot be blocked, deleted or demoted', async () => {
-  const previous = await repo(UserEntity).findBy({ role: 'admin' });
-  for (const admin of previous) await repo(UserEntity).update(admin.id, { isBlocked: true });
-  const user = await newUser();
-  await repo(UserEntity).update(user.id, { role: 'admin' });
-  try {
-    await assert.rejects(users.setRole(user.id, 'viewer'), /last active administrator/);
-    await assert.rejects(users.setBlocked(user.id, true), /last active administrator/);
-    await assert.rejects(users.remove(user.id), /last active administrator/);
-  } finally {
-    for (const admin of previous) await repo(UserEntity).update(admin.id, { isBlocked: admin.isBlocked });
-    await repo(UserEntity).update(user.id, { role: 'viewer' });
-  }
-  await users.remove(user.id);
-});
 
 // FR-25, FR-37/39, FR-44 and strict metadata validation on real PostgreSQL.
 test('movie references survive dictionary renames and reject deletion while used', async () => {
@@ -303,7 +383,7 @@ test('period analytics deduplicate playback retries, isolate old events and weig
     await assert.rejects(media.recordPlayback(movie.id, viewers[0].id, 'bad id'), error => error.getStatus() === 400);
   } finally {
     await media.removeMovie(movie.id); await media.deleteGenre(g.id);
-    for (const user of viewers) await users.remove(user.id);
+    for (const user of viewers) await removeUser(user.id);
   }
 });
 
@@ -329,6 +409,16 @@ test('HTTP metadata validation, multipart relations and playback guards work thr
     await app.listen(0, '127.0.0.1');
     const base = 'http://127.0.0.1:' + app.getHttpServer().address().port + '/api';
     const request = (path, options = {}) => fetch(base + path, { ...options, headers: { ...headers, ...options.headers } });
+    const headHeaders = { Authorization: 'Bearer ' + tokenFor(testHead), 'Content-Type': 'application/json' };
+    assert.equal((await request('/users/' + viewer.id + '/role', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{"role":"admin"}' })).status, 403);
+    assert.equal((await request('/users/' + administrator.id + '/block', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{"isBlocked":true}' })).status, 403);
+    assert.equal((await request('/users/' + administrator.id, { method: 'DELETE' })).status, 403);
+    for (const path of ['/users', '/admin/analytics', '/admin/media']) assert.equal((await request(path, { headers: headHeaders })).status, 200, path);
+    assert.equal((await request('/users/' + viewer.id + '/role', { method: 'PATCH', headers: headHeaders, body: '{"role":"invalid"}' })).status, 400);
+    assert.equal((await request('/users/' + viewer.id + '/role', { method: 'PATCH', headers: headHeaders, body: '{"role":"admin"}' })).status, 200);
+    assert.equal((await request('/users', { headers: viewerHeaders })).status, 200, 'Existing JWT reflects promotion from the database');
+    await users.setRole(viewer.id, 'viewer', testHead.id);
+    assert.equal((await request('/users', { headers: viewerHeaders })).status, 403, 'Existing JWT reflects demotion from the database');
     assert.equal((await request('/media/genres', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '   ' }) })).status, 400);
     genre = await media.createGenre('HTTP-' + randomUUID());
     const form = new FormData(); form.set('title', 'HTTP-' + randomUUID()); form.set('year', '2026'); form.set('genreIds', JSON.stringify([genre.id]));
@@ -376,9 +466,9 @@ test('HTTP metadata validation, multipart relations and playback guards work thr
     await app.close();
     if (movie) await media.removeMovie(movie.id);
     if (genre) await media.deleteGenre(genre.id);
-    await users.remove(viewer.id);
+    await removeUser(viewer.id);
     await repo(UserEntity).update(administrator.id, { role: 'viewer' });
-    await users.remove(administrator.id);
+    await removeUser(administrator.id);
     await rm(join(VIDEOS_DIR, videoFilename), { force: true });
   }
 });
@@ -400,7 +490,7 @@ test('Google IDs are authoritative; existing accounts require explicit linking a
   await assert.rejects(auth.loginWithGoogle(profile, existing.id, 0), err => err.getStatus() === 403);
   await repo(UserEntity).update(existing.id, { isBlocked: true });
   await assert.rejects(auth.loginWithGoogle(profile), err => err.getStatus() === 403);
-  await users.remove(existing.id); await users.remove(other.id);
+  await removeUser(existing.id); await removeUser(other.id);
 });
 
 test('Google registration is unique under concurrent callbacks and creates one local account', async () => {
@@ -410,7 +500,7 @@ test('Google registration is unique under concurrent callbacks and creates one l
   const [user] = await repo(UserEntity).findBy({ googleId: profile.googleId });
   assert.equal(await repo(UserEntity).countBy({ googleId: profile.googleId }), 1);
   assert.equal(user.passwordHash, null);
-  await users.remove(user.id);
+  await removeUser(user.id);
 });
 
 test('Google OAuth state and exchange codes are short-lived, browser-bound and single-use', async () => {
@@ -579,7 +669,7 @@ test('movie visibility protects every public route and preserves data when repub
     if (seed) await media.removeMovie(seed.id);
     if (genre) await media.deleteGenre(genre.id);
     await repo(UserEntity).update(administrator.id, { role: 'viewer' });
-    for (const user of [viewer, recommendationViewer, administrator]) await users.remove(user.id);
+    for (const user of [viewer, recommendationViewer, administrator]) await removeUser(user.id);
     await rm(join(VIDEOS_DIR, videoFilename), { force: true });
   }
 });

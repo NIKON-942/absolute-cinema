@@ -514,6 +514,8 @@ export const uk: Record<string, string> = {
   'admin.users.unblock': 'Розблокувати',
   'admin.users.roleViewer': 'Переглядач',
   'admin.users.roleAdmin': 'Адміністратор',
+  'admin.users.roleHeadAdmin': 'Головний адміністратор',
+  'admin.users.roleConfirm': 'Змінити роль користувача «{name}» на «{role}»?',
   'admin.users.delete': 'Видалити користувача',
   'admin.users.deleteConfirm': 'Видалити цього користувача назавжди?',
   'admin.users.roleChanged': 'Роль оновлено',

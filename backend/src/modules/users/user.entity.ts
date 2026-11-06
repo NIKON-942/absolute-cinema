@@ -12,6 +12,7 @@ import { MovieEntity } from '../media/entities/movie.entity';
 export enum UserRoleEnum {
   VIEWER = 'viewer',
   ADMIN = 'admin',
+  HEAD_ADMIN = 'head_admin',
 }
 
 export enum SubscriptionTierEnum {

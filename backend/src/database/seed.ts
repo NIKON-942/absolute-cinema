@@ -184,7 +184,7 @@ async function main() {
     }
     return user;
   }
-  const admin = await upsertUser('admin@cinema.local', 'Admin', 'Admin12345', UserRoleEnum.ADMIN);
+  const admin = await upsertUser('admin@cinema.local', 'Admin', 'Admin12345', UserRoleEnum.HEAD_ADMIN);
   const viewer = await upsertUser('viewer@cinema.local', 'Demo Viewer', 'Viewer12345', UserRoleEnum.VIEWER);
   console.log(`users ok: admin=#${admin.id}, viewer=#${viewer.id}`);
   console.warn(

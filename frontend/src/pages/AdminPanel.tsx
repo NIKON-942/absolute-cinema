@@ -1404,14 +1404,27 @@ function UsersTab() {
   const updateRow = (updated: UserDto) =>
     setData((prev) => (prev ? { ...prev, items: prev.items.map((u) => (u.id === updated.id ? updated : u)) } : prev));
 
-  const changeRole = async (u: UserDto, role: Role) => {
-    try {
-      const updated = await usersService.changeRole(u.id, role);
-      updateRow(updated);
-      success(t('admin.users.roleChanged'));
-    } catch (err) {
-      errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
-    }
+  const canManageUser = (u: UserDto) => me?.id !== u.id && (me?.role === 'head_admin' || u.role === 'viewer');
+  const roleLabel = (role: Role) => t(role === 'head_admin' ? 'admin.users.roleHeadAdmin' : role === 'admin' ? 'admin.users.roleAdmin' : 'admin.users.roleViewer');
+  const changeRole = (u: UserDto, role: Role) => {
+    if (role === u.role) return;
+    setConfirmState({
+      title: t('admin.users.role'),
+      message: t('admin.users.roleConfirm', { name: u.name, role: roleLabel(role) }),
+      action: async () => {
+        setConfirmBusy(true);
+        try {
+          const updated = await usersService.changeRole(u.id, role);
+          updateRow(updated);
+          success(t('admin.users.roleChanged'));
+          setConfirmState(null);
+        } catch (err) {
+          errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
+        } finally {
+          setConfirmBusy(false);
+        }
+      },
+    });
   };
 
   const setBlocked = async (u: UserDto, isBlocked: boolean) => {
@@ -1473,18 +1486,19 @@ function UsersTab() {
     {
       key: 'role',
       label: t('admin.users.role'),
-      render: (u) => (
+      render: (u) => me?.role === 'head_admin' ? (
         <select
           value={u.role}
-          disabled={me?.id === u.id}
+          disabled={me?.id === u.id || confirmBusy}
           onChange={(e) => void changeRole(u, e.target.value as Role)}
           aria-label={t('admin.users.role')}
           className="cursor-pointer rounded-md border border-cinema-border bg-cinema-black/60 px-2 py-1 text-xs font-semibold text-cinema-soft accent-cinema-amber disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value="viewer">{t('admin.users.roleViewer')}</option>
           <option value="admin">{t('admin.users.roleAdmin')}</option>
+          <option value="head_admin">{t('admin.users.roleHeadAdmin')}</option>
         </select>
-      ),
+      ) : <span className="text-xs font-semibold text-cinema-muted">{roleLabel(u.role)}</span>,
     },
     {
       key: 'isBlocked',
@@ -1573,7 +1587,8 @@ function UsersTab() {
               <div className="flex justify-end gap-1.5">
                 <button
                   type="button"
-                  disabled={me?.id === u.id}
+                  disabled={!canManageUser(u) || confirmBusy}
+                  hidden={!canManageUser(u)}
                   onClick={() => void setBlocked(u, !u.isBlocked)}
                   className={`${ghostBtn} !px-2.5 !py-1 !text-xs`}
                 >
@@ -1581,7 +1596,8 @@ function UsersTab() {
                 </button>
                 <button
                   type="button"
-                  disabled={me?.id === u.id}
+                  disabled={!canManageUser(u) || confirmBusy}
+                  hidden={!canManageUser(u)}
                   onClick={() => removeUser(u)}
                   aria-label={t('admin.users.delete')}
                   className="cursor-pointer rounded-lg border border-cinema-border p-1.5 text-cinema-soft transition hover:border-cinema-red/60 hover:text-cinema-red disabled:cursor-default disabled:opacity-30"

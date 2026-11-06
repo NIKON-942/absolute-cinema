@@ -117,6 +117,28 @@ absolutecinema/
 - Card data never touches the server (Stripe-hosted checkout).
 - Watch history is scoped per user with documented retention (1 year from last activity).
 
+## Administrator roles
+
+Roles are viewer, admin and head_admin. Ordinary admins manage media, dictionaries,
+analytics and viewer moderation. Only head administrators assign roles or
+block/delete administrators. Self-management is forbidden, and concurrent
+operations preserve an active head administrator.
+
+Apply migrations and build before enabling the updated backend. On a fresh
+installation bootstrap creates the initial head administrator from INITIAL_ADMIN_EMAIL
+and INITIAL_ADMIN_PASSWORD. Existing administrators keep their roles; select an
+existing, unblocked admin explicitly from the repository root:
+
+```sh
+node backend/dist/database/promote-head-admin.js --email existing-admin@example.com
+```
+
+In the production container use `node dist/database/promote-head-admin.js --email ...`.
+The command preserves credentials, rejects viewers and blocked accounts, and is
+safe to repeat. Bootstrap stops with this instruction if only ordinary admins
+exist. New demo seed accounts use head_admin; existing seed accounts are not
+automatically promoted. Rolling back the role migration converts head_admin to admin.
+
 ## Oracle Cloud and CI/CD
 
 The `dev` branch is the Oracle test environment; `main` holds the reviewed stable

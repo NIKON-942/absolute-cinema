@@ -514,6 +514,8 @@ export const en: Record<string, string> = {
   'admin.users.unblock': 'Unblock',
   'admin.users.roleViewer': 'Viewer',
   'admin.users.roleAdmin': 'Admin',
+  'admin.users.roleHeadAdmin': 'Head administrator',
+  'admin.users.roleConfirm': 'Change the role of {name} to {role}?',
   'admin.users.delete': 'Delete user',
   'admin.users.deleteConfirm': 'Delete this user permanently?',
   'admin.users.roleChanged': 'Role updated',
