@@ -1,4 +1,4 @@
-import { Settings } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Settings } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -67,8 +67,10 @@ export function AdminTable<T>({ columns, rows, rowKey, actions, emptyMessage }: 
                     className="inline-flex cursor-pointer items-center gap-1 transition hover:text-cinema-text"
                   >
                     {col.label}
-                    <span className={`text-[10px] ${sortKey === col.key ? 'text-cinema-accent' : 'opacity-40'}`}>
-                      {sortKey === col.key ? (sortDir === 'asc' ? '▲' : '▼') : '▲▼'}
+                    <span className={sortKey === col.key ? 'text-cinema-accent' : 'opacity-40'}>
+                      {sortKey === col.key ? (
+                        sortDir === 'asc' ? <ArrowUp size={12} aria-hidden="true" /> : <ArrowDown size={12} aria-hidden="true" />
+                      ) : <ArrowUpDown size={12} aria-hidden="true" />}
                     </span>
                   </button>
                 ) : (

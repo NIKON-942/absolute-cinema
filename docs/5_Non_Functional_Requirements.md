@@ -1,21 +1,29 @@
-# Non-Functional Requirements
+# Нефункціональні вимоги та критерії підтвердження
 
-## 1. Performance & Reliability
-* **Availability:** System uptime must be at least 99.9% (maximum 9 hours of downtime per year).
-* **Recovery Time:** Average recovery time after a critical failure must not exceed 1 hour.
-* **Concurrency:** The system must support at least 1,000 active concurrent users without noticeable performance degradation.
-* **Load Times:** 
-  * Main catalog page must load in under 2 seconds (on a 10 Mbps connection).
-  * Initial video buffering delay must not exceed 5 seconds.
+Джерела: ТЗ 4.1.3, 4.2, 4.4–4.5; РГР2 2.3–2.4. Стан на 05.11.2026 встановлено читанням коду. Цілі нижче не є вже виміряними результатами.
 
-## 2. Security & Data Protection
-* **Data Transit:** All client-server communication must occur strictly over HTTPS (TLS 1.2+).
-* **Password Storage:** Passwords must be stored exclusively as cryptographic hashes.
-* **Data Privacy:** Full compliance with Ukrainian personal data protection laws and international GDPR standards.
-* **Secrets Management:** Database credentials and API keys must be stored in secure environment variables, never in the source code.
-* **PCI DSS Compliance:** The system delegates credit card processing to an external gateway, avoiding the storage of raw card numbers or CVVs in the local database.
+| Вимога | Що є | Чого бракує для підтвердження |
+|---|---|---|
+| Доступність ≥99,9%, у РГР2 округлено «не більше 9 годин/рік» | Restart, readiness/liveness, deploy checks | Метрики за погоджений період; 99,9% за 365 днів = 8,76 год простою |
+| Середнє відновлення ≤1 год | Backup script, releases, ручний відкат | Відновлення БД і медіа із заміром часу |
+| ≥1000 одночасних активних користувачів | API/Range, один backend | Відтворюваний load test: hardware, mix запитів, errors, latency, throughput |
+| Каталог ≤2 с при ≥10 Мбіт/с | Пагінація, SPA | Браузерні вимірювання з визначеною метрикою завершення |
+| Перший кадр 1280×720 ≤5 с при 5 Мбіт/с, RTT 100 мс | faststart MP4, Range, завантаження після Play | Замір Play → перший кадр саме 720p; 480p fallback не виконує цей критерій |
+| Хеші паролів | bcrypt, SHA-256 reset token | Є в коді; не доказ безпеки всього застосунку |
+| HTTPS TLS ≥1.2 | Caddy HTTPS для домену | Перевірка конкретного deployment; локальний HTTP — dev-виняток |
+| Персональні дані за Законом України та GDPR | Контроль доступу, видалення залежностей, privacy/terms | Організаційний/правовий аудит, processors, retention, процедури звернень |
+| Історія протягом року від останньої активності | watch_progress.updated_at, БД | Узгоджена retention policy, перевірка backup/restore; yearly purge немає |
+| Можливість регулярного backup | deploy/backup.sh, pg_dump -Fc, приклад cron | Розклад, зовнішні копії, retention, restore; script не копіює медіа |
+| Українська/англійська без reload | LanguageContext, uk/en | Повна перевірка сторінок і динамічних помилок |
+| Браузери, Full HD і менші екрани | Responsive UI, HTML5 video | Матриця випробувань за системними вимогами |
+| Секрети в environment | .env, server env, GitHub Secrets, startup checks | Перевірка фактичних налаштувань/прав; demo credentials не для production |
+| Jaeger tracing та наскрізні API logs | OTel bootstrap, LoggingInterceptor, локальний Jaeger | Повний trace у collector; production template вимикає OTel без endpoint |
+| Валідація, підтвердження, цілісність | DTO/custom validators, modals, FK/unique/transactions | Конкретні error/race сценарії та відповідність UI/API |
 
-## 3. Usability & Maintenance
-* **Localization:** UI must support English and Ukrainian with instant switching without page reloads.
-* **Backups:** The system must support regular automated database backups.
-* **Data Retention:** User watch history must be retained for 1 year from their last activity.
+РГР2 задає загальну буферизацію ≤5 с. ТЗ уточнює роздільну здатність і мережу; для приймання слід використати його точний профіль. ТЗ дозволяє preload після відкриття сторінки, але не вимагає його; клієнт відкладає stream URL до Play.
+
+«Зберігати протягом року» не визначає обов'язкове видалення рівно через рік. Треба узгодити поняття останньої активності й retention для watch_progress, playback_events, rating_events та backups.
+
+Код і політика на сайті не є сертифікатом відповідності. Власна PCI DSS сертифікація тут не стверджується: картка вводиться у Stripe Checkout, локально зберігаються ідентифікатори, суми та стани транзакцій.
+
+Детальна програма перевірки: [verification-and-gaps.md](verification-and-gaps.md). Браузерні й апаратні вимоги: [3_Technical_Stack.md](3_Technical_Stack.md).

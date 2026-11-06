@@ -1,8 +1,8 @@
 import { Clapperboard } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 
 interface EmptyStateProps {
-  icon?: ReactNode;
+  icon?: ReactElement;
   title: string;
   subtitle?: string;
   action?: ReactNode;

@@ -1,3 +1,4 @@
+import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import policy from '@/content/privacy.json';
@@ -9,7 +10,7 @@ export default function Privacy({ document = 'privacy' }: { document?: 'privacy'
   const { contact } = policy;
   return (
     <article className="mx-auto max-w-3xl px-4 py-10 sm:py-14">
-      <Link to="/" className="text-sm font-semibold text-cinema-accent hover:underline">← {content.home}</Link>
+      <Link to="/" className="inline-flex items-center gap-1 text-sm font-semibold text-cinema-accent hover:underline"><ArrowLeft size={16} aria-hidden="true" /> {content.home}</Link>
       <header className="mb-8 mt-5">
         <p className="text-sm font-semibold text-cinema-accent">AbsoluteCinema</p>
         <h1 className="mt-2 text-3xl font-extrabold text-cinema-strong sm:text-4xl">{content.title}</h1>

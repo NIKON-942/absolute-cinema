@@ -1,4 +1,4 @@
-# AbsoluteCinema 🎬
+# <img src="frontend/public/brand/frog-head.png" alt="" width="28" height="28"> AbsoluteCinema
 
 A Video-on-Demand streaming platform: media catalog, HTTP Range video streaming, paid subscriptions (Basic / Plus / Premium), content-based recommendations, and a full admin panel — built per the specifications in [`docs/`](./docs).
 

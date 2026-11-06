@@ -63,7 +63,7 @@ test('client accepts the same Unicode passwords and bcrypt byte limit as the ser
   assert.equal(isValidPassword('abcdefgh'), true);
   assert.equal(isValidPassword('пароль123'), true);
   assert.equal(isValidPassword('short'), false);
-  assert.equal(isValidPassword('😀'.repeat(20)), false);
+  assert.equal(isValidPassword('\u{10400}'.repeat(20)), false);
 });
 
 function playbackHost(user, movieOverrides = {}, services = {}, playbackProps = {}) {

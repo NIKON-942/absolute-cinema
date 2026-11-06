@@ -162,7 +162,7 @@ test('calendar billing clamps end-of-month and leap-day subscriptions', () => {
 
 test('server password validation follows FR-2 and rejects bcrypt truncation', async () => {
   class Dto {} IsPassword()(Dto.prototype, 'password');
-  for (const [password, valid] of [['abcdefgh', true], ['пароль123', true], ['short', false], ['😀'.repeat(20), false]]) {
+  for (const [password, valid] of [['abcdefgh', true], ['пароль123', true], ['short', false], ['\u{10400}'.repeat(20), false]]) {
     assert.equal((await validate(Object.assign(new Dto(), { password }))).length === 0, valid);
   }
 });

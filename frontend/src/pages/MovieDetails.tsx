@@ -1,4 +1,4 @@
-import { Clapperboard, Eye, Film, Star } from 'lucide-react';
+import { ArrowLeft, Clapperboard, Eye, Film, Play, Star } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -128,7 +128,7 @@ export default function MovieDetails() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:py-8">
       <header className="mb-5">
-        <Link to="/catalog" className="text-sm font-semibold text-cinema-muted hover:text-cinema-accent">← {t('common.backToCatalog')}</Link>
+        <Link to="/catalog" className="inline-flex items-center gap-1 text-sm font-semibold text-cinema-muted hover:text-cinema-accent"><ArrowLeft size={16} aria-hidden="true" /> {t('common.backToCatalog')}</Link>
         <h1 className="mt-3 break-words text-3xl font-extrabold text-cinema-strong sm:text-4xl">{movie.title}</h1>
         {movie.originalTitle && movie.originalTitle !== movie.title && <p className="mt-1 text-cinema-muted">{movie.originalTitle}</p>}
       </header>
@@ -226,7 +226,7 @@ export default function MovieDetails() {
                       rel="noreferrer"
                       className="inline-flex items-center gap-2 rounded-xl border border-cinema-amber/50 bg-cinema-amber/10 px-5 py-2.5 font-semibold text-cinema-accent transition hover:bg-cinema-amber/20"
                     >
-                      ▶ {t('movie.watchTrailer')}
+                      <Play size={16} aria-hidden="true" /> {t('movie.watchTrailer')}
                     </a>
                   ) : (
                     <video controls preload="none" src={movie.trailerUrl} className="w-full max-w-2xl rounded-xl border border-cinema-border" />

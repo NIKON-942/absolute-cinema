@@ -1,4 +1,4 @@
-import { Check, Heart, Laptop, LockKeyholeOpen, Minus, Tv } from 'lucide-react';
+import { Check, Heart, Hourglass, Laptop, LockKeyholeOpen, Minus, Play, Tv } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -398,7 +398,7 @@ export default function Profile() {
             <Spinner size={8} />
           </div>
         ) : continueWatching.length === 0 ? (
-          <EmptyState icon="⏳" title={t('profile.continue.empty')} subtitle={t('profile.continue.emptyHint')} />
+          <EmptyState icon={<Hourglass size={40} aria-hidden="true" className="inline-block shrink-0 align-middle" />} title={t('profile.continue.empty')} subtitle={t('profile.continue.emptyHint')} />
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {continueWatching.map((p) => {
@@ -432,7 +432,7 @@ export default function Profile() {
                         </div>
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-cinema-muted">{t('profile.continue.left', { time: formatDuration(left) })}</span>
-                          <span className="font-bold text-cinema-accent">{t('profile.continue.resume')} ▸</span>
+                          <span className="inline-flex items-center gap-1 font-bold text-cinema-accent">{t('profile.continue.resume')} <Play size={14} aria-hidden="true" /></span>
                         </div>
                       </div>
                     </div>

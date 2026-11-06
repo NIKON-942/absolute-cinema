@@ -1,4 +1,4 @@
-import { TriangleAlert } from 'lucide-react';
+import { ArrowLeft, ArrowRight, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -255,7 +255,7 @@ export default function Catalog() {
                 onClick={() => goPage(page - 1)}
                 className="cursor-pointer rounded-lg border border-cinema-border px-3 py-2 text-sm text-cinema-soft transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-30"
               >
-                ← {t('catalog.prev')}
+                <ArrowLeft size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {t('catalog.prev')}
               </button>
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
@@ -280,7 +280,7 @@ export default function Catalog() {
                 onClick={() => goPage(page + 1)}
                 className="cursor-pointer rounded-lg border border-cinema-border px-3 py-2 text-sm text-cinema-soft transition hover:border-cinema-amber/60 disabled:cursor-default disabled:opacity-30"
               >
-                {t('catalog.next')} →
+                {t('catalog.next')} <ArrowRight size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" />
               </button>
             </nav>
           )}

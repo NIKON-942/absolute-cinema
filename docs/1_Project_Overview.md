@@ -1,17 +1,33 @@
-# Project Overview: AbsoluteCinema
+# AbsoluteCinema — призначення та межі проєкту
 
-## 1. Purpose and Scope
-**AbsoluteCinema** is a comprehensive Video on Demand (VoD) online cinema platform. The system is designed to provide digital distribution services, high-quality video streaming, media library management, and automated processing of paid subscriptions. It serves both internet users (viewers) and platform administrators.
+Оновлено 05.11.2026 за [ТЗ](ТЗ.docx), [РГР2](РГР2.docx) і поточним кодом. Навігація: [README.md](README.md).
 
-## 2. Main Goals
-* Provide a high level of accessibility, convenience, and security for digital video consumption.
-* Optimize media library management processes.
-* Automate the accounting of paid subscriptions and financial transactions.
-* Ensure seamless video streaming with minimal interface response delays.
+AbsoluteCinema — навчальна система підтримки діяльності онлайн-кінотеатру (Video on Demand). Автор — Микита Губін; керівник — Світлана Поперешняк. Вона автоматизує каталогізацію медіаконтенту, потоковий перегляд через браузер, управління користувачами та облік платних підписок.
 
-## 3. Core Features
-* **User Accounts:** Registration, authentication (including Google OAuth 2.0), password recovery, and profile management.
-* **Media Catalog:** Movie lists categorized by genres, carousels, detailed metadata, and a "Favorites" list.
-* **Video Playback:** Scalable video player with adaptive bitrate support and watch history tracking.
-* **Subscriptions:** Tiered subscription plans (Basic, Standard, Premium), automated payment processing via an external gateway, and access control based on subscription status.
-* **Admin Panel:** Content management (CRUD operations for movies, genres, and actors), user moderation (blocking, role management), and system analytics.
+## Мета за документами
+
+ТЗ, розділ 3, визначає мету: скоротити очікування початку відтворення та дозволити продовжувати перегляд зі збереженої позиції на різних пристроях. РГР2, розділи 1–2, додатково обґрунтовує нормалізовану реляційну модель, персональні рекомендації та зручність адміністрування.
+
+## Користувачі та можливості
+
+| Учасник | Передбачені сценарії | Фактичний стан |
+|---|---|---|
+| Гість | Каталог, пошук, сторінка фільму, реєстрація, вхід, відновлення | Є; відео вимагає входу й активної підписки |
+| Глядач | Перегляд, якість, історія, оцінки 1–10, обране, профіль, підписка | Є в коді; зовнішні інтеграції залежать від конфігурації |
+| Адміністратор | Фільми, довідники, завантаження, користувачі, аналітика | Є; тимчасове приховування фільму відсутнє |
+| Головний адміністратор | Виключне право змінювати ролі | Вимагають ТЗ 4.1.1–4.1.2 та FR-42; окремого повноваження немає |
+
+## Межі реалізації
+
+- React SPA + один модульний NestJS API + PostgreSQL + постійне файлове сховище.
+- HTML5 Video, MP4 через HTTP Range, ручні 480p/720p/1080p. HLS/DASH, автоматичного адаптивного бітрейту та 4K немає. Приклади сучасних платформ у вступних розділах РГР2 не означають наявності цих функцій у проєкті.
+- Тарифи в коді: `basic`, `plus`, `premium`; у макеті ТЗ середній тариф названо «Стандарт». Перейменування продукту/enum не виконувалося.
+- Google OAuth, SMTP та Stripe інтегровані програмно. Локально Stripe вимкнено, працює mock checkout без списання коштів.
+- Deployment підготовлений для Oracle VM із Docker Compose (IaaS). Згаданий у РГР2 вибір PaaS не відповідає фактичному способу розгортання.
+- Онлайн-ТБ, реклама, оренда/купівля окремого фільму, DRM і мобільний застосунок не входять у поточну реалізацію.
+
+Повна відповідність вимогам ще не доведена: є функціональні прогалини та невиміряні критерії. Див. [матрицю FR](4_Functional_Requirements.md), [NFR](5_Non_Functional_Requirements.md) та [план перевірки](verification-and-gaps.md).
+
+## Матеріали курсової
+
+ТЗ, розділ 5, вимагає технічне завдання, пояснювальну записку та текст програми на А4, а також необхідні коментарі в модулях. Markdown допомагає підтримувати й описувати систему, але не замінює остаточний комплект матеріалів. У РГР2 залишаються шаблонні фрагменти розділів 3.3–5 (Java/xpring, стороння ER-модель та приклади тестів); вони не є описом поточного коду. Вихідні DOCX у цьому оновленні не змінювалися.

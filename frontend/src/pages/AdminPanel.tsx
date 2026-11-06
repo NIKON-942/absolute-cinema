@@ -1,4 +1,4 @@
-import { ChartNoAxesCombined, Clapperboard, CreditCard, Play, Star, TriangleAlert, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChartNoAxesCombined, Clapperboard, CreditCard, Play, Star, TriangleAlert, UserPlus, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import type { FormEvent } from 'react';
@@ -570,13 +570,13 @@ function MoviesTab() {
           {totalPages > 1 && (
             <div className="mt-4 flex items-center justify-center gap-3 text-sm">
               <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className={ghostBtn}>
-                ← {t('common.prev')}
+                <ArrowLeft size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {t('common.prev')}
               </button>
               <span className="text-cinema-muted">
                 {page} / {totalPages}
               </span>
               <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className={ghostBtn}>
-                {t('common.next')} →
+                {t('common.next')} <ArrowRight size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" />
               </button>
             </div>
           )}
@@ -1552,13 +1552,13 @@ function UsersTab() {
           {totalPages > 1 && (
             <div className="mt-4 flex items-center justify-center gap-3 text-sm">
               <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className={ghostBtn}>
-                ← {t('common.prev')}
+                <ArrowLeft size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" /> {t('common.prev')}
               </button>
               <span className="text-cinema-muted">
                 {page} / {totalPages}
               </span>
               <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className={ghostBtn}>
-                {t('common.next')} →
+                {t('common.next')} <ArrowRight size={16} aria-hidden="true" className="inline-block shrink-0 align-middle" />
               </button>
             </div>
           )}

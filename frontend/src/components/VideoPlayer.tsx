@@ -1,4 +1,4 @@
-import { Check, LockKeyhole, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, LockKeyhole, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
@@ -652,13 +652,13 @@ export function VideoPlayer({
           )}
           {mobilePanel === 'settings' && (
             <div className="space-y-2">
-              <button type="button" onClick={() => setMobilePanel('quality')} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg bg-cinema-card px-4 py-3 text-sm"><span>{t('player.quality')}</span><span className="text-cinema-accent">{quality} ›</span></button>
-              <button type="button" onClick={() => setMobilePanel('speed')} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg bg-cinema-card px-4 py-3 text-sm"><span>{t('player.speed')}</span><span className="text-cinema-accent">{speed}× ›</span></button>
+              <button type="button" onClick={() => setMobilePanel('quality')} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg bg-cinema-card px-4 py-3 text-sm"><span>{t('player.quality')}</span><span className="inline-flex items-center gap-1 text-cinema-accent">{quality} <ChevronRight size={16} aria-hidden="true" /></span></button>
+              <button type="button" onClick={() => setMobilePanel('speed')} className="flex min-h-11 w-full items-center justify-between gap-4 rounded-lg bg-cinema-card px-4 py-3 text-sm"><span>{t('player.speed')}</span><span className="inline-flex items-center gap-1 text-cinema-accent">{speed}× <ChevronRight size={16} aria-hidden="true" /></span></button>
             </div>
           )}
           {(mobilePanel === 'quality' || mobilePanel === 'speed') && (
             <div className="space-y-1">
-              <button type="button" onClick={() => setMobilePanel('settings')} className="mb-2 min-h-11 rounded-lg px-4 text-sm text-cinema-soft">← {t('player.settings')}</button>
+              <button type="button" onClick={() => setMobilePanel('settings')} className="mb-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-4 text-sm text-cinema-soft"><ArrowLeft size={16} aria-hidden="true" /> {t('player.settings')}</button>
               {mobilePanel === 'quality' ? (['480p', '720p', '1080p'] as Quality[]).filter((q) => transcoding || qualities.includes(q)).map((q) => {
                 const ready = qualities.includes(q);
                 const locked = qualityRank(q) > qualityRank(maxQuality);
