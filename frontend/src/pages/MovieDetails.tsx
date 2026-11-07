@@ -1,4 +1,4 @@
-import { ArrowLeft, Clapperboard, Eye, Film, Play, Star } from 'lucide-react';
+import { ArrowLeft, Clapperboard, Eye, Film, Play, Share2, Star } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -161,7 +161,10 @@ export default function MovieDetails() {
                   </svg>
                   {movie.isFavorite ? t('movie.inFavorites') : t('movie.addToFavorites')}
                 </button>
-                <button type="button" onClick={handleShare} className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-cinema-border bg-cinema-panel px-6 py-3 font-semibold text-cinema-soft transition hover:border-cinema-amber/60 hover:text-cinema-accent">{t('movie.share')}</button>
+                <button type="button" onClick={handleShare} className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-cinema-border bg-cinema-panel px-6 py-3 font-semibold text-cinema-soft transition hover:border-cinema-amber/60 hover:text-cinema-accent">
+                  <Share2 size={18} aria-hidden="true" className="shrink-0" />
+                  {t('movie.share')}
+                </button>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-cinema-soft">
                 {movie.year > 0 && <span>{movie.year}</span>}
