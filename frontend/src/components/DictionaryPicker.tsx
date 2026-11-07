@@ -71,6 +71,7 @@ export function DictionaryPicker({ id, label, dictionary, selected, onChange, mu
     .sort((a, b) => a.name.localeCompare(b.name, lang));
   const exact = items.find(item => normalize(item.name) === normalized);
   const locked = disabled || busy || loading || failed;
+  const showSearch = multiple || selected.length === 0;
 
   const choose = (item: DictionaryItem) => {
     onChange(multiple
@@ -113,19 +114,27 @@ export function DictionaryPicker({ id, label, dictionary, selected, onChange, mu
           setOpen(false);
         }
       }}>
-      <label htmlFor={id} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-cinema-muted">{label}</label>
+      <label htmlFor={showSearch ? id : undefined} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-cinema-muted">{label}</label>
       {selected.length > 0 && <ul className="mb-2 flex flex-wrap gap-2" aria-label={t('admin.dictionary.selected', { field: label })}>
         {selected.map(value => {
           const item = items.find(entry => entry.id === value);
           return <li key={value} className="inline-flex max-w-full items-center gap-1 rounded-full border border-cinema-amber/50 bg-cinema-amber/15 px-2.5 py-1 text-xs text-cinema-accent">
             <span className="break-words">{item?.name ?? `#${value}`}</span>
-            <button type="button" disabled={disabled || busy} onClick={() => onChange(selected.filter(id => id !== value))}
+            <button type="button" disabled={disabled || busy} onClick={() => {
+              onChange(selected.filter(id => id !== value));
+              setQuery('');
+              setError(null);
+              if (!multiple) {
+                setOpen(false);
+                requestAnimationFrame(() => input.current?.focus());
+              }
+            }}
               aria-label={t('admin.dictionary.remove', { name: item?.name ?? value })}
               className="shrink-0 rounded px-1 text-base hover:bg-cinema-card disabled:opacity-50">×</button>
           </li>;
         })}
       </ul>}
-      <input ref={input} id={id} type="search" autoComplete="off" maxLength={255} value={query}
+      {showSearch && <><input ref={input} id={id} type="search" autoComplete="off" maxLength={255} value={query}
         disabled={locked} aria-expanded={open} aria-controls={`${id}-options`} aria-describedby={`${id}-hint`}
         placeholder={t('admin.dictionary.search')} onFocus={() => setOpen(true)} onClick={() => setOpen(true)}
         onChange={event => { setQuery(event.target.value); setOpen(true); setError(null); }}
@@ -142,15 +151,25 @@ export function DictionaryPicker({ id, label, dictionary, selected, onChange, mu
           }
         }}
         className="w-full rounded-lg border border-cinema-border bg-cinema-black/60 px-3 py-2 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none disabled:opacity-50" />
-      <p id={`${id}-hint`} className="mt-1 text-xs text-cinema-muted">{t('admin.dictionary.hint')}</p>
+      <p id={`${id}-hint`} className="mt-1 text-xs text-cinema-muted">{t('admin.dictionary.hint')}</p></>}
       {loading && <p role="status" className="mt-1 text-xs text-cinema-muted">{t('common.loading')}</p>}
       {failed && <div role="alert" className="mt-2 text-xs text-cinema-error">
         {t('admin.dictionary.loadFailed')}{' '}
         <button type="button" disabled={disabled || loading} className="underline" onClick={() => void reload().catch(() => undefined)}>{t('admin.dictionary.retry')}</button>
       </div>}
-      {open && !loading && !failed && <div id={`${id}-options`} className="mt-2 rounded-lg border border-cinema-border bg-cinema-black/40 p-2">
+      {showSearch && open && !loading && !failed && <div id={`${id}-options`} className="mt-2 rounded-lg border border-cinema-border bg-cinema-black/40 p-2">
         <div className="max-h-40 space-y-1 overflow-y-auto" role="group" aria-label={label}>
-          {matches.map(item => <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-cinema-soft hover:bg-cinema-card">
+          {matches.map(item => <label key={item.id}
+            onMouseDown={event => {
+              // Keep the search focused until a click on the row selects its entry.
+              if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+            }}
+            onClick={event => {
+              if (event.target instanceof HTMLInputElement) return;
+              event.preventDefault();
+              if (!disabled && !busy) choose(item);
+            }}
+            className="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-cinema-soft hover:bg-cinema-card">
             <input type={multiple ? 'checkbox' : 'radio'} name={`${id}-choice`} checked={selected.includes(item.id)}
               disabled={disabled || busy} onChange={() => choose(item)} className="accent-cinema-amber" />
             <span className="break-words">{item.name}</span>
