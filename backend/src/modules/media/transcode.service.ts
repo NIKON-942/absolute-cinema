@@ -60,7 +60,9 @@ export class TranscodeService implements OnModuleInit {
     return info;
   }
   async enqueue(movieId: number, masterSource: string): Promise<void> {
-    if (this.jobs.get(movieId)?.status === TranscodeStatusEnum.PROCESSING) throw new ConflictException('This movie already has a video conversion in progress');
+    if (this.jobs.get(movieId)?.status === TranscodeStatusEnum.PROCESSING) throw new ConflictException({
+      code: 'VIDEO_CONVERSION_IN_PROGRESS', message: 'This movie already has a video conversion in progress',
+    });
     const info: TranscodeJobInfo = { movieId, status: TranscodeStatusEnum.PROCESSING, qualities: [], progress: null,
       phase: 'queued', currentQuality: null, targetQualities: [], renditions: [], startedAt: null, finishedAt: null,
       elapsedSeconds: 0, remainingSeconds: null };

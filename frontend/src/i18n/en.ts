@@ -449,6 +449,7 @@ export const en: Record<string, string> = {
   'admin.movies.uploadKeepOpen': 'Keep this page open until the upload completes.',
   'admin.movies.uploadFailedSaved': 'Movie details were saved, but the video upload failed. The selected file is kept; save again to retry without creating another movie.',
   'admin.movies.conversionBackground': 'Conversion continues on the server. You can close this form and follow progress in the movie list.',
+  'admin.movies.conversionInProgress': 'This movie’s video is already being processed. Wait for the conversion to finish.',
   'admin.movies.phase.queued': 'Waiting for conversion',
   'admin.movies.phase.probing': 'Analysing video',
   'admin.movies.phase.audio': 'Preparing audio',

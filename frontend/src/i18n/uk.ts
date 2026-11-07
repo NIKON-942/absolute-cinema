@@ -449,6 +449,7 @@ export const uk: Record<string, string> = {
   'admin.movies.uploadKeepOpen': 'Не закривайте сторінку до завершення завантаження.',
   'admin.movies.uploadFailedSaved': 'Опис фільму збережено, але відео не завантажилося. Вибраний файл залишився у формі; збережіть ще раз, щоб повторити без створення дубліката.',
   'admin.movies.conversionBackground': 'Конвертація триває на сервері. Форму можна закрити й стежити за прогресом у списку фільмів.',
+  'admin.movies.conversionInProgress': 'Відео цього фільму вже обробляється. Дочекайтеся завершення конвертації.',
   'admin.movies.phase.queued': 'Очікує конвертації',
   'admin.movies.phase.probing': 'Аналіз відео',
   'admin.movies.phase.audio': 'Підготовка звуку',

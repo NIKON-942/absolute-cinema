@@ -41,9 +41,14 @@ api.interceptors.response.use(
 );
 
 /** NestJS error shape: { statusCode, message: string | string[], error }. */
-export function extractServerMessage(err: unknown): string | null {
+export function extractServerMessage(err: unknown, translate?: (key: string) => string): string | null {
   if (axios.isAxiosError(err)) {
-    const data = err.response?.data as { message?: string | string[] } | undefined;
+    const data = err.response?.data as { code?: string; message?: string | string[] } | undefined;
+    // Match the legacy message too, so an updated UI works with older servers.
+    if (translate && (data?.code === 'VIDEO_CONVERSION_IN_PROGRESS'
+      || data?.message === 'This movie already has a video conversion in progress')) {
+      return translate('admin.movies.conversionInProgress');
+    }
     if (data?.message) {
       return Array.isArray(data.message) ? data.message.join('. ') : data.message;
     }

@@ -379,7 +379,7 @@ function MoviesTab() {
       }
     } catch (err) {
       if (savedMovie && masterFile) setFormError(t('admin.movies.uploadFailedSaved'));
-      errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
+      errorToast(extractServerMessage(err, t) ?? t(errorStatusKey(err)));
     } finally {
       setSaving(false);
     }
