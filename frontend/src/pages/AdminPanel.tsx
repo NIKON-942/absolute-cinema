@@ -19,6 +19,7 @@ import type { Column } from '@/components/AdminTable';
 import { Modal } from '@/components/Modal';
 import { AutoTextarea } from '@/components/AutoTextarea';
 import { ImageField } from '@/components/ImageField';
+import { DictionaryPicker, useMovieDictionary } from '@/components/DictionaryPicker';
 import { ProgressBar, TranscodeProgress } from '@/components/TranscodeProgress';
 import { LoadingBlock } from '@/components/Spinner';
 import { EmptyState } from '@/components/EmptyState';
@@ -27,8 +28,6 @@ import { resolveMediaUrl } from '@/utils/url';
 import type {
   ActorDto,
   AnalyticsDto,
-  CountryDto,
-  DirectorDto,
   GenreDto,
   MovieDto,
   Paginated,
@@ -198,10 +197,15 @@ function MoviesTab() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const [genres, setGenres] = useState<GenreDto[]>([]);
-  const [actors, setActors] = useState<ActorDto[]>([]);
-  const [countries, setCountries] = useState<CountryDto[]>([]);
-  const [directors, setDirectors] = useState<DirectorDto[]>([]);
+  const genreDictionary = useMovieDictionary(mediaService.genres, mediaService.createGenre);
+  const actorDictionary = useMovieDictionary(mediaService.actors, mediaService.createActor);
+  const countryDictionary = useMovieDictionary(mediaService.countries, mediaService.createCountry);
+  const directorDictionary = useMovieDictionary(mediaService.directors, mediaService.createDirector);
+  const genres = genreDictionary.items;
+  const actors = actorDictionary.items;
+  const countries = countryDictionary.items;
+  const directors = directorDictionary.items;
+  const [dictionaryBusy, setDictionaryBusy] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<MovieDto | null>(null);
@@ -229,13 +233,6 @@ function MoviesTab() {
   };
 
   useEffect(reload, [debouncedSearch, page, visibility]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    mediaService.genres().then(setGenres).catch(() => undefined);
-    mediaService.actors().then(setActors).catch(() => undefined);
-    mediaService.countries().then(setCountries).catch(() => undefined);
-    mediaService.directors().then(setDirectors).catch(() => undefined);
-  }, []);
 
   const openCreate = () => {
     setEditing(null);
@@ -304,6 +301,7 @@ function MoviesTab() {
 
   const submitForm = async (e: FormEvent) => {
     e.preventDefault();
+    if (saving || dictionaryBusy) return;
     if (form.file && (form.file.size > 5 * 1024 * 1024 || !/\.(jpe?g|png|webp)$/i.test(form.file.name))) {
       setFormError(t('admin.movies.posterHint'));
       return;
@@ -455,9 +453,6 @@ function MoviesTab() {
 
   const finishedUploads = uploadTasks.filter(task => task.phase === 'ready' || task.phase === 'failed').map(task => task.key + task.phase).join(',');
   useEffect(() => { if (finishedUploads) reload(); }, [finishedUploads]);
-
-  const toggleId = (list: number[], id: number): number[] =>
-    list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 
   const columns: Column<MovieDto>[] = [
     {
@@ -630,15 +625,15 @@ function MoviesTab() {
       {/* create / edit modal */}
       <Modal
         open={formOpen}
-        onClose={() => { if (!saving) setFormOpen(false); }}
+        onClose={() => { if (!saving && !dictionaryBusy) setFormOpen(false); }}
         wide
         title={editing ? t('admin.movies.editTitle') : t('admin.movies.createTitle')}
         footer={
           <>
-            <button type="button" onClick={() => setFormOpen(false)} className={ghostBtn} disabled={saving}>
+            <button type="button" onClick={() => setFormOpen(false)} className={ghostBtn} disabled={saving || dictionaryBusy}>
               {t('common.cancel')}
             </button>
-            <button type="submit" form="movie-form" className={primaryBtn} disabled={saving}>
+            <button type="submit" form="movie-form" className={primaryBtn} disabled={saving || dictionaryBusy}>
               {saving ? t('common.loading') : editing ? t('common.save') : t('common.create')}
             </button>
           </>
@@ -683,17 +678,10 @@ function MoviesTab() {
               </label>
               <input id="mf-year" type="number" min={1890} max={2100} value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} className={inputClass} required />
             </div>
-            <div>
-              <label htmlFor="mf-country" className={labelClass}>
-                {t('admin.movies.country')}
-              </label>
-              <select id="mf-country" value={form.countryId} onChange={(e) => setForm({ ...form, countryId: e.target.value })} className={inputClass}>
-                <option value="">—</option>
-                {countries.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
+            <DictionaryPicker id="mf-country" label={t('admin.movies.country')} dictionary={countryDictionary}
+              selected={form.countryId ? [Number(form.countryId)] : []}
+              onChange={ids => setForm(previous => ({ ...previous, countryId: ids[0] == null ? '' : String(ids[0]) }))}
+              disabled={saving || dictionaryBusy} onBusyChange={setDictionaryBusy} />
             <div>
               <label htmlFor="mf-age" className={labelClass}>
                 {t('admin.movies.ageRating')}
@@ -722,15 +710,10 @@ function MoviesTab() {
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor="mf-director" className={labelClass}>
-                {t('admin.movies.director')}
-              </label>
-              <select id="mf-director" value={form.directorId} onChange={(e) => setForm({ ...form, directorId: e.target.value })} className={inputClass}>
-                <option value="">—</option>
-                {directors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
+            <DictionaryPicker id="mf-director" label={t('admin.movies.director')} dictionary={directorDictionary}
+              selected={form.directorId ? [Number(form.directorId)] : []}
+              onChange={ids => setForm(previous => ({ ...previous, directorId: ids[0] == null ? '' : String(ids[0]) }))}
+              disabled={saving || dictionaryBusy} onBusyChange={setDictionaryBusy} />
             <div>
               <label htmlFor="mf-trailer" className={labelClass}>
                 {t('admin.movies.trailerUrl')}
@@ -753,46 +736,12 @@ function MoviesTab() {
             <p className="mt-1 text-xs text-cinema-muted">{t('admin.movies.keywordsHint')}</p>
           </div>
 
-          {/* genres multi-select */}
-          <div>
-            <span className={labelClass}>{t('admin.movies.genres')}</span>
-            <div className="flex flex-wrap gap-2">
-              {genres.map((g) => (
-                <button
-                  key={g.id}
-                  type="button"
-                  onClick={() => setForm({ ...form, genreIds: toggleId(form.genreIds, g.id) })}
-                  aria-pressed={form.genreIds.includes(g.id)}
-                  className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                    form.genreIds.includes(g.id)
-                      ? 'border-cinema-amber bg-cinema-amber/15 text-cinema-accent'
-                      : 'border-cinema-border text-cinema-soft hover:border-cinema-amber/50'
-                  }`}
-                >
-                  {g.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* actors multi-select */}
-          <div>
-            <span className={labelClass}>{t('admin.movies.actors')}</span>
-            <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-cinema-border bg-cinema-black/40 p-2">
-              {actors.map((a) => (
-                <label key={a.id} className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-cinema-soft transition hover:bg-cinema-card">
-                  <input
-                    type="checkbox"
-                    checked={form.actorIds.includes(a.id)}
-                    onChange={() => setForm({ ...form, actorIds: toggleId(form.actorIds, a.id) })}
-                    className="h-4 w-4 accent-cinema-amber"
-                  />
-                  {a.name}
-                </label>
-              ))}
-              {actors.length === 0 && <p className="px-2 py-1 text-xs text-cinema-muted">{t('admin.actors.empty')}</p>}
-            </div>
-          </div>
+          <DictionaryPicker id="mf-genres" label={t('admin.movies.genres')} dictionary={genreDictionary} multiple
+            selected={form.genreIds} onChange={genreIds => setForm(previous => ({ ...previous, genreIds }))}
+            disabled={saving || dictionaryBusy} onBusyChange={setDictionaryBusy} />
+          <DictionaryPicker id="mf-actors" label={t('admin.movies.actors')} dictionary={actorDictionary} multiple
+            selected={form.actorIds} onChange={actorIds => setForm(previous => ({ ...previous, actorIds }))}
+            disabled={saving || dictionaryBusy} onBusyChange={setDictionaryBusy} />
 
           {/* poster upload or direct URL (FR-29) */}
           <ImageField id="movie-poster" label={t('admin.movies.poster')} portrait

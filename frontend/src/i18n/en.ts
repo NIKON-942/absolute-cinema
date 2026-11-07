@@ -1,5 +1,15 @@
 /** English dictionary. Flat dot-notation keys, `{param}` placeholders. */
 export const en: Record<string, string> = {
+  'admin.dictionary.savedImmediately': 'The new entry stays in the dictionary even if you cancel the movie form.',
+  'admin.dictionary.search': "Search by name…",
+  'admin.dictionary.hint': "Find an entry or enter a new name to create one.",
+  'admin.dictionary.selected': "Selected: {field}",
+  'admin.dictionary.remove': "Remove “{name}”",
+  'admin.dictionary.create': "+ Create “{name}”",
+  'admin.dictionary.noResults': "No matches found.",
+  'admin.dictionary.loadFailed': "Could not load the list.",
+  'admin.dictionary.retry': "Try again",
+  'admin.dictionary.duplicate': "This entry already exists. Find it in the list.",
   'uploads.title': 'Video uploads',
   'uploads.started': 'Movie details saved. Video upload continues in the background.',
   'uploads.inPanel': 'Manage this upload in the panel at the bottom right.',

@@ -1,5 +1,15 @@
 /** Український словник. Плоскі ключі з крапкою, плейсхолдери `{param}`. */
 export const uk: Record<string, string> = {
+  'admin.dictionary.savedImmediately': 'Новий запис збережеться в довіднику навіть після скасування форми фільму.',
+  'admin.dictionary.search': "Пошук за назвою…",
+  'admin.dictionary.hint': "Знайдіть запис або введіть нову назву, щоб створити його.",
+  'admin.dictionary.selected': "Обрано: {field}",
+  'admin.dictionary.remove': "Прибрати «{name}»",
+  'admin.dictionary.create': "+ Створити «{name}»",
+  'admin.dictionary.noResults': "Нічого не знайдено.",
+  'admin.dictionary.loadFailed': "Не вдалося завантажити список.",
+  'admin.dictionary.retry': "Спробувати знову",
+  'admin.dictionary.duplicate': "Такий запис уже існує. Знайдіть його у списку.",
   'uploads.title': 'Завантаження відео',
   'uploads.started': 'Опис збережено. Відео завантажується у фоновому режимі.',
   'uploads.inPanel': 'Завантаженням можна керувати в панелі справа знизу.',

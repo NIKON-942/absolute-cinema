@@ -708,7 +708,11 @@ export class MediaService {
   // ---------- genres / actors ----------
 
   private async saveDictionary<T extends GenreEntity>(repo: Repository<T>, name: string, id?: number, extra: Record<string, unknown> = {}) {
-    const cleaned = text(name, 'name', 255, true);
+    const cleaned = text(name, 'name', 255, true).replace(/\s+/g, ' ');
+    const duplicate = repo.createQueryBuilder('entry')
+      .where("LOWER(REGEXP_REPLACE(TRIM(entry.name), '[[:space:]]+', ' ', 'g')) = LOWER(:name)", { name: cleaned });
+    if (id !== undefined) duplicate.andWhere('entry.id != :id', { id });
+    if (await duplicate.getOne()) throw new ConflictException('A record with this name already exists');
     try {
       if (id !== undefined) {
         const result = await repo.update(id, { name: cleaned, ...extra } as any);

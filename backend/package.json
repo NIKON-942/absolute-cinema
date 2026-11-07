@@ -13,6 +13,7 @@
     "test:smoke": "node scripts/smoke-plans.mjs",
     "test:transcode": "node --test scripts/transcode.test.mjs",
     "test:uploads": "node --test scripts/uploads.test.mjs",
+    "test:dictionaries": "node --test scripts/dictionaries.test.mjs",
     "test:regressions": "node --test scripts/review-regressions.test.mjs",
     "test:stripe": "node scripts/smoke-stripe.mjs",
     "migration:generate": "ts-node ./node_modules/typeorm/cli.js migration:generate -d src/database/data-source.ts src/database/migrations/Auto",
