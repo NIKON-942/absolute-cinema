@@ -44,6 +44,8 @@ export async function downloadRemoteSource(source: string, destination: string):
     const pinned = addresses[0];
     const response = await new Promise<import('node:http').IncomingMessage>((resolve, reject) => {
       const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
+        // Wikimedia requires an identifiable client, rather than an empty UA.
+        headers: { 'User-Agent': 'AbsoluteCinema/1.0 (+https://absolutecine.duckdns.org)', Accept: 'video/*, application/octet-stream;q=0.9, */*;q=0.1' },
         signal, ...{ autoSelectFamily: false }, lookup: (_host, _options, callback) => callback(null, pinned.address, pinned.family),
       }, resolve);
       request.setTimeout(30_000, () => request.destroy(new Error('Video source stalled')));
@@ -57,6 +59,10 @@ export async function downloadRemoteSource(source: string, destination: string):
       continue;
     }
     if (response.statusCode !== 200) { response.destroy(); throw new Error(`Video source returned HTTP ${response.statusCode}`); }
+    if (/^(text\/html|application\/xhtml\+xml)\b/i.test(response.headers['content-type'] ?? '')) {
+      response.destroy();
+      throw new Error('Video URL points to a web page. Use a direct video file URL (Wikimedia: Original file).');
+    }
     let size = 0;
     const limit = new Transform({ transform(chunk, _encoding, callback) {
       size += chunk.length;
