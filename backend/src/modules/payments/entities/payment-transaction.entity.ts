@@ -67,6 +67,24 @@ export class PaymentTransactionEntity {
   @Column({ type: 'timestamptz', nullable: true })
   expiresAt: Date | null;
 
+  /** Money returned for the unused part of this payment's period on a plan switch. */
+  @Column({ type: 'numeric', precision: 10, scale: 2, default: 0 })
+  refundedAmount: string;
+
+  /** `failed`: the new plan was activated but the provider refused the refund. */
+  @Column({ type: 'varchar', nullable: true })
+  refundStatus: 'refunded' | 'failed' | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  refundedAt: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  stripeRefundId: string | null;
+
+  /** Session ID of the order that replaced this payment's subscription. */
+  @Column({ type: 'varchar', nullable: true })
+  refundedBySessionId: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

@@ -205,8 +205,9 @@ Visibility: new and existing movies are published by default. Hidden movies are 
 | Method | Path | Auth | Body | Returns |
 |---|---|---|---|---|
 | GET | `/payments/plans` | — | — | `PlanDto[]` |
+| GET | `/payments/switch-preview?tier=&period=` | Bearer | — | `{ active, current: { tier, period, endsAt } \| null, refund: { amount, currency, remainingDays } \| null, newPrice, currency }` — what a plan switch will charge and refund; shown in the confirmation dialog before checkout |
 | POST | `/payments/checkout` | Bearer | `{ tier, period }` | `{ checkoutUrl }` — Stripe hosted checkout when `STRIPE_ENABLED=true`, otherwise `{ checkoutUrl: "/mock-checkout/<sessionId>" }` on the frontend |
-| POST | `/payments/mock-complete/:sessionId` | Bearer | — | `{ message }` — mock mode only: simulates the gateway webhook (activates subscription, grants access, sends receipt email) |
+| POST | `/payments/mock-complete/:sessionId` | Bearer | — | `{ message, refund }` (`refund` is `{ amount, currency }` or `null`) — mock mode only: simulates the gateway webhook (activates subscription, grants access, sends receipt email) |
 | POST | `/payments/mock-cancel/:sessionId` | Bearer | — | `{ message }` — mock mode only: marks order cancelled |
 | POST | `/payments/subscription/cancel` | Bearer | — | `{ message }` — turns off Stripe automatic renewal, preserves access until `endsAt`, cancels pending checkouts |
 | POST | `/payments/retry/:sessionId` | Bearer, order owner | — | `{ checkoutUrl }` — creates a new attempt; maximum 3 Checkout sessions per chain (initial + 2 retries); each attempt can have only one successor |
@@ -214,6 +215,8 @@ Visibility: new and existing movies are published by default. Hidden movies are 
 | POST | `/payments/webhook` | Stripe sig header | raw body | 200; verifies signatures, handles paid Checkout, paid renewal invoices, checkout expiration and subscription updates/deletion; duplicate payments are idempotent |
 
 Subscription activation and the paid transaction commit together under a per-user lock. Stripe billing dates are authoritative; mock calendar dates clamp to the last day of the target month. Pending checkouts expire after 20 minutes (cron); retries require a user action and never rewrite the original `createdAt`. Stripe mode requires both secret key and webhook secret; missing credentials stop startup instead of enabling mock payments.
+
+Plan switch refund (added 2026-11-20): when a payment is confirmed while the user still has a paid subscription, the unused part of the replaced period is refunded: latest paid amount × remaining time / period length, rounded down to cents (period start is derived from `endsAt` and the billing period). Stripe mode calls `refunds.create` on the payment of the old subscription's latest paid invoice with idempotency key `refund-tx-<paymentId>`; mock mode only records it. The result is stored on the refunded payment (`refunded_amount`, `refund_status` = `refunded`/`failed`, `refunded_at`, `stripe_refund_id`, `refunded_by_session_id`) and mentioned in the receipt email; revenue analytics subtracts `refunded_amount`. A provider refusal never rolls back the new activation: the payment is marked `failed` and logged for manual follow-up (there is no automatic retry).
 
 Configure the Stripe event destination for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `invoice.paid`, `customer.subscription.updated`, and `customer.subscription.deleted`. Existing live subscriptions created before external IDs were stored require reconciliation with Stripe; the migration cannot infer these IDs.
 

@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
   RawBodyRequest,
@@ -27,6 +28,14 @@ class CheckoutDto {
   period!: 'monthly' | 'yearly';
 }
 
+class SwitchPreviewQuery {
+  @IsIn(['basic', 'plus', 'premium'])
+  tier!: 'basic' | 'plus' | 'premium';
+
+  @IsIn(['monthly', 'yearly'])
+  period!: 'monthly' | 'yearly';
+}
+
 @Controller('payments')
 export class PaymentsController {
   constructor(private paymentsService: PaymentsService) {}
@@ -34,6 +43,17 @@ export class PaymentsController {
   @Get('plans')
   plans() {
     return this.paymentsService.plans();
+  }
+
+  /** Refund and price preview shown before the user confirms a plan switch. */
+  @Get('switch-preview')
+  @UseGuards(JwtAuthGuard)
+  switchPreview(@Req() req: Request, @Query() query: SwitchPreviewQuery) {
+    return this.paymentsService.switchPreview(
+      (req.user as { id: number }).id,
+      query.tier as SubscriptionTierEnum,
+      query.period as SubscriptionPeriodEnum,
+    );
   }
 
   @Post('checkout')

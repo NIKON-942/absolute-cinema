@@ -9,8 +9,9 @@ import type { CancelledCheckoutDto } from '@/services/paymentsService';
 import { errorStatusKey, extractServerMessage } from '@/services/api';
 import { Spinner } from '@/components/Spinner';
 import { EmptyState } from '@/components/EmptyState';
+import { Modal } from '@/components/Modal';
 import { formatDate, formatPrice } from '@/utils/format';
-import type { PlanDto, SubscriptionPeriod, SubscriptionTier } from '@/types';
+import type { PlanDto, SubscriptionPeriod, SubscriptionTier, SwitchPreviewDto } from '@/types';
 
 const TIER_ORDER: SubscriptionTier[] = ['basic', 'plus', 'premium'];
 const PERIODS: SubscriptionPeriod[] = ['monthly', 'yearly'];
@@ -51,6 +52,8 @@ export default function SubscriptionPlans() {
   const [loadError, setLoadError] = useState(false);
   const [period, setPeriod] = useState<SubscriptionPeriod>('monthly');
   const [busyTier, setBusyTier] = useState<SubscriptionTier | null>(null);
+  /** Plan switch waiting for the user's confirmation of the refund and the new price. */
+  const [switchTarget, setSwitchTarget] = useState<{ tier: SubscriptionTier; period: SubscriptionPeriod; preview: SwitchPreviewDto } | null>(null);
 
   const activeSub = user?.activeSubscription ?? null;
   const hasActive = Boolean(user?.hasActiveSubscription && activeSub?.status === 'active');
@@ -69,16 +72,32 @@ export default function SubscriptionPlans() {
   const savingsPercent = (plan: PlanDto): number =>
     Math.max(0, Math.round((1 - plan.yearlyPrice / (plan.monthlyPrice * 12)) * 100));
 
-  const checkout = async (tier: SubscriptionTier) => {
+  const startCheckout = async (tier: SubscriptionTier, chosenPeriod: SubscriptionPeriod = period) => {
     setBusyTier(tier);
     try {
-      const { checkoutUrl } = await paymentsService.checkout(tier, period);
+      const { checkoutUrl } = await paymentsService.checkout(tier, chosenPeriod);
       if (checkoutUrl.startsWith('/mock-checkout')) {
-        const price = period === 'monthly' ? plans?.find((p) => p.tier === tier)?.monthlyPrice : plans?.find((p) => p.tier === tier)?.yearlyPrice;
-        navigate(checkoutUrl, { state: { tier, period, price } });
+        const plan = plans?.find((p) => p.tier === tier);
+        const price = chosenPeriod === 'monthly' ? plan?.monthlyPrice : plan?.yearlyPrice;
+        navigate(checkoutUrl, { state: { tier, period: chosenPeriod, price } });
       } else {
         window.location.href = checkoutUrl;
       }
+    } catch (err) {
+      errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
+    } finally {
+      setBusyTier(null);
+    }
+  };
+
+  /** With an active subscription the refund for its unused part is shown first. */
+  const checkout = async (tier: SubscriptionTier) => {
+    if (!hasActive) return startCheckout(tier);
+    setBusyTier(tier);
+    try {
+      const preview = await paymentsService.switchPreview(tier, period);
+      if (preview.active) setSwitchTarget({ tier, period, preview });
+      else await startCheckout(tier);
     } catch (err) {
       errorToast(extractServerMessage(err) ?? t(errorStatusKey(err)));
     } finally {
@@ -166,7 +185,7 @@ export default function SubscriptionPlans() {
             if (!plan) return null;
             const price = period === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice;
             const isPopular = tier === 'plus';
-            const isCurrent = hasActive && activeSub?.tier === tier;
+            const isCurrent = hasActive && activeSub?.tier === tier && activeSub.period === period;
             const busy = busyTier === tier;
 
             return (
@@ -254,6 +273,52 @@ export default function SubscriptionPlans() {
       {hasActive && plans != null && (
         <p className="mx-auto mt-8 max-w-xl text-center text-xs text-cinema-muted">{t('plans.activeNotice')}</p>
       )}
+      <Modal
+        open={switchTarget !== null}
+        title={t('plans.switch.title')}
+        onClose={() => setSwitchTarget(null)}
+        footer={
+          <>
+            <button type="button" onClick={() => setSwitchTarget(null)} className="cursor-pointer rounded-xl border border-cinema-border px-5 py-2.5 text-sm font-bold">
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const target = switchTarget;
+                setSwitchTarget(null);
+                if (target) void startCheckout(target.tier, target.period);
+              }}
+              className="cursor-pointer rounded-xl bg-cinema-amber px-5 py-2.5 text-sm font-bold text-cinema-ink hover:shadow-glow"
+            >
+              {t('plans.switch.confirm')}
+            </button>
+          </>
+        }
+      >
+        {switchTarget?.preview.current && (
+          <div className="space-y-3 text-sm text-cinema-soft">
+            <p>
+              {t('plans.switch.current', {
+                plan: `${t('tier.' + switchTarget.preview.current.tier)} · ${t('sub.period.' + switchTarget.preview.current.period)}`,
+                date: formatDate(switchTarget.preview.current.endsAt),
+              })}
+            </p>
+            <p className="rounded-xl border border-cinema-success/40 bg-cinema-success-surface/30 px-4 py-3 text-cinema-success">
+              {switchTarget.preview.refund
+                ? t('plans.switch.refund', { amount: formatPrice(switchTarget.preview.refund.amount), days: String(switchTarget.preview.refund.remainingDays) })
+                : t('plans.switch.noRefund')}
+            </p>
+            <p>
+              {t('plans.switch.charge', {
+                price: formatPrice(switchTarget.preview.newPrice),
+                plan: `${t('tier.' + switchTarget.tier)} · ${t('sub.period.' + switchTarget.period)}`,
+              })}
+            </p>
+            <p className="text-xs text-cinema-muted">{t('plans.switch.note')}</p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

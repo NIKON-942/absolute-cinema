@@ -23,6 +23,31 @@ export function billingEnd(start: Date, period: SubscriptionPeriodEnum): Date {
   return end;
 }
 
+/** Start of the paid period that ends at `endsAt` (inverse of billingEnd). */
+export function periodStart(endsAt: Date, period: SubscriptionPeriodEnum, startsAt: Date | null): Date {
+  const start = new Date(endsAt);
+  const day = start.getUTCDate();
+  start.setUTCDate(1);
+  start.setUTCMonth(start.getUTCMonth() - (period === SubscriptionPeriodEnum.MONTHLY ? 1 : 12));
+  const last = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
+  start.setUTCDate(Math.min(day, last));
+  return startsAt && startsAt.getTime() > start.getTime() ? startsAt : start;
+}
+
+/** Money for the unused part of a paid period, rounded down to whole cents. */
+export function unusedPortion(amount: number, start: Date, end: Date, now: Date): number {
+  const total = end.getTime() - start.getTime();
+  if (!(total > 0) || !(amount > 0)) return 0;
+  const left = Math.min(total, Math.max(0, end.getTime() - now.getTime()));
+  return Math.floor((amount * 100 * left) / total) / 100;
+}
+
+export interface RefundQuote {
+  subscription: SubscriptionEntity;
+  /** Null when nothing can be returned (no paid payment on record, or nothing left). */
+  refund: { transaction: PaymentTransactionEntity; amount: number; currency: string; remainingDays: number } | null;
+}
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -65,6 +90,75 @@ export class PaymentsService {
       }
     }
     return null;
+  }
+
+  /**
+   * The user's current paid subscription and what the unused part of its latest
+   * payment is worth. Used both for the confirmation preview and the actual refund.
+   */
+  private async refundQuote(em: EntityManager, userId: number, now = new Date()): Promise<RefundQuote | null> {
+    const subscription = await em.findOne(SubscriptionEntity, { where: { userId, status: SubscriptionStatusEnum.ACTIVE }, order: { endsAt: 'DESC' } });
+    if (!subscription || (subscription.endsAt && subscription.endsAt.getTime() <= now.getTime())) return null;
+    // With Stripe enabled only money that went through Stripe can be returned.
+    const refundable = !subscription.endsAt || (this.stripe ? Boolean(subscription.stripeSubscriptionId) : true);
+    const transaction = refundable && subscription.endsAt
+      ? await em.findOne(PaymentTransactionEntity, { where: { subscriptionId: subscription.id, status: TransactionStatusEnum.PAID }, order: { id: 'DESC' } })
+      : null;
+    if (!transaction || Number(transaction.refundedAmount) > 0) return { subscription, refund: null };
+    const amount = unusedPortion(Number(transaction.amount), periodStart(subscription.endsAt!, subscription.period, subscription.startsAt), subscription.endsAt!, now);
+    if (amount <= 0) return { subscription, refund: null };
+    return { subscription, refund: { transaction, amount, currency: transaction.currency,
+      remainingDays: Math.max(1, Math.ceil((subscription.endsAt!.getTime() - now.getTime()) / 86_400_000)) } };
+  }
+
+  /** What switching to `tier`/`period` will cost and refund; shown before the user confirms. */
+  async switchPreview(userId: number, tier: SubscriptionTierEnum, period: SubscriptionPeriodEnum) {
+    const plan = await this.plansRepo.findOne({ where: { tier } });
+    if (!plan) throw new BadRequestException('Unknown subscription tier');
+    const quote = await this.refundQuote(this.txRepo.manager, userId);
+    return {
+      active: Boolean(quote),
+      current: quote ? { tier: quote.subscription.tier, period: quote.subscription.period, endsAt: quote.subscription.endsAt?.toISOString() ?? null } : null,
+      refund: quote?.refund ? { amount: quote.refund.amount, currency: quote.refund.currency, remainingDays: quote.refund.remainingDays } : null,
+      newPrice: Number(period === SubscriptionPeriodEnum.MONTHLY ? plan.monthlyPrice : plan.yearlyPrice),
+      currency: plan.currency,
+    };
+  }
+
+  /** Refunds the latest paid Stripe invoice of a subscription (idempotent per payment). */
+  private async stripeRefund(stripeSubscriptionId: string, cents: number, key: string, newSessionId: string): Promise<string> {
+    const invoice = (await this.stripe!.invoices.list({ subscription: stripeSubscriptionId, status: 'paid', limit: 1 })).data[0];
+    if (!invoice) throw new Error('No paid Stripe invoice to refund');
+    const payment = (await this.stripe!.invoicePayments.list({ invoice: invoice.id, status: 'paid', limit: 1 })).data[0]?.payment;
+    const intent = typeof payment?.payment_intent === 'string' ? payment.payment_intent : payment?.payment_intent?.id;
+    if (!intent) throw new Error('Paid Stripe invoice has no payment intent');
+    const refund = await this.stripe!.refunds.create({ payment_intent: intent, amount: cents, reason: 'requested_by_customer',
+      metadata: { replacedBySessionId: newSessionId } }, { idempotencyKey: key });
+    return refund.id;
+  }
+
+  /**
+   * Returns the unused part of the replaced subscription. A provider failure
+   * never undoes the new activation (the customer has already paid); it is
+   * recorded as `failed` and logged for manual follow-up.
+   */
+  private async issueRefund(em: EntityManager, quote: RefundQuote, newSessionId: string): Promise<{ amount: number; currency: string } | null> {
+    const refund = quote.refund;
+    if (!refund) return null;
+    let stripeRefundId: string | null = null;
+    let failed = false;
+    try {
+      if (this.stripe && quote.subscription.stripeSubscriptionId) {
+        stripeRefundId = await this.stripeRefund(quote.subscription.stripeSubscriptionId, Math.round(refund.amount * 100), `refund-tx-${refund.transaction.id}`, newSessionId);
+      }
+    } catch (error) {
+      failed = true;
+      this.logger.error(`Refund of ${refund.amount.toFixed(2)} ${refund.currency} for payment #${refund.transaction.id} failed: ${String(error)}`);
+    }
+    await em.update(PaymentTransactionEntity, refund.transaction.id, failed
+      ? { refundStatus: 'failed', refundedBySessionId: newSessionId }
+      : { refundStatus: 'refunded', refundedAmount: refund.amount.toFixed(2), refundedAt: new Date(), stripeRefundId, refundedBySessionId: newSessionId });
+    return failed ? null : { amount: refund.amount, currency: refund.currency };
   }
 
   async createCheckout(userId: number, tier: SubscriptionTierEnum, period: SubscriptionPeriodEnum, retryOf?: string) {
@@ -119,7 +213,7 @@ export class PaymentsService {
     return this.createCheckout(userId, tx.tier, tx.period, sessionId);
   }
 
-  async complete(sessionId: string, expectedUserId?: number, external?: Stripe.Subscription): Promise<{ message: string }> {
+  async complete(sessionId: string, expectedUserId?: number, external?: Stripe.Subscription): Promise<{ message: string; refund: { amount: number; currency: string } | null }> {
     const owner = await this.txRepo.findOne({ where: { sessionId } });
     if (!owner || (expectedUserId !== undefined && owner.userId !== expectedUserId)) throw new NotFoundException('Order not found');
     const receipt = await this.txRepo.manager.transaction(async em => {
@@ -136,6 +230,9 @@ export class PaymentsService {
         }
       }
       const now = new Date();
+      // Value the unused part of the replaced period before its subscription is expired.
+      const quote = await this.refundQuote(em, tx.userId, now);
+      const sameStripeSubscription = Boolean(external && quote?.subscription.stripeSubscriptionId === external.id);
       const item = external?.items.data[0];
       if (external && !item) throw new Error('Stripe subscription has no billing period');
       const endsAt = item ? new Date(item.current_period_end * 1000) : billingEnd(now, tx.period);
@@ -143,13 +240,14 @@ export class PaymentsService {
       await em.update(SubscriptionEntity, tx.subscriptionId, { status: SubscriptionStatusEnum.ACTIVE,
         startsAt: item ? new Date(item.current_period_start * 1000) : now, endsAt,
         stripeSubscriptionId: external?.id ?? null, cancelAtPeriodEnd: external?.cancel_at_period_end ?? false });
+      const refund = quote && !sameStripeSubscription ? await this.issueRefund(em, quote, tx.sessionId) : null;
       await em.update(PaymentTransactionEntity, tx.id, { status: TransactionStatusEnum.PAID, cancellationReason: null });
       const user = await em.findOneBy(UserEntity, { id: tx.userId });
-      return user ? { email: user.email, tx, endsAt } : null;
+      return user ? { email: user.email, tx, endsAt, refund } : null;
     });
     if (receipt) this.mail.sendReceipt(receipt.email, { tier: receipt.tx.tier, period: receipt.tx.period,
-      amount: Number(receipt.tx.amount), currency: receipt.tx.currency, endsAt: receipt.endsAt });
-    return { message: receipt ? 'Payment completed — subscription is now active' : 'Payment already processed' };
+      amount: Number(receipt.tx.amount), currency: receipt.tx.currency, endsAt: receipt.endsAt, refund: receipt.refund });
+    return { message: receipt ? 'Payment completed — subscription is now active' : 'Payment already processed', refund: receipt?.refund ?? null };
   }
 
   private async failOrder(sessionId: string) {

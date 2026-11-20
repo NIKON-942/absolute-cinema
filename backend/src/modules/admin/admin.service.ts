@@ -62,7 +62,7 @@ export class AdminService {
     const revenueRows = await this.txRepo.query(
       `
       SELECT TO_CHAR(DATE_TRUNC('month', updated_at), 'YYYY-MM') AS month,
-             SUM(amount)::float AS total
+             SUM(amount - refunded_amount)::float AS total
         FROM payment_transactions
        WHERE status = 'paid' AND updated_at >= $1 AND updated_at < $2
        GROUP BY 1

@@ -10,7 +10,7 @@ import { errorStatusKey, extractServerMessage } from '@/services/api';
 import { Spinner } from '@/components/Spinner';
 import { formatPrice } from '@/utils/format';
 import { posterGradient } from '@/utils/format';
-import type { SubscriptionPeriod, SubscriptionTier } from '@/types';
+import type { RefundDto, SubscriptionPeriod, SubscriptionTier } from '@/types';
 
 /** Info forwarded from the plans page so the mock gateway can show a receipt. */
 interface CheckoutState {
@@ -33,12 +33,13 @@ export default function MockCheckout() {
   const [phase, setPhase] = useState<Phase>('form');
   const [cancelting, setCancelting] = useState(false);
   const [paymentFailed, setPaymentFailed] = useState(false);
+  const [refund, setRefund] = useState<RefundDto | null>(null);
 
   // after success: refresh the session (subscription became active), then go home
   useEffect(() => {
     if (phase !== 'success') return;
     void refreshMe();
-    const timer = window.setTimeout(() => navigate('/', { replace: true }), 2000);
+    const timer = window.setTimeout(() => navigate('/', { replace: true }), refund ? 3500 : 2000);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
@@ -54,7 +55,8 @@ export default function MockCheckout() {
     e.preventDefault();
     setPhase('paying');
     try {
-      await paymentsService.mockComplete(sessionId);
+      const done = await paymentsService.mockComplete(sessionId);
+      setRefund(done.refund);
       setPhase('success');
     } catch (err) {
       setPhase('form');
@@ -97,6 +99,11 @@ export default function MockCheckout() {
             <span className="flex h-16 w-16 animate-popIn items-center justify-center rounded-full bg-cinema-success/20 text-3xl text-cinema-success"><Check size={14} aria-hidden="true" className="inline-block shrink-0 align-middle" /></span>
             <h2 className="text-xl font-extrabold text-cinema-strong">{t('checkout.successTitle')}</h2>
             <p className="text-sm text-cinema-muted">{t('checkout.successText')}</p>
+            {refund && (
+              <p role="status" className="max-w-sm rounded-xl border border-cinema-success/40 bg-cinema-success-surface/30 px-4 py-2 text-sm text-cinema-success">
+                {t('checkout.refundIssued', { amount: formatPrice(refund.amount) })}
+              </p>
+            )}
             <Spinner size={5} />
           </div>
         ) : phase === 'cancelled' ? (

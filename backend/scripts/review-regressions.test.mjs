@@ -12,7 +12,7 @@ require('reflect-metadata');
 const { AppDataSource: db } = require('../dist/database/data-source.js');
 const { AuthService } = require('../dist/modules/auth/auth.service.js');
 const { UsersService } = require('../dist/modules/users/users.service.js');
-const { PaymentsService, billingEnd } = require('../dist/modules/payments/payments.service.js');
+const { PaymentsService, billingEnd, periodStart, unusedPortion } = require('../dist/modules/payments/payments.service.js');
 const { MediaService } = require('../dist/modules/media/media.service.js');
 const { UserEntity } = require('../dist/modules/users/user.entity.js');
 const { SubscriptionEntity } = require('../dist/modules/payments/entities/subscription.entity.js');
@@ -810,5 +810,73 @@ test('movie visibility protects every public route and preserves data when repub
     await repo(UserEntity).update(administrator.id, { role: 'viewer' });
     for (const user of [viewer, recommendationViewer, administrator]) await removeUser(user.id);
     await rm(join(VIDEOS_DIR, videoFilename), { force: true });
+  }
+});
+
+test('switching plans refunds the unused part of the paid period once and records it', async () => {
+  assert.equal(unusedPortion(120, new Date('2026-01-01T00:00:00Z'), new Date('2027-01-01T00:00:00Z'), new Date('2026-07-02T00:00:00Z')), 60.16);
+  assert.equal(unusedPortion(10, new Date('2026-01-01T00:00:00Z'), new Date('2026-02-01T00:00:00Z'), new Date('2026-03-01T00:00:00Z')), 0);
+  assert.equal(periodStart(new Date('2026-03-31T00:00:00Z'), 'monthly', null).toISOString().slice(0, 10), '2026-02-28');
+  const user = await newUser();
+  assert.equal((await payments.switchPreview(user.id, 'basic', 'monthly')).active, false);
+  const first = (await payments.createCheckout(user.id, 'basic', 'yearly')).checkoutUrl.split('/').at(-1);
+  assert.equal((await payments.complete(first, user.id)).refund, null);
+  const preview = await payments.switchPreview(user.id, 'basic', 'monthly');
+  assert.equal(preview.active, true); assert.ok(preview.refund.amount > 0);
+  const next = (await payments.createCheckout(user.id, 'basic', 'monthly')).checkoutUrl.split('/').at(-1);
+  assert.equal((await payments.switchPreview(user.id, 'basic', 'monthly')).active, true); // creating the order refunds nothing yet
+  assert.equal(Number((await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: first })).refundedAmount), 0);
+  const result = await payments.complete(next, user.id);
+  const paid = await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: first });
+  assert.equal(paid.refundStatus, 'refunded'); assert.equal(paid.refundedBySessionId, next); assert.ok(paid.refundedAt);
+  assert.ok(Number(paid.refundedAmount) > 0 && Number(paid.refundedAmount) <= Number(paid.amount));
+  assert.equal(result.refund.amount, Number(paid.refundedAmount));
+  assert.equal((await users.findWithSubscription(user.id)).activeSubscription.period, 'monthly');
+  await payments.complete(next, user.id); // repeated confirmation must not refund twice
+  assert.equal(Number((await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: first })).refundedAmount), Number(paid.refundedAmount));
+  assert.equal((await payments.switchPreview(user.id, 'basic', 'yearly')).refund.amount > 0, true);
+});
+
+test('Stripe plan switch refunds the old invoice payment once; a provider refusal keeps the new plan active', async () => {
+  for (const failing of [false, true]) {
+    const user = await newUser();
+    const refunds = []; const cancelled = [];
+    const subscription = () => {
+      const start = Math.floor(Date.now() / 1000);
+      return { id: `sub_${randomUUID()}`, status: 'active', metadata: {}, cancel_at_period_end: false,
+        items: { data: [{ current_period_start: start, current_period_end: start + 30 * 86400 }] } };
+    };
+    payments.stripe = {
+      checkout: { sessions: { create: async () => ({ id: `cs_${randomUUID()}`, url: 'https://checkout.stripe.test/x' }) } },
+      subscriptions: { retrieve: async id => ({ id, status: 'active' }), cancel: async id => { cancelled.push(id); } },
+      invoices: { list: async params => ({ data: [{ id: `in_for_${params.subscription}` }] }) },
+      invoicePayments: { list: async params => ({ data: [{ payment: { payment_intent: `pi_for_${params.invoice}` } }] }) },
+      refunds: { create: async (body, options) => {
+        if (failing) throw new Error('refund refused');
+        refunds.push({ body, options }); return { id: 're_1' };
+      } },
+    };
+    try {
+      const first = subscription();
+      const firstOrder = (await payments.createCheckout(user.id, 'basic', 'monthly').then(() => repo(PaymentTransactionEntity).findOneByOrFail({ userId: user.id, status: 'pending' }))).sessionId;
+      await payments.complete(firstOrder, undefined, first);
+      const secondOrder = (await payments.createCheckout(user.id, 'basic', 'yearly').then(() => repo(PaymentTransactionEntity).findOneByOrFail({ userId: user.id, status: 'pending' }))).sessionId;
+      const second = subscription();
+      const result = await payments.complete(secondOrder, undefined, second);
+      await payments.complete(secondOrder, undefined, second);
+      const old = await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: firstOrder });
+      assert.deepEqual(cancelled, [first.id]);
+      assert.equal((await users.findWithSubscription(user.id)).activeSubscription.stripeSubscriptionId, second.id);
+      if (failing) {
+        assert.equal(old.refundStatus, 'failed'); assert.equal(Number(old.refundedAmount), 0); assert.equal(result.refund, null);
+      } else {
+        assert.equal(refunds.length, 1);
+        assert.equal(refunds[0].body.payment_intent, `pi_for_in_for_${first.id}`);
+        assert.equal(refunds[0].body.amount, Math.round(Number(old.refundedAmount) * 100));
+        assert.ok(refunds[0].body.amount > 0 && refunds[0].body.amount <= Math.round(Number(old.amount) * 100));
+        assert.equal(refunds[0].options.idempotencyKey, `refund-tx-${old.id}`);
+        assert.equal(old.refundStatus, 'refunded'); assert.equal(old.stripeRefundId, 're_1');
+      }
+    } finally { payments.stripe = null; }
   }
 });

@@ -204,6 +204,25 @@ export interface CheckoutResponseDto {
   checkoutUrl: string;
 }
 
+export interface RefundDto {
+  amount: number;
+  currency: string;
+}
+
+/** Result of confirming a payment; `refund` is set when a plan switch returned unused money. */
+export interface PaymentCompletedDto extends MessageDto {
+  refund: RefundDto | null;
+}
+
+/** What a plan switch will refund and charge, shown before the user confirms. */
+export interface SwitchPreviewDto {
+  active: boolean;
+  current: { tier: SubscriptionTier; period: SubscriptionPeriod; endsAt: string | null } | null;
+  refund: (RefundDto & { remainingDays: number }) | null;
+  newPrice: number;
+  currency: string;
+}
+
 export interface MovieFilters {
   search?: string;
   genre?: string;

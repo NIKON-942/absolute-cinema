@@ -72,6 +72,7 @@ export class MailService {
       amount: number;
       currency: string;
       endsAt: Date;
+      refund?: { amount: number; currency: string } | null;
     },
     lang: Lang = "en",
   ): void {
@@ -80,13 +81,13 @@ export class MailService {
         ? {
             subject: "Квитанція про оплату AbsoluteCinema",
             title: "Платіж отримано",
-            body: `Підписку <b>${details.tier}</b> (${details.period === "monthly" ? "щомісячна" : "річна"}) активовано до ${details.endsAt.toLocaleDateString("uk-UA")}.`,
+            body: `Підписку <b>${details.tier}</b> (${details.period === "monthly" ? "щомісячна" : "річна"}) активовано до ${details.endsAt.toLocaleDateString("uk-UA")}.${details.refund ? ` Повернення ${details.refund.amount.toFixed(2)} ${details.refund.currency.toUpperCase()} за невикористану частину попередньої підписки надіслано на спосіб оплати, яким ви користувалися.` : ""}`,
             cta: "Дивитися зараз",
           }
         : {
             subject: "AbsoluteCinema payment receipt",
             title: "Payment received",
-            body: `Your <b>${details.tier}</b> subscription (${details.period}) is active until ${details.endsAt.toISOString().slice(0, 10)}. Charged: $${details.amount.toFixed(2)}.`,
+            body: `Your <b>${details.tier}</b> subscription (${details.period}) is active until ${details.endsAt.toISOString().slice(0, 10)}. Charged: $${details.amount.toFixed(2)}.${details.refund ? ` A refund of ${details.refund.amount.toFixed(2)} ${details.refund.currency.toUpperCase()} for the unused part of your previous subscription has been issued to your original payment method.` : ""}`,
             cta: "Watch now",
           };
     this.send(to, t.subject, this.layout(t.title, t.body, t.cta));

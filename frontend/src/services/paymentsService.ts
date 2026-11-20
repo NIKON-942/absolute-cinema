@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { CheckoutResponseDto, MessageDto, PlanDto, SubscriptionPeriod, SubscriptionTier } from '@/types';
+import type { CheckoutResponseDto, MessageDto, PaymentCompletedDto, PlanDto, SubscriptionPeriod, SubscriptionTier, SwitchPreviewDto } from '@/types';
 
 export interface CancelledCheckoutDto extends MessageDto {
   status: 'pending' | 'paid' | 'failed' | 'cancelled';
@@ -22,7 +22,11 @@ export const paymentsService = {
     return api.post('/payments/checkout', { tier, period }).then((r) => r.data);
   },
 
-  mockComplete(sessionId: string): Promise<MessageDto> {
+  switchPreview(tier: SubscriptionTier, period: SubscriptionPeriod): Promise<SwitchPreviewDto> {
+    return api.get('/payments/switch-preview', { params: { tier, period } }).then((r) => r.data);
+  },
+
+  mockComplete(sessionId: string): Promise<PaymentCompletedDto> {
     return api.post(`/payments/mock-complete/${sessionId}`).then((r) => r.data);
   },
 
