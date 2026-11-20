@@ -7,7 +7,7 @@ import { MediaService } from '../media/media.service';
 /**
  * Content-based filtering (docs/6): scores candidate movies on metadata
  * overlap with the user's taste profile (ratings >= 6 weighted higher than
- * watch history), using a single optimized SQL query:
+ * watch history; a watched movie rated below 6 contributes nothing), using a single optimized SQL query:
  *   shared genres +3 each, same director +2, shared actors +1 each,
  *   shared keywords +1 each — multiplied by the profile signal weight.
  * Users without history (or guests) fall back to popular + newest.
@@ -25,6 +25,13 @@ export class RecommendationsService {
       SELECT p.movie_id, 1.0
         FROM watch_progress p
        WHERE p.user_id = $1
+         -- an explicit low rating overrides the implicit "watched" signal
+         AND NOT EXISTS (SELECT 1 FROM ratings r2 WHERE r2.user_id = $1 AND r2.movie_id = p.movie_id AND r2.value < 6)
+    ),
+    seen AS (
+      SELECT movie_id AS mid FROM ratings WHERE user_id = $1
+      UNION
+      SELECT movie_id FROM watch_progress WHERE user_id = $1
     ),
     genre_w AS (
       SELECT mg.genres_id AS gid, SUM(s.w) AS w
@@ -55,7 +62,7 @@ export class RecommendationsService {
        + COALESCE((SELECT SUM(kww.w) * 1 FROM unnest(m.keywords) AS kk JOIN keyword_w kww ON kww.kw = kk), 0)
         ) AS score
         FROM movies m
-       WHERE m.is_hidden = false AND m.id NOT IN (SELECT mid FROM sig)
+       WHERE m.is_hidden = false AND m.id NOT IN (SELECT mid FROM seen)
     )
     SELECT s.id, s.score FROM scored s
      WHERE s.score > 0

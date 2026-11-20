@@ -6,6 +6,18 @@ import { escapeHtml as esc, safeHttpUrl } from "../../common/helpers/escape-html
 
 type Lang = "en" | "uk";
 
+/** Formats an amount in its own currency instead of assuming dollars. */
+function money(amount: number, currency: string, lang: Lang): string {
+  try {
+    return new Intl.NumberFormat(lang === "uk" ? "uk-UA" : "en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency.toUpperCase()}`;
+  }
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -16,7 +28,8 @@ export class MailService {
     this.transporter = nodemailer.createTransport({
       host: smtp.host,
       port: smtp.port,
-      secure: false,
+      // Implicit TLS on the standard SMTPS port; other ports upgrade with STARTTLS when offered.
+      secure: smtp.port === 465,
       auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
     });
   }
@@ -44,7 +57,7 @@ export class MailService {
             body: "Your account has been created. Thousands of movies are waiting for you.",
             cta: "Start watching",
           };
-    this.send(to, t.subject, this.layout(t.title, t.body, t.cta));
+    this.send(to, t.subject, this.layout(t.title, t.body, t.cta, this.siteUrl()));
   }
 
   sendPasswordReset(to: string, resetUrl: string, lang: Lang = "en"): void {
@@ -82,16 +95,21 @@ export class MailService {
         ? {
             subject: "Квитанція про оплату AbsoluteCinema",
             title: "Платіж отримано",
-            body: `Підписку <b>${esc(details.tier)}</b> (${details.period === "monthly" ? "щомісячна" : "річна"}) активовано до ${details.endsAt.toLocaleDateString("uk-UA")}.${details.refund ? ` Повернення ${details.refund.amount.toFixed(2)} ${esc(details.refund.currency.toUpperCase())} за невикористану частину попередньої підписки надіслано на спосіб оплати, яким ви користувалися.` : ""}`,
+            body: `Підписку <b>${esc(details.tier)}</b> (${details.period === "monthly" ? "щомісячна" : "річна"}) активовано до ${details.endsAt.toLocaleDateString("uk-UA")}. Списано: ${esc(money(details.amount, details.currency, "uk"))}.${details.refund ? ` Повернення ${details.refund.amount.toFixed(2)} ${esc(details.refund.currency.toUpperCase())} за невикористану частину попередньої підписки надіслано на спосіб оплати, яким ви користувалися.` : ""}`,
             cta: "Дивитися зараз",
           }
         : {
             subject: "AbsoluteCinema payment receipt",
             title: "Payment received",
-            body: `Your <b>${esc(details.tier)}</b> subscription (${esc(details.period)}) is active until ${details.endsAt.toISOString().slice(0, 10)}. Charged: $${details.amount.toFixed(2)}.${details.refund ? ` A refund of ${details.refund.amount.toFixed(2)} ${esc(details.refund.currency.toUpperCase())} for the unused part of your previous subscription has been issued to your original payment method.` : ""}`,
+            body: `Your <b>${esc(details.tier)}</b> subscription (${esc(details.period)}) is active until ${details.endsAt.toISOString().slice(0, 10)}. Charged: ${esc(money(details.amount, details.currency, "en"))}.${details.refund ? ` A refund of ${details.refund.amount.toFixed(2)} ${esc(details.refund.currency.toUpperCase())} for the unused part of your previous subscription has been issued to your original payment method.` : ""}`,
             cta: "Watch now",
           };
-    this.send(to, t.subject, this.layout(t.title, t.body, t.cta));
+    this.send(to, t.subject, this.layout(t.title, t.body, t.cta, this.siteUrl()));
+  }
+
+  /** Public site address used for e-mail buttons (the first CLIENT_URL entry). */
+  private siteUrl(): string {
+    return this.config.get("clientUrl", { infer: true });
   }
 
   private layout(

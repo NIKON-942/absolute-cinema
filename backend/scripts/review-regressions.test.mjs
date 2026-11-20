@@ -1042,3 +1042,164 @@ test('CLIENT_URL may list several origins: CORS uses all, links use the first', 
     assert.equal(configuration().clientUrl, 'http://localhost:5173');
   } finally { if (previous === undefined) delete process.env.CLIENT_URL; else process.env.CLIENT_URL = previous; }
 });
+
+test('#12 search treats % and _ literally; #13 catalog DTOs are built from grouped queries', async () => {
+  const tag = randomUUID().slice(0, 8);
+  const literal = await media.createMovie({ title: `Lit-${tag}-100%_x`, year: 2026 });
+  const decoy = await media.createMovie({ title: `Lit-${tag}-100abcx`, year: 2026 });
+  const viewer = await newUser(), other = await newUser();
+  try {
+    const find = async search => (await media.listMovies({ search, page: 1, limit: 50 })).items.map(m => m.id);
+    assert.deepEqual(await find(`${tag}-100%_`), [literal.id], '% and _ are not wildcards');
+    assert.deepEqual(await find('%'), [literal.id], 'a lone % matches only titles containing it');
+    assert.deepEqual(await find(`${tag}-100\\`), [], 'backslash is literal too');
+    assert.equal((await find(`${tag.toUpperCase()}-100`)).length, 2, 'search stays case-insensitive');
+    assert.equal((await users.list('%', 1, 20)).items.length, 0);
+    await media.setRating(literal.id, viewer.id, 9); await media.setRating(literal.id, other.id, 6);
+    await media.setRating(decoy.id, other.id, 4);
+    await media.toggleFavorite(decoy.id, viewer.id);
+    const items = (await media.listMovies({ search: tag, page: 1, limit: 20 }, viewer.id)).items;
+    const byId = Object.fromEntries(items.map(m => [m.id, m]));
+    assert.equal(byId[literal.id].averageRating, 7.5); assert.equal(byId[literal.id].userRating, 9); assert.equal(byId[literal.id].isFavorite, false);
+    assert.equal(byId[decoy.id].averageRating, 4); assert.equal(byId[decoy.id].userRating, null); assert.equal(byId[decoy.id].isFavorite, true);
+    const guest = (await media.listMovies({ search: tag, page: 1, limit: 20 })).items;
+    assert.ok(guest.every(m => m.userRating === null && m.isFavorite === false));
+    assert.deepEqual(await media.toDtos([]), []);
+  } finally {
+    await media.removeMovie(literal.id); await media.removeMovie(decoy.id);
+    await removeUser(viewer.id); await removeUser(other.id);
+  }
+});
+
+test('#14 a failed video replacement keeps the movie playable; #15 conversion leftovers are cleaned up', async () => {
+  const { TranscodeService } = require('../dist/modules/media/transcode.service.js');
+  const { MASTERS_DIR, VIDEOS_DIR } = require('../dist/modules/media/media.constants.js');
+  const { mkdir, writeFile, utimes, access } = require('node:fs/promises');
+  const service = new TranscodeService(repo(MovieEntity));
+  const finish = async id => { for (let i = 0; i < 100; i++) { const s = (await repo(MovieEntity).findOneBy({ id })).transcodeStatus; if (s !== 'processing') return s; await new Promise(r => setTimeout(r, 50)); } };
+  const withVideo = await media.createMovie({ title: 'Replace-' + randomUUID(), year: 2026 });
+  const withoutVideo = await media.createMovie({ title: 'Fresh-' + randomUUID(), year: 2026 });
+  try {
+    await repo(MovieEntity).update(withVideo.id, { video480: 'kept.mp4' });
+    await service.enqueue(withVideo.id, 'no-such-master.mp4'); assert.equal(await finish(withVideo.id), 'ready', 'old renditions still work');
+    assert.equal(service.jobInfo(withVideo.id).status, 'failed', 'the job itself reports the error');
+    await service.enqueue(withoutVideo.id, 'no-such-master.mp4'); assert.equal(await finish(withoutVideo.id), 'failed');
+  } finally { await media.removeMovie(withVideo.id); await media.removeMovie(withoutVideo.id); }
+
+  await mkdir(MASTERS_DIR, { recursive: true }); await mkdir(VIDEOS_DIR, { recursive: true });
+  const tag = randomUUID(); const longAgo = new Date(Date.now() - 3 * 3600_000);
+  const scratch = join(MASTERS_DIR, '.remote-' + tag), fresh = join(MASTERS_DIR, '.audio-' + tag);
+  const orphan = join(VIDEOS_DIR, `9-${tag}-orphan-480p.mp4`), young = join(VIDEOS_DIR, `9-${tag}-young-480p.mp4`), kept = join(VIDEOS_DIR, `9-${tag}-kept-720p.mp4`);
+  const exists = path => access(path).then(() => true, () => false);
+  const holder = await media.createMovie({ title: 'Holder-' + tag, year: 2026 });
+  try {
+    await mkdir(scratch); await mkdir(fresh);
+    for (const file of [orphan, young, kept]) await writeFile(file, 'x');
+    for (const path of [scratch, orphan, kept]) await utimes(path, longAgo, longAgo);
+    await repo(MovieEntity).update(holder.id, { video720: `9-${tag}-kept-720p.mp4` });
+    const { removed } = await service.cleanupOrphans();
+    assert.ok(removed.includes(scratch) && removed.includes(orphan));
+    assert.equal(await exists(scratch), false); assert.equal(await exists(orphan), false);
+    assert.equal(await exists(fresh), true, 'recent scratch may belong to a running job');
+    assert.equal(await exists(young), true); assert.equal(await exists(kept), true, 'referenced renditions stay');
+  } finally {
+    await media.removeMovie(holder.id);
+    for (const path of [scratch, fresh]) await require('node:fs/promises').rm(path, { recursive: true, force: true });
+    for (const file of [orphan, young, kept]) await require('node:fs/promises').rm(file, { force: true });
+  }
+});
+
+test('#16 replaced posters and avatars are removed once unreferenced', async () => {
+  const { POSTERS_DIR } = require('../dist/modules/media/media.constants.js');
+  const { removeImageIfUnused } = require('../dist/modules/media/image-upload.js');
+  const { mkdir, writeFile, access } = require('node:fs/promises');
+  await mkdir(POSTERS_DIR, { recursive: true });
+  const exists = name => access(join(POSTERS_DIR, name)).then(() => true, () => false);
+  const make = async kind => { const name = `${kind}-${randomUUID()}.png`; await writeFile(join(POSTERS_DIR, name), 'x'); return name; };
+  const [first, second, avatarOld, avatarNew] = [await make('poster'), await make('poster'), await make('avatar'), await make('avatar')];
+  const movie = await media.createMovie({ title: 'Poster-' + randomUUID(), year: 2026 }, first);
+  const user = await newUser();
+  try {
+    await media.updateMovie(movie.id, { year: 2027 });
+    assert.equal(await exists(first), true, 'no new poster: nothing is removed');
+    await media.updateMovie(movie.id, {}, second);
+    assert.equal(await exists(first), false); assert.equal(await exists(second), true);
+    await repo(UserEntity).update(user.id, { avatarUrl: '/api/media/posters/' + avatarOld });
+    await users.updateMe(user.id, { avatarUrl: '/api/media/posters/' + avatarNew });
+    assert.equal(await exists(avatarOld), false); assert.equal(await exists(avatarNew), true);
+    await users.updateMe(user.id, { avatarUrl: 'https://example.com/a.png' });
+    assert.equal(await exists(avatarNew), false);
+    assert.equal(await removeImageIfUnused(db, 'https://example.com/a.png'), false);
+    assert.equal(await removeImageIfUnused(db, '/api/media/posters/../../secret.png'), false);
+  } finally {
+    await media.removeMovie(movie.id); await removeUser(user.id);
+    for (const name of [first, second, avatarOld, avatarNew]) await require('node:fs/promises').rm(join(POSTERS_DIR, name), { force: true });
+  }
+});
+
+test('#17 e-mail buttons, currency and secure SMTP port', async () => {
+  const { MailService } = require('../dist/modules/mail/mail.service.js');
+  const make = port => new MailService({ get: key => key === 'smtp' ? { host: 'localhost', port, user: '', pass: '', from: 'T <t@example.com>' } : 'https://cinema.example' });
+  assert.equal(make(465).transporter.options.secure, true); assert.equal(make(587).transporter.options.secure, false);
+  const service = make(1025); const sent = [];
+  service.transporter = { sendMail: async message => { sent.push(message); } };
+  service.sendWelcome('a@example.com', 'Ann'); service.sendReceipt('a@example.com', { tier: 'basic', period: 'monthly', amount: 4.5, currency: 'eur', endsAt: new Date() });
+  service.sendReceipt('a@example.com', { tier: 'basic', period: 'monthly', amount: 4.5, currency: 'bad!', endsAt: new Date() }, 'uk');
+  assert.match(sent[0].html, /<a href="https:\/\/cinema\.example\/?"/); assert.match(sent[1].html, /<a href="https:\/\/cinema\.example\/?"/);
+  assert.match(sent[1].html, /Charged: €4\.50/); assert.doesNotMatch(sent[1].html, /\$4\.50/);
+  assert.match(sent[2].html, /Списано: 4\.50 BAD!/);
+});
+
+test('#18 a watched movie rated below 6 stops influencing recommendations and is not recommended', async () => {
+  const { RecommendationsService } = require('../dist/modules/recommendations/recommendations.service.js');
+  const tag = randomUUID();
+  const [liked, disliked, other] = [await media.createGenre('L-' + tag), await media.createGenre('D-' + tag), await media.createGenre('O-' + tag)];
+  const likedMovie = await media.createMovie({ title: 'Liked-' + tag, year: 2026, genreIds: [liked.id] });
+  const dislikedMovie = await media.createMovie({ title: 'Disliked-' + tag, year: 2026, genreIds: [disliked.id] });
+  const candidateLiked = await media.createMovie({ title: 'CandL-' + tag, year: 2026, genreIds: [liked.id] });
+  const candidateDisliked = await media.createMovie({ title: 'CandD-' + tag, year: 2026, genreIds: [disliked.id] });
+  const user = await newUser();
+  try {
+    await media.setRating(likedMovie.id, user.id, 9);
+    await media.setRating(dislikedMovie.id, user.id, 2); await media.saveProgress(dislikedMovie.id, user.id, 50, 100);
+    const rows = await repo(MovieEntity).query(RecommendationsService.SQL, [user.id]);
+    const ids = rows.map(r => Number(r.id));
+    assert.ok(ids.includes(candidateLiked.id), 'liked genre is recommended');
+    assert.equal(ids.includes(candidateDisliked.id), false, 'disliked-but-watched genre adds no weight');
+    assert.equal(ids.includes(dislikedMovie.id) || ids.includes(likedMovie.id), false, 'seen movies are never recommended');
+  } finally {
+    for (const m of [likedMovie, dislikedMovie, candidateLiked, candidateDisliked]) await media.removeMovie(m.id);
+    for (const g of [liked, disliked, other]) await media.deleteGenre(g.id);
+    await removeUser(user.id);
+  }
+});
+
+test('#19 remote renditions are proxied after the subscription check, never redirected', async () => {
+  const http = require('node:http'); const { PassThrough } = require('node:stream');
+  const server = http.createServer((req, res) => {
+    const m = /bytes=(\d+)-(\d+)/.exec(req.headers.range ?? '');
+    if (m) { res.writeHead(206, { 'Content-Type': 'video/mp4', 'Content-Range': `bytes ${m[1]}-${m[2]}/10`, 'Content-Length': +m[2] - +m[1] + 1 }); res.end('0123456789'.slice(+m[1], +m[2] + 1)); }
+    else { res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': 10 }); res.end(req.method === 'HEAD' ? undefined : '0123456789'); }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/v.mp4`;
+  const movie = await media.createMovie({ title: 'Remote-' + randomUUID(), year: 2026 });
+  const fakeResponse = () => Object.assign(new PassThrough(), { headers: {}, statusCode: 0, redirected: null,
+    status(code) { this.statusCode = code; return this; }, setHeader(k, v) { this.headers[k.toLowerCase()] = v; return this; },
+    redirect(target) { this.redirected = target; this.end(); } });
+  const body = res => new Promise(resolve => { const parts = []; res.on('data', c => parts.push(c)); res.on('end', () => resolve(Buffer.concat(parts).toString())); res.on('close', () => resolve(Buffer.concat(parts).toString())); });
+  try {
+    await repo(MovieEntity).update(movie.id, { video480: url });
+    const entity = await media.getMovieEntity(movie.id);
+    const res = fakeResponse(); media.stream(entity, '480p', 'bytes=2-4', { on() {} }, res);
+    assert.equal(await body(res), '234'); assert.equal(res.statusCode, 206); assert.equal(res.redirected, null);
+    assert.equal(res.headers['content-range'], 'bytes 2-4/10');
+    const full = fakeResponse(); media.stream(entity, '480p', undefined, { on() {} }, full);
+    assert.equal(await body(full), '0123456789'); assert.equal(full.redirected, null);
+    const head = fakeResponse(); media.headStream(entity, '480p', head); await body(head);
+    assert.equal(head.statusCode, 200); assert.equal(head.redirected, null);
+    await repo(MovieEntity).update(movie.id, { video480: 'http://127.0.0.1:1/unreachable.mp4' });
+    const broken = fakeResponse(); media.stream(await media.getMovieEntity(movie.id), '480p', undefined, { on() {} }, broken); await body(broken);
+    assert.equal(broken.statusCode, 502);
+  } finally { server.close(); await media.removeMovie(movie.id); }
+});

@@ -5,10 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { escapeLike } from '../../common/helpers/escape-like';
 import { existsSync, statSync } from 'fs';
 import * as fs from 'fs';
 import { basename, join } from 'path';
 import { rm } from 'fs/promises';
+import { Readable } from 'stream';
 import { EntityManager, In, Repository } from 'typeorm';
 import { Request, Response } from 'express';
 import { ActorEntity } from './entities/actor.entity';
@@ -26,7 +28,7 @@ import {
 import { QUALITY_RANK } from '../payments/plan-limits.service';
 import { TranscodeService } from './transcode.service';
 import { validateUploadedVideo } from './upload-validation';
-import { imageReference } from './image-upload';
+import { imageReference, removeImageIfUnused } from './image-upload';
 import { movieInput, MovieInput, text, integer } from './media-input';
 
 const QUALITY_COLUMNS: Record<VideoQuality, keyof MovieEntity> = {
@@ -117,8 +119,8 @@ export class MediaService {
 
     if (filters.search) {
       qb.andWhere(
-        '(movie.title ILIKE :s OR movie.originalTitle ILIKE :s OR movie.description ILIKE :s)',
-        { s: `%${filters.search}%` },
+        `(movie.title ILIKE :s ESCAPE '\\' OR movie.originalTitle ILIKE :s ESCAPE '\\' OR movie.description ILIKE :s ESCAPE '\\')`,
+        { s: `%${escapeLike(filters.search)}%` },
       );
     }
     if (filters.genreIds?.length) {
@@ -141,7 +143,7 @@ export class MediaService {
       });
     }
     if (filters.country) {
-      qb.andWhere('countryRecord.name ILIKE :c', { c: `%${filters.country}%` });
+      qb.andWhere(`countryRecord.name ILIKE :c ESCAPE '\\'`, { c: `%${escapeLike(filters.country)}%` });
     }
     if (filters.ageRating) {
       qb.andWhere('movie.ageRating = :ar', { ar: filters.ageRating });
@@ -170,7 +172,7 @@ export class MediaService {
     qb.skip((filters.page - 1) * filters.limit).take(filters.limit);
     const [items, total] = await qb.getManyAndCount();
     return {
-      items: await Promise.all(items.map((m) => this.toDto(m, userId))),
+      items: await this.toDtos(items, userId),
       total,
       page: filters.page,
       limit: filters.limit,
@@ -260,7 +262,7 @@ export class MediaService {
 
     qb.addOrderBy('movie.viewCount', 'DESC').take(8);
     const movies = await qb.getMany();
-    return Promise.all(movies.map((m) => this.toDto(m, userId)));
+    return this.toDtos(movies, userId);
   }
 
   // ---------- favorites / ratings / progress ----------
@@ -300,7 +302,7 @@ export class MediaService {
       .leftJoinAndSelect('movie.countryRecord', 'countryRecord')
       .leftJoinAndSelect('movie.directorRecord', 'directorRecord')
       .getMany();
-    return Promise.all(movies.map((m) => this.toDto(m, userId)));
+    return this.toDtos(movies, userId);
   }
 
   async setRating(movieId: number, userId: number, value: number) {
@@ -423,8 +425,9 @@ export class MediaService {
     }
 
     if (/^https?:\/\//i.test(filePath)) {
-      // remote asset configured by URL (FR-29) — let the client fetch it
-      res.redirect(filePath);
+      // Remote renditions are proxied, never redirected: a redirect would hand out a
+      // direct link that works without a subscription.
+      void this.proxyRemote(filePath, rangeHeader, req, res, false);
       return;
     }
 
@@ -477,6 +480,30 @@ export class MediaService {
     stream.pipe(res);
   }
 
+  /** Streams a remote rendition through the API so the subscription check stays in force. */
+  private async proxyRemote(url: string, range: string | undefined, req: Request | undefined, res: Response, head: boolean) {
+    const controller = new AbortController();
+    req?.on('close', () => controller.abort());
+    try {
+      const upstream = await fetch(url, {
+        method: head ? 'HEAD' : 'GET',
+        headers: range ? { Range: range } : {},
+        redirect: 'follow',
+        signal: controller.signal,
+      });
+      res.status(upstream.status);
+      for (const name of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
+        const value = upstream.headers.get(name);
+        if (value) res.setHeader(name, value);
+      }
+      if (head || !upstream.body) { res.end(); return; }
+      Readable.fromWeb(upstream.body as never).on('error', () => res.destroy()).pipe(res);
+    } catch {
+      if (!res.headersSent) res.status(502).end();
+      else res.destroy();
+    }
+  }
+
   headStream(
     movie: MovieEntity,
     quality: VideoQuality,
@@ -490,7 +517,7 @@ export class MediaService {
       );
     }
     if (/^https?:\/\//i.test(filePath)) {
-      res.redirect(302, filePath);
+      void this.proxyRemote(filePath, undefined, undefined, res, true);
       return;
     }
     res.setHeader('Accept-Ranges', 'bytes');
@@ -523,25 +550,40 @@ export class MediaService {
   }
 
   async toDto(movie: MovieEntity, userId?: number): Promise<MovieDto> {
-    const [averageRating, userRating, isFavorite] = await Promise.all([
-      this.averageRating(movie.id),
-      userId
-        ? this.ratingsRepo
-            .findOne({ where: { movieId: movie.id, userId } })
-            .then((r) => r?.value ?? null)
-        : Promise.resolve(null),
-      userId
-        ? this.moviesRepo
-            .createQueryBuilder('movie')
-            .innerJoin('user_favorites', 'uf', 'uf.movies_id = movie.id')
-            .where('movie.id = :id AND uf.users_id = :userId', {
-              id: movie.id,
-              userId,
-            })
-            .getExists()
-        : Promise.resolve(false),
-    ]);
+    return (await this.toDtos([movie], userId))[0];
+  }
 
+  /** Builds DTOs for a page of movies with three grouped queries instead of three per movie. */
+  async toDtos(movies: MovieEntity[], userId?: number): Promise<MovieDto[]> {
+    if (!movies.length) return [];
+    const ids = movies.map((m) => m.id);
+    const [averages, ownRatings, favorites] = await Promise.all([
+      this.ratingsRepo
+        .createQueryBuilder('r')
+        .select('r.movieId', 'movieId')
+        .addSelect('AVG(r.value)', 'avg')
+        .where('r.movieId IN (:...ids)', { ids })
+        .groupBy('r.movieId')
+        .getRawMany<{ movieId: number; avg: string }>(),
+      userId
+        ? this.ratingsRepo.find({ where: { userId, movieId: In(ids) } })
+        : Promise.resolve([]),
+      userId
+        ? this.moviesRepo.query(
+            'SELECT movies_id FROM user_favorites WHERE users_id = $1 AND movies_id = ANY($2::int[])',
+            [userId, ids],
+          ) as Promise<Array<{ movies_id: number }>>
+        : Promise.resolve([]),
+    ]);
+    const averageById = new Map(averages.map((r) => [Number(r.movieId), Math.round(Number(r.avg) * 10) / 10]));
+    const ratingById = new Map(ownRatings.map((r) => [r.movieId, r.value]));
+    const favoriteIds = new Set(favorites.map((r) => Number(r.movies_id)));
+    return movies.map((movie) =>
+      this.buildDto(movie, averageById.get(movie.id) ?? 0, ratingById.get(movie.id) ?? null, favoriteIds.has(movie.id)),
+    );
+  }
+
+  private buildDto(movie: MovieEntity, averageRating: number, userRating: number | null, isFavorite: boolean): MovieDto {
     return {
       id: movie.id,
       title: movie.title,
@@ -674,12 +716,16 @@ export class MediaService {
     posterPath?: string | null,
   ) {
     const input = movieInput(body, false);
+    let previousPoster: string | null = null;
     await this.moviesRepo.manager.transaction(async em => {
       const movie = await em.findOne(MovieEntity, { where: { id }, lock: { mode: 'pessimistic_write' }, loadEagerRelations: false });
       if (!movie) throw new NotFoundException('Movie not found');
+      previousPoster = movie.posterPath;
       Object.assign(movie, this.metadata(input), await this.references(input, em), posterPath ? { posterPath } : {});
       await em.save(movie);
     });
+    // The replaced poster upload is no longer referenced; drop it from the volume.
+    if (previousPoster) await removeImageIfUnused(this.moviesRepo.manager, previousPoster);
     if (input.masterVideoUrl) await this.setMasterVideoUrl(id, input.masterVideoUrl);
     return this.getMovie(id, undefined, true);
   }
@@ -747,7 +793,12 @@ export class MediaService {
   updateGenre(id: number, name: string) { return this.saveDictionary(this.genresRepo, name, id); }
   deleteGenre(id: number) { return this.deleteDictionary(GenreEntity, id, { table: 'movie_genres', column: 'genres_id' }); }
   createActor(name: string, photoUrl?: string) { return this.saveDictionary(this.actorsRepo, name, undefined, { photoUrl: imageReference(photoUrl) ?? null }); }
-  updateActor(id: number, name: string, photoUrl?: string) { return this.saveDictionary(this.actorsRepo, name, id, photoUrl !== undefined ? { photoUrl: imageReference(photoUrl) } : {}); }
+  async updateActor(id: number, name: string, photoUrl?: string) {
+    const previous = (await this.actorsRepo.findOneBy({ id }))?.photoUrl;
+    const actor = await this.saveDictionary(this.actorsRepo, name, id, photoUrl !== undefined ? { photoUrl: imageReference(photoUrl) } : {});
+    if (previous && previous !== (actor as ActorEntity).photoUrl) await removeImageIfUnused(this.actorsRepo.manager, previous);
+    return actor;
+  }
   deleteActor(id: number) { return this.deleteDictionary(ActorEntity, id, { table: 'movie_actors', column: 'actors_id' }); }
   createCountry(name: string) { return this.saveDictionary(this.countriesRepo, name); }
   updateCountry(id: number, name: string) { return this.saveDictionary(this.countriesRepo, name, id); }

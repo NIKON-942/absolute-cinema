@@ -1,3 +1,4 @@
+import { escapeLike } from '../../common/helpers/escape-like';
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
@@ -8,7 +9,7 @@ import {
   UserRoleEnum,
 } from './user.entity';
 import { SubscriptionEntity } from '../payments/entities/subscription.entity';
-import { imageReference } from '../media/image-upload';
+import { imageReference, removeImageIfUnused } from '../media/image-upload';
 
 export interface UserWithSubscription {
   user: UserEntity;
@@ -105,8 +106,8 @@ export class UsersService {
       .createQueryBuilder('user')
       .orderBy('user.id', 'ASC');
     if (search) {
-      qb.andWhere('(user.email ILIKE :s OR user.name ILIKE :s OR CAST(user.id AS TEXT) = :id)', {
-        s: `%${search}%`,
+      qb.andWhere(`(user.email ILIKE :s ESCAPE '\\' OR user.name ILIKE :s ESCAPE '\\' OR CAST(user.id AS TEXT) = :id)`, {
+        s: `%${escapeLike(search)}%`,
         id: search.trim(),
       });
     }
@@ -152,11 +153,14 @@ export class UsersService {
       update.passwordHash = await bcrypt.hash(data.password, 10);
       // Invalidate every JWT issued before now (stolen tokens included).
     }
+    const previousAvatar = update.avatarUrl !== undefined
+      ? (await this.usersRepo.findOne({ where: { id: userId }, select: { id: true, avatarUrl: true } }))?.avatarUrl : null;
     if (Object.keys(update).length > 0) {
       await this.usersRepo.createQueryBuilder().update().set({ ...update,
         ...(data.password !== undefined ? { tokenVersion: () => 'token_version + 1', resetTokenHash: null, resetTokenExpiresAt: null } : {}),
       }).where('id = :userId', { userId }).execute();
     }
+    if (previousAvatar) await removeImageIfUnused(this.dataSource, previousAvatar);
     return this.requireWithSubscription(userId);
   }
 

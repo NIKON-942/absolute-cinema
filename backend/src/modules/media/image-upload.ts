@@ -45,3 +45,31 @@ export function imageReference(value: string | null | undefined): string | null 
   } catch { /* return a validation error below */ }
   throw new BadRequestException('Image URL must use http or https');
 }
+
+const STORED_IMAGE = /^(?:\/api\/media\/posters\/)?((?:poster|avatar|actor)-[0-9a-f-]{36}\.(?:jpe?g|png|webp))$/i;
+
+/**
+ * Deletes a replaced upload from the posters volume once nothing references it any more.
+ * External URLs and seed/legacy files (not named by storeImage) are never touched.
+ */
+export async function removeImageIfUnused(
+  db: { query(sql: string, params?: unknown[]): Promise<unknown[]> },
+  reference: string | null | undefined,
+): Promise<boolean> {
+  const file = reference ? STORED_IMAGE.exec(reference.trim())?.[1] : undefined;
+  if (!file) return false;
+  const params = [file, `/api/media/posters/${file}`];
+  try {
+    const used = await db.query(
+      `SELECT 1 FROM movies WHERE poster_path = ANY($1::text[])
+       UNION ALL SELECT 1 FROM users WHERE avatar_url = ANY($1::text[])
+       UNION ALL SELECT 1 FROM actors WHERE photo_url = ANY($1::text[]) LIMIT 1`,
+      [params],
+    );
+    if (used.length) return false;
+    await rm(join(POSTERS_DIR, file), { force: true });
+    return true;
+  } catch {
+    return false; // cleanup is best effort and must never fail the request
+  }
+}

@@ -15,7 +15,9 @@ function fixture(posterPath = 'poster-test.png') {
     transaction: async run => run(manager),
   };
   const progress = { find: async () => [{ movieId: movie.id, movie, updatedAt: new Date() }] };
-  const service = new MediaService({ manager }, {}, {}, {}, {}, {}, progress, {});
+  const chain = { select: () => chain, addSelect: () => chain, where: () => chain, groupBy: () => chain, getRawMany: async () => [] };
+  const ratings = { createQueryBuilder: () => chain };
+  const service = new MediaService({ manager }, {}, {}, {}, {}, ratings, progress, {});
   service.averageRating = async () => 0;
   service.getMovie = async () => service.toDto(movie);
   return { movie, service };

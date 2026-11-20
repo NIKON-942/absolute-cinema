@@ -22,6 +22,7 @@ function fixture({ duplicate = null, saveError = null } = {}) {
       return { id: 12, ...value };
     },
     update: async (id, value) => { calls.writes.push({ id, ...value }); return { affected: 1 }; },
+    findOneBy: async () => null,
     findOneByOrFail: async ({ id }) => ({ id, ...calls.writes.at(-1) }),
   };
   return { calls, service: new MediaService({}, repo, repo, repo, repo, {}, {}, {}) };

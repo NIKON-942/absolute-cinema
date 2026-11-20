@@ -2,7 +2,7 @@ import { ConflictException, Injectable, Logger, OnModuleInit } from '@nestjs/com
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { Repository } from 'typeorm';
 import { MovieEntity, TranscodeStatusEnum } from './entities/movie.entity';
 import { MASTERS_DIR, VIDEOS_DIR } from './media.constants';
@@ -39,7 +39,30 @@ export class TranscodeService implements OnModuleInit {
   private readonly lastProgress = new Map<number, number>();
   constructor(@InjectRepository(MovieEntity) private moviesRepo: Repository<MovieEntity>) {}
 
+  /**
+   * Removes leftovers of a crashed process: scratch directories and rendition files that no movie
+   * references. Files younger than an hour are kept so a job started in parallel is never hurt.
+   */
+  async cleanupOrphans(maxAgeMs = 60 * 60 * 1000): Promise<{ removed: string[] }> {
+    const removed: string[] = [];
+    const old = async (path: string) => Date.now() - (await stat(path)).mtimeMs >= maxAgeMs;
+    for (const entry of await readdir(MASTERS_DIR).catch(() => [] as string[])) {
+      if (!/^\.(remote|audio)-/.test(entry)) continue;
+      const path = join(MASTERS_DIR, entry);
+      if (await old(path).catch(() => false)) { await rm(path, { recursive: true, force: true }).catch(() => undefined); removed.push(path); }
+    }
+    const rows = await this.moviesRepo.find({ select: { video480: true, video720: true, video1080: true } });
+    const used = new Set(rows.flatMap((m) => [m.video480, m.video720, m.video1080]).filter(Boolean) as string[]);
+    for (const entry of await readdir(VIDEOS_DIR).catch(() => [] as string[])) {
+      if (!/^\d+-[0-9a-f-]{36}-.*-(480|720|1080)p\.mp4$/.test(entry) || used.has(entry)) continue;
+      const path = join(VIDEOS_DIR, entry);
+      if (await old(path).catch(() => false)) { await rm(path, { force: true }).catch(() => undefined); removed.push(path); }
+    }
+    return { removed };
+  }
+
   async onModuleInit(): Promise<void> {
+    await this.cleanupOrphans().then((r) => r.removed.length && this.logger.log(`Removed ${r.removed.length} orphaned conversion files`)).catch(() => undefined);
     const interrupted = await this.moviesRepo.find({ where: { transcodeStatus: TranscodeStatusEnum.PROCESSING } });
     for (const movie of interrupted) {
       if (this.jobs.get(movie.id)?.status === TranscodeStatusEnum.PROCESSING) continue;
@@ -81,12 +104,14 @@ export class TranscodeService implements OnModuleInit {
     const outputs: string[] = []; const published = new Set<string>(); let scratch: string | undefined;
     let input = join(MASTERS_DIR, masterSource);
     let remoteScratch: string | undefined;
+    let hadWorkingVideo = false;
     const info = this.jobs.get(movieId)!;
     info.startedAt = new Date().toISOString(); info.phase = 'probing';
     try {
       const movie = await this.moviesRepo.findOne({ where: { id: movieId } });
       if (!movie) throw new Error('Movie no longer exists');
       const isNew = !movie.video480 && !movie.video720 && !movie.video1080;
+      hadWorkingVideo = !isNew;
       await mkdir(VIDEOS_DIR, { recursive: true }); await mkdir(MASTERS_DIR, { recursive: true });
       if (/^https?:\/\//i.test(masterSource)) {
         remoteScratch = await mkdtemp(join(MASTERS_DIR, '.remote-'));
@@ -153,7 +178,9 @@ export class TranscodeService implements OnModuleInit {
       await Promise.all(outputs.filter(path => !published.has(path)).map(path => rm(path, { force: true }).catch(() => undefined)));
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Transcode failed for movie #${movieId}: ${message}`);
-      await this.moviesRepo.update(movieId, { transcodeStatus: TranscodeStatusEnum.FAILED, pendingMasterVideo: null }).catch(() => undefined);
+      // A failed replacement leaves the previous renditions untouched and playable, so the movie
+      // stays READY; the error is reported through the job info only.
+      await this.moviesRepo.update(movieId, { transcodeStatus: hadWorkingVideo ? TranscodeStatusEnum.READY : TranscodeStatusEnum.FAILED, pendingMasterVideo: null }).catch(() => undefined);
       const current = info.renditions.find(r => r.quality === info.currentQuality); if (current) current.state = 'failed';
       info.status = TranscodeStatusEnum.FAILED; info.phase = 'failed'; info.currentQuality = null; info.error = message;
     } finally {
