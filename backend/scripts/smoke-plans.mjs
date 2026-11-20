@@ -45,6 +45,10 @@ const main = async () => {
   } });
   check('login viewer', login.status === 200 || login.status === 201);
   const token = login.data.accessToken;
+  // Video URLs carry a short-lived stream-scoped token, never the session JWT.
+  const st = await api('POST', '/auth/stream-token', { token });
+  const streamToken = st.data?.token;
+  check('stream token issued', st.status === 200 && !!streamToken);
 
   const ready = await api('GET', '/health/ready');
   check('database readiness', ready.status === 200 && ready.data.status === 'ok');
@@ -69,11 +73,11 @@ const main = async () => {
   const meBasic = await api('GET', '/auth/me', { token });
   check('subscribed to basic', meBasic.data.activeSubscription?.tier === 'basic');
 
-  const s1080 = await api('GET', `/media/${movie.id}/stream?quality=1080p&deviceId=smoke-a&token=${token}`, {});
+  const s1080 = await api('GET', `/media/${movie.id}/stream?quality=1080p&deviceId=smoke-a&token=${streamToken}`, {});
   check('basic + 1080p → 402 UPGRADE_REQUIRED', s1080.status === 402 && s1080.data?.code === 'UPGRADE_REQUIRED',
     `status=${s1080.status}`);
 
-  const s720 = await fetch(`${BASE}/media/${movie.id}/stream?quality=720p&deviceId=smoke-a&token=${token}`, { headers: { Range: 'bytes=0-1023' } });
+  const s720 = await fetch(`${BASE}/media/${movie.id}/stream?quality=720p&deviceId=smoke-a&token=${streamToken}`, { headers: { Range: 'bytes=0-1023' } });
   check('basic + 720p → 206 partial', s720.status === 206, `status=${s720.status}`);
   check('range headers survive the proxy',
     s720.headers.get('accept-ranges') === 'bytes' &&
@@ -82,13 +86,16 @@ const main = async () => {
   await s720.body.cancel();
 
   // device limit: basic allows 1
+  const fullInUrl = await fetch(`${BASE}/media/${movie.id}/stream?quality=720p&deviceId=smoke-a&token=${token}`, { headers: { Range: 'bytes=0-1' } });
+  check('session JWT in the URL is rejected → 401', fullInUrl.status === 401);
+  await fullInUrl.body?.cancel();
   const hbA = await api('POST', '/devices/heartbeat', { token, body: { deviceId: 'smoke-a' } });
   check('heartbeat device A ok', hbA.status === 200 && hbA.data.activeDevices === 1);
   const hbB = await api('POST', '/devices/heartbeat', { token, body: { deviceId: 'smoke-b' } });
   check('basic + 2nd device → 409 DEVICE_LIMIT', hbB.status === 409 && hbB.data?.code === 'DEVICE_LIMIT',
     `status=${hbB.status}`);
 
-  const streamB = await fetch(`${BASE}/media/${movie.id}/stream?quality=480p&deviceId=smoke-b&token=${token}`);
+  const streamB = await fetch(`${BASE}/media/${movie.id}/stream?quality=480p&deviceId=smoke-b&token=${streamToken}`);
   check('basic + stream from 2nd device → 409', streamB.status === 409);
   await streamB.body.cancel();
 
@@ -102,7 +109,7 @@ const main = async () => {
   const hbC = await api('POST', '/devices/heartbeat', { token, body: { deviceId: 'smoke-c' } });
   check('plus + 3rd device → 409', hbC.status === 409 && hbC.data?.code === 'DEVICE_LIMIT');
 
-  const s1080plus = await fetch(`${BASE}/media/${movie.id}/stream?quality=1080p&deviceId=smoke-a&token=${token}`, { headers: { Range: 'bytes=0-1023' } });
+  const s1080plus = await fetch(`${BASE}/media/${movie.id}/stream?quality=1080p&deviceId=smoke-a&token=${streamToken}`, { headers: { Range: 'bytes=0-1023' } });
   check('plus + 1080p → 206 partial', s1080plus.status === 206, `status=${s1080plus.status}`);
   await s1080plus.body.cancel();
 
