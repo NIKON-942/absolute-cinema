@@ -4,7 +4,7 @@ Reviewed 2026-11-05; movie visibility added 2026-11-06. This describes implement
 
 Base URL: `http://localhost:4000/api`
 Auth: `Authorization: Bearer <accessToken>` on protected endpoints.
-For native video requests, `?token=<accessToken>` is also supported by JWT extraction. The extractor currently accepts this form beyond the stream route; avoid logging query strings. The normal API client uses Bearer headers. Payment access never changes the administrative user role.
+The session JWT is accepted only in the `Authorization: Bearer` header. Native `<video src>` and `sendBeacon` requests use a short-lived (6 h) stream-scoped token from `POST /auth/stream-token`, passed as `?token=` and accepted only by `GET/HEAD /media/:id/stream` and `POST /devices/end` (a full JWT in the query string, or a stream token elsewhere, gets 401; logout revokes both). Avoid logging query strings. The normal API client uses Bearer headers. Payment access never changes the administrative user role.
 All responses JSON unless noted. Errors follow NestJS shape:
 
 ```json
@@ -134,6 +134,7 @@ interface DeviceSessionDto {
 | POST | `/auth/google/exchange` | same browser cookie | `{ code }` | `{ accessToken, returnTo }`; code expires after one minute and is consumed once |
 | POST | `/auth/google/link` | Bearer | — | `{ url }`; explicit link to the signed-in account, checked again at callback |
 | GET | `/auth/me` | Bearer | — | `UserDto` |
+| POST | `/auth/stream-token` | Bearer | — | `{ token, expiresIn }` — stream-scoped token for video URLs |
 | POST | `/auth/forgot-password` | — | `{ email }` | `{ message }` (always 200; email with reset link `/reset-password?token=...`) |
 | POST | `/auth/reset-password` | — | `{ token, newPassword }` | `{ message }` (token valid 24h) |
 
@@ -322,3 +323,5 @@ interface TranscodeJobDto {
 ```
 
 Job progress/ETA are runtime estimates; source and movie lifecycle persist across restart, while detailed in-memory progress is reconstructed. `null` progress/ETA means unavailable, not zero. Upload byte completion and playable video readiness are separate phases.
+
+Rate limits (in-memory, per API process, 429 + `Retry-After`): `POST /auth/login` 30 per 5 min per IP; `/auth/register` 20 per hour per IP; `/auth/forgot-password` 10 per hour per IP and 3 per hour per e-mail; `/auth/reset-password` 20 per hour per IP. Unknown e-mails follow the same five-failure login lockout as existing accounts. `PUT /media/:id/progress` requires `positionSeconds`/`durationSeconds` in 0…86400 (400 otherwise); a position beyond the duration is clamped. Display names are trimmed and must be 2–100 characters. `CLIENT_URL` may list several origins separated by commas: CORS accepts all, generated links use the first.

@@ -1,3 +1,12 @@
+/** CLIENT_URL may list several origins separated by commas (CORS); links use the first one. */
+export function clientOrigins(): string[] {
+  const list = (process.env.CLIENT_URL ?? '')
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  return list.length ? list : ['http://localhost:5173'];
+}
+
 export interface AppConfig {
   port: number;
   clientUrl: string;
@@ -29,7 +38,7 @@ export const configuration = (): AppConfig => {
   }
   return {
     port: parseInt(process.env.PORT ?? '4000', 10),
-    clientUrl: process.env.CLIENT_URL ?? 'http://localhost:5173',
+    clientUrl: clientOrigins()[0],
     database: {
       host: process.env.DB_HOST ?? 'localhost',
       port: parseInt(process.env.DB_PORT ?? '5432', 10),

@@ -1,12 +1,12 @@
 import { IsEmail, IsString, Matches, MinLength } from 'class-validator';
+import { IsPersonName } from '../../../common/validators/person-name';
 import { IsPassword } from '../../../common/validators/password';
 
 export class RegisterDto {
   @IsEmail({}, { message: 'Invalid email format' })
   email!: string;
 
-  @IsString()
-  @MinLength(2, { message: 'Name must be at least 2 characters' })
+  @IsPersonName()
   name!: string;
 
   @IsString()

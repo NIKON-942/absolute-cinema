@@ -36,6 +36,7 @@ export default function Register() {
     const next: FormErrors = {};
     if (!name.trim()) next.name = t('auth.validation.nameRequired');
     else if (name.trim().length < 2) next.name = t('auth.validation.nameMin');
+    else if (name.trim().length > 100) next.name = t('auth.validation.nameMax');
     if (!email.trim()) next.email = t('auth.validation.emailRequired');
     else if (!isValidEmail(email)) next.email = t('auth.validation.emailInvalid');
     if (!password) next.password = t('auth.validation.passwordRequired');

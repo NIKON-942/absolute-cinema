@@ -13,6 +13,7 @@ import { GoogleCallbackGuard } from './google-callback.guard';
 import { GoogleFlowService, GoogleRequest } from './google-flow.service';
 import { Response, Request } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RateLimit, RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { AuthService } from './auth.service';
 import {
   ForgotPasswordDto,
@@ -29,11 +30,15 @@ export class AuthController {
   ) {}
 
   @Post('register')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ name: 'register', limit: 20, windowSeconds: 3600 })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Post('login')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ name: 'login', limit: 30, windowSeconds: 300 })
   @HttpCode(200)
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
@@ -82,13 +87,24 @@ export class AuthController {
     return this.authService.logout((req.user as { id: number }).id);
   }
 
+  @Post('stream-token')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  streamToken(@Req() req: Request) {
+    return this.authService.signStreamToken(req.user as { id: number; email: string; tokenVersion: number });
+  }
+
   @Post('forgot-password')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ name: 'forgot-password', limit: 10, windowSeconds: 3600, perEmail: 3 })
   @HttpCode(200)
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
 
   @Post('reset-password')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ name: 'reset-password', limit: 20, windowSeconds: 3600 })
   @HttpCode(200)
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);

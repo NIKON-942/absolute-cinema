@@ -22,6 +22,10 @@ import {
   ResetPasswordDto,
 } from './dto/auth.dto';
 
+export const STREAM_TOKEN_TTL_SECONDS = 6 * 60 * 60;
+// bcrypt hash of a random string; compared against for unknown e-mails to equalize timing.
+const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', 10);
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -39,6 +43,15 @@ export class AuthService {
       email: user.email,
       tv: user.tokenVersion,
     });
+  }
+
+  /** Short-lived token for <video src> / sendBeacon URLs; accepted only by the playback routes. */
+  signStreamToken(user: { id: number; email: string; tokenVersion: number }): { token: string; expiresIn: number } {
+    const expiresIn = STREAM_TOKEN_TTL_SECONDS;
+    return {
+      token: this.jwt.sign({ sub: user.id, email: user.email, tv: user.tokenVersion, scp: 'stream' }, { expiresIn }),
+      expiresIn,
+    };
   }
 
   async register(dto: RegisterDto) {
@@ -81,9 +94,15 @@ export class AuthService {
     // HTTP error is thrown. A row lock serializes concurrent login attempts.
     const result = await this.usersRepo.manager.transaction(async em => {
       const repo = em.getRepository(UserEntity);
-      const user = await repo.findOne({ where: { email: dto.email.toLowerCase() }, lock: { mode: 'pessimistic_write' } });
-      if (!user || !user.passwordHash) return { error: 'invalid' } as const;
-      if (user.isBlocked) return { error: 'blocked' } as const;
+      const email = dto.email.toLowerCase();
+      const user = await repo.findOne({ where: { email }, lock: { mode: 'pessimistic_write' } });
+      if (!user || !user.passwordHash) {
+        // Unknown e-mails follow the same 5-failures lockout and cost a bcrypt compare,
+        // so status codes and timing do not reveal whether the account exists.
+        if (this.unknownLoginLocked(email)) return { error: 'locked' } as const;
+        await bcrypt.compare(dto.password, DUMMY_HASH);
+        return { error: this.recordUnknownLoginFailure(email) ? 'locked' : 'invalid' } as const;
+      }
       if (user.loginLockedUntil && user.loginLockedUntil.getTime() > Date.now()) return { error: 'locked' } as const;
       if (user.loginLockedUntil) user.failedLoginAttempts = 0;
       if (!await bcrypt.compare(dto.password, user.passwordHash)) {
@@ -92,6 +111,8 @@ export class AuthService {
           loginLockedUntil: attempts >= 5 ? new Date(Date.now() + 60 * 60 * 1000) : null });
         return { error: attempts >= 5 ? 'locked' : 'invalid' } as const;
       }
+      // Blocked status is revealed only to someone who knows the password.
+      if (user.isBlocked) return { error: 'blocked' } as const;
       user.lastLoginAt = new Date();
       await repo.update(user.id, { lastLoginAt: user.lastLoginAt, failedLoginAttempts: 0, loginLockedUntil: null });
       return { user };
@@ -108,6 +129,28 @@ export class AuthService {
       ),
       accessToken: this.signToken(user),
     };
+  }
+
+  private readonly unknownLoginFailures = new Map<string, { count: number; until: number }>();
+
+  private unknownLoginLocked(email: string): boolean {
+    const entry = this.unknownLoginFailures.get(email);
+    if (!entry) return false;
+    if (entry.until <= Date.now()) { this.unknownLoginFailures.delete(email); return false; }
+    return entry.count >= 5;
+  }
+
+  /** Returns true when this failure triggers the lockout. */
+  private recordUnknownLoginFailure(email: string): boolean {
+    const now = Date.now();
+    if (this.unknownLoginFailures.size > 10_000) {
+      for (const [key, value] of this.unknownLoginFailures) if (value.until <= now) this.unknownLoginFailures.delete(key);
+      if (this.unknownLoginFailures.size > 10_000) this.unknownLoginFailures.clear();
+    }
+    const entry = this.unknownLoginFailures.get(email);
+    const count = (entry && entry.until > now ? entry.count : 0) + 1;
+    this.unknownLoginFailures.set(email, { count, until: now + 60 * 60 * 1000 });
+    return count >= 5;
   }
 
   /** Google ID is authoritative. Existing password accounts require an explicit signed-in link. */

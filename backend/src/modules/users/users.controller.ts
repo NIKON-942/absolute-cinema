@@ -20,13 +20,14 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { currentUserId } from '../../common/helpers/request-user';
 import { UsersService } from './users.service';
 import { PaymentsService } from '../payments/payments.service';
+import { IsPersonName } from '../../common/validators/person-name';
 import { IsPassword } from '../../common/validators/password';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { discardImage, imageUploadOptions, storeImage } from '../media/image-upload';
 
 class UpdateMeDto {
   @IsOptional()
-  @IsString()
+  @IsPersonName()
   name?: string;
 
   @IsOptional()

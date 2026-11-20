@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { streamUrl } from '@/utils/url';
+import { ensureStreamToken, peekStreamToken } from '@/utils/streamToken';
 import { formatDuration } from '@/utils/format';
 import { qualityRank } from '@/utils/plans';
 import { Spinner } from '@/components/Spinner';
@@ -138,7 +139,20 @@ export function VideoPlayer({
   const [dragging, setDragging] = useState(false);
   const [dragRatio, setDragRatio] = useState(0);
 
-  const src = streamUrl(movieId, quality);
+  // The video URL carries a short-lived stream token, not the session JWT. It is fetched once
+  // on mount and kept stable so the URL does not change (and restart playback) mid-film.
+  const [streamToken, setStreamToken] = useState<string | null>(() => peekStreamToken());
+  useEffect(() => {
+    if (streamToken) return;
+    let cancelled = false;
+    void ensureStreamToken().then((token) => {
+      if (!cancelled && token) setStreamToken(token);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [streamToken]);
+  const src = streamToken ? streamUrl(movieId, quality, streamToken) : undefined;
 
   // History and metadata arrive independently. Restore once, without seeking
   // backwards if the viewer has already started watching or seeking.

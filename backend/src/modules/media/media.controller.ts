@@ -16,6 +16,7 @@ import {
   UseGuards,
   Body,
 } from '@nestjs/common';
+import { IsNumber, Max, Min } from 'class-validator';
 import { Request, Response } from 'express';
 import { basename } from 'path';
 import { existsSync } from 'fs';
@@ -30,6 +31,21 @@ import { POSTERS_DIR } from './media.constants';
 import { MediaService } from './media.service';
 import { idList } from './media-input';
 import { VideoQuality } from './entities/movie.entity';
+
+/** A film cannot be longer than a day; anything else is a client bug or abuse. */
+const MAX_SECONDS = 24 * 60 * 60;
+
+export class SaveProgressDto {
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(0)
+  @Max(MAX_SECONDS)
+  positionSeconds!: number;
+
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(0)
+  @Max(MAX_SECONDS)
+  durationSeconds!: number;
+}
 
 @Controller('media')
 export class MediaController {
@@ -157,14 +173,11 @@ export class MediaController {
   saveProgress(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: Request,
-    @Body() body: { positionSeconds: number; durationSeconds: number },
+    @Body() body: SaveProgressDto,
   ) {
-    return this.mediaService.saveProgress(
-      id,
-      currentUserId(req),
-      Number(body?.positionSeconds) || 0,
-      Number(body?.durationSeconds) || 0,
-    );
+    // The player may report a position a fraction past the end; clamp instead of rejecting.
+    const position = body.durationSeconds > 0 ? Math.min(body.positionSeconds, body.durationSeconds) : body.positionSeconds;
+    return this.mediaService.saveProgress(id, currentUserId(req), position, body.durationSeconds);
   }
 
   @Get(':id/stream')

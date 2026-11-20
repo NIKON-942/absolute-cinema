@@ -1,4 +1,5 @@
 import { api } from './api';
+import { peekStreamToken } from '@/utils/streamToken';
 import type { DevicesDto, HeartbeatResultDto, MessageDto } from '@/types';
 
 export const devicesService = {
@@ -25,7 +26,8 @@ export const devicesService = {
   /** Best-effort session end — must work during page unload (sendBeacon,
    *  hence everything travels in the query string: no preflightable body). */
   end(deviceId: string): void {
-    const token = localStorage.getItem('ac_token');
+    // Stream-scoped token (not the session JWT); without one the heartbeat timeout frees the slot.
+    const token = peekStreamToken();
     if (!token) return;
     const base = import.meta.env.VITE_API_URL || '/api';
     const url = `${base}/devices/end?token=${encodeURIComponent(token)}&deviceId=${encodeURIComponent(deviceId)}`;

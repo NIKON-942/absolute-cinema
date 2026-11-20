@@ -11,6 +11,7 @@ import { Spinner } from '@/components/Spinner';
 import { EmptyState } from '@/components/EmptyState';
 import { Modal } from '@/components/Modal';
 import { resolveMediaUrl, streamUrl } from '@/utils/url';
+import { ensureStreamToken } from '@/utils/streamToken';
 import { getDeviceId, limitsForTier, qualityRank } from '@/utils/plans';
 import type { MovieDto, Quality } from '@/types';
 
@@ -129,7 +130,7 @@ export function MoviePlayback({ initialMovie, autoPlay = false }: { initialMovie
    *  transient errors. */
   const probeStream = async () => {
     try {
-      const res = await fetch(streamUrl(movieId, quality), { method: 'GET', headers: { Range: 'bytes=0-1' } });
+      const res = await fetch(streamUrl(movieId, quality, await ensureStreamToken()), { method: 'GET', headers: { Range: 'bytes=0-1' } });
       if (res.status === 401 || res.status === 403) {
         setStreamForbidden(true);
       } else if (res.status === 402) {

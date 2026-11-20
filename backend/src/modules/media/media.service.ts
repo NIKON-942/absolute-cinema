@@ -240,7 +240,11 @@ export class MediaService {
       .andWhere('movie.isHidden = :isHidden', { isHidden: false });
 
     if (genreIds.length > 0) {
-      qb.andWhere('genre.id IN (:...genreIds)', { genreIds }).addSelect(
+      // EXISTS keeps the full genre list of each similar movie (no trimming of the joined collection).
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM movie_genres mg1 WHERE mg1.movies_id = movie.id AND mg1.genres_id IN (:...genreIds))',
+        { genreIds },
+      ).addSelect(
         (sub) =>
           sub
             .select('COUNT(mg2.genres_id)')
@@ -334,15 +338,11 @@ export class MediaService {
     durationSeconds: number,
   ) {
     await this.getPublishedMovieEntity(movieId);
-    let progress = await this.progressRepo.findOne({
-      where: { movieId, userId },
-    });
-    if (!progress) {
-      progress = this.progressRepo.create({ movieId, userId });
-    }
-    progress.positionSeconds = positionSeconds;
-    progress.durationSeconds = durationSeconds;
-    await this.progressRepo.save(progress);
+    // Atomic upsert: concurrent first saves cannot hit uq_progress_user_movie.
+    await this.progressRepo.upsert(
+      { movieId, userId, positionSeconds, durationSeconds, updatedAt: new Date() },
+      ['userId', 'movieId'],
+    );
     return { message: 'Progress saved' };
   }
 

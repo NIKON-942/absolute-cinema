@@ -237,6 +237,7 @@ export const en: Record<string, string> = {
   'auth.validation.passwordMismatch': 'Passwords do not match',
   'auth.validation.nameRequired': 'Name is required',
   'auth.validation.nameMin': 'Name must be at least 2 characters',
+  'auth.validation.nameMax': 'Name must be at most 100 characters',
   'auth.validation.tokenMissing': 'This reset link is invalid or expired',
 
   // ---- watch ----

@@ -92,6 +92,7 @@ function playbackHost(user, movieOverrides = {}, services = {}, playbackProps = 
     '@/components/Spinner': { Spinner: 'Spinner' },
     '@/components/EmptyState': { EmptyState: 'EmptyState' },
     '@/components/Modal': { Modal: 'Modal' },
+    '@/utils/streamToken': { ensureStreamToken: async () => 'stream-token', peekStreamToken: () => 'stream-token' },
     '@/utils/url': { resolveMediaUrl: url => url, streamUrl: () => { throw new Error('No stream may be requested while rendering'); } },
     '@/utils/plans': { getDeviceId: () => 'device', limitsForTier: () => ({ maxQuality: '720p' }), qualityRank: q => parseInt(q) },
   });

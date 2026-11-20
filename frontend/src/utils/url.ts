@@ -19,14 +19,13 @@ export function resolveMediaUrl(url?: string | null): string {
   return url;
 }
 
-/** Stream URL for the <video> element. Token + deviceId are appended so
- *  JWT-guarded streams work with native src and the concurrent-device
+/** Stream URL for the <video> element. A short-lived stream token (not the session JWT)
+ *  and deviceId are appended, so native src works and the concurrent-device
  *  limit is enforced on every range request. */
-export function streamUrl(movieId: number, quality: Quality): string {
-  const token = localStorage.getItem('ac_token');
+export function streamUrl(movieId: number, quality: Quality, streamToken: string | null): string {
   const q = `quality=${encodeURIComponent(quality)}`;
   const d = `&deviceId=${encodeURIComponent(getDeviceId())}`;
-  const t = token ? `&token=${encodeURIComponent(token)}` : '';
+  const t = streamToken ? `&token=${encodeURIComponent(streamToken)}` : '';
   return `${API_BASE}/media/${movieId}/stream?${q}${d}${t}`;
 }
 

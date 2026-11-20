@@ -121,6 +121,7 @@ export default function Profile() {
     const next: typeof errors = {};
     if (!name.trim()) next.name = t('auth.validation.nameRequired');
     else if (name.trim().length < 2) next.name = t('auth.validation.nameMin');
+    else if (name.trim().length > 100) next.name = t('auth.validation.nameMax');
     if (password && !isValidPassword(password)) next.password = t('auth.validation.passwordPattern');
     if (password && !currentPassword) next.currentPassword = t('profile.account.currentPasswordRequired');
     if (!avatarFile && avatarUrl.trim() && avatarUrl !== user.avatarUrl && !/^https?:\/\/.+/i.test(avatarUrl.trim())) next.avatarUrl = t('profile.account.avatarUrlInvalid');

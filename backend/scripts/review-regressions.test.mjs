@@ -765,9 +765,10 @@ test('movie visibility protects every public route and preserves data when repub
     }
     assert.equal(hasMovie(await json('/media/favorites', { headers: viewerHeaders })), false);
     assert.equal((await json('/media/progress', { headers: viewerHeaders })).some(row => row.movieId === movie.id), false);
+    const streamToken = (await json('/auth/stream-token', { method: 'POST', headers: viewerHeaders })).token;
     for (const method of ['GET', 'HEAD']) {
       assert.equal((await request('/media/' + movie.id + '/stream?quality=480p&deviceId=visibility-device', { method, headers: { ...viewerHeaders, Range: 'bytes=0-9' } })).status, 404);
-      assert.equal((await request('/media/' + movie.id + '/stream?quality=480p&deviceId=visibility-device&token=' + viewerToken, { method })).status, 404);
+      assert.equal((await request('/media/' + movie.id + '/stream?quality=480p&deviceId=visibility-device&token=' + streamToken, { method })).status, 404);
     }
     for (const [suffix, method, body] of [
       ['/favorites', 'POST', {}], ['/rating', 'PUT', { value: 10 }], ['/rating', 'DELETE', {}],
@@ -801,6 +802,45 @@ test('movie visibility protects every public route and preserves data when repub
       assert.equal(response.status, method === 'GET' ? 206 : 200);
       await response.arrayBuffer();
     }
+    // #5: URLs carry a short-lived stream-scoped token, never the session JWT.
+    const streamPath = '/media/' + movie.id + '/stream?quality=480p&deviceId=visibility-device';
+    const viaStream = await request(streamPath + '&token=' + streamToken, { headers: { Range: 'bytes=0-9' } });
+    assert.equal(viaStream.status, 206); await viaStream.arrayBuffer();
+    assert.equal((await request(streamPath + '&token=' + viewerToken, { headers: { Range: 'bytes=0-9' } })).status, 401, 'Full JWT in the URL is rejected');
+    assert.equal((await request('/auth/me?token=' + viewerToken)).status, 401);
+    assert.equal((await request('/auth/me?token=' + streamToken)).status, 401, 'Stream token works only on playback routes');
+    assert.equal((await request('/auth/me', { headers: { Authorization: 'Bearer ' + streamToken } })).status, 401);
+    assert.equal((await request('/auth/me', { headers: viewerHeaders })).status, 200);
+    assert.equal((await request('/devices/end?deviceId=visibility-device&token=' + streamToken, { method: 'POST' })).status !== 401, true);
+    assert.equal((await request('/devices/end?deviceId=visibility-device&token=' + viewerToken, { method: 'POST' })).status, 401);
+    const claims = JSON.parse(Buffer.from(streamToken.split('.')[1], 'base64url'));
+    assert.equal(claims.scp, 'stream'); assert.ok(claims.exp - claims.iat <= 6 * 3600);
+    await auth.logout(viewer.id);
+    assert.equal((await request(streamPath + '&token=' + streamToken, { headers: { Range: 'bytes=0-9' } })).status, 401, 'Logout revokes stream tokens');
+    // #8: progress input is validated; a position past the end is clamped.
+    const progress = (positionSeconds, durationSeconds, h = adminHeaders) => request('/media/' + movie.id + '/progress', { method: 'PUT', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify({ positionSeconds, durationSeconds }) });
+    for (const [p, d] of [[-50, 100], [10, -1], [1e308, 1e308], ['abc', 100], [null, 100], [10, 90000]]) assert.equal((await progress(p, d)).status, 400, JSON.stringify([p, d]));
+    assert.equal((await progress(500, 120)).status, 200);
+    const stored = await repo(WatchProgressEntity).findOneBy({ userId: administrator.id, movieId: movie.id });
+    assert.equal(stored.positionSeconds, 120); assert.equal(stored.durationSeconds, 120);
+    // #9: first saves racing each other must all succeed (upsert).
+    await Promise.all(Array.from({ length: 8 }, (_, i) => media.saveProgress(movie.id, recommendationViewer.id, i, 100)));
+    assert.equal(await repo(WatchProgressEntity).countBy({ userId: recommendationViewer.id, movieId: movie.id }), 1);
+    // #7: display names are trimmed and bounded on every write path.
+    const patchMe = name => request('/users/me', { method: 'PATCH', headers: { ...adminHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    for (const bad of ['', '   ', 'a', 'x'.repeat(101), 5000 .toString().repeat(1000)]) assert.equal((await patchMe(bad)).status, 400, JSON.stringify(bad).slice(0, 20));
+    const renamed = await patchMe('  Ann  '); assert.equal(renamed.status, 200); assert.equal((await renamed.json()).name, 'Ann');
+    const register = name => request('/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: randomUUID() + '@example.com', password: 'Password123!', name }) });
+    assert.equal((await register('   ')).status, 400);
+    assert.equal((await register('x'.repeat(101))).status, 400);
+    // #6: the mailbox flood limit (3 per hour per e-mail) and the per-IP limit return 429 with Retry-After.
+    const forgot = email => request('/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+    const target = randomUUID() + '@example.com';
+    for (let i = 0; i < 3; i++) assert.equal((await forgot(target)).status, 200);
+    const limited = await forgot(target);
+    assert.equal(limited.status, 429); assert.ok(Number(limited.headers.get('retry-after')) > 0);
+    for (let i = 0; i < 6; i++) assert.equal((await forgot(randomUUID() + '@example.com')).status, 200);
+    assert.equal((await forgot(randomUUID() + '@example.com')).status, 429, 'IP limit of 10 per hour');
   } finally {
     if (uploadId) await app.get(UploadsService).remove(uploadId, administrator.id).catch(() => {});
     await app.close();
@@ -962,4 +1002,43 @@ test('user-controlled values are escaped in every HTML email', async () => {
   assert.match(sent[5].html, /href="http:\/\/localhost:5173\/reset-password\?token=abc&amp;x=%22onmouseover/);
   // Legitimate markup of the templates stays intact.
   assert.match(sent[1].html, /<b>&lt;img/);
+});
+
+
+test('similar movies keep their full genre list; login does not reveal whether an account exists', async () => {
+  const prefix = 'Similar-' + randomUUID();
+  const [g1, g2, g3] = [await media.createGenre(prefix + 'a'), await media.createGenre(prefix + 'b'), await media.createGenre(prefix + 'c')];
+  const base = await media.createMovie({ title: prefix + '-base', year: 2026, genreIds: [g1.id, g2.id] });
+  const other = await media.createMovie({ title: prefix + '-other', year: 2026, genreIds: [g1.id, g2.id, g3.id] });
+  try {
+    const similar = await media.similar(base.id);
+    const item = similar.find(m => m.id === other.id);
+    assert.ok(item);
+    assert.deepEqual(item.genres.map(g => g.id).sort(), [g1.id, g2.id, g3.id].sort(), '#10: not trimmed to the shared genres');
+  } finally {
+    await media.removeMovie(base.id); await media.removeMovie(other.id);
+    for (const g of [g1, g2, g3]) await media.deleteGenre(g.id);
+  }
+  const blocked = await newUser();
+  await repo(UserEntity).update(blocked.id, { isBlocked: true });
+  const status = async (email, password) => auth.login({ email, password }).then(() => 200, e => e.getStatus());
+  assert.equal(await status(blocked.email, 'wrong-password-1'), 401, 'Blocked status is not revealed without the password');
+  assert.equal(await status(blocked.email, 'abcdefgh'), 403);
+  const ghost = randomUUID() + '@example.com';
+  const codes = [];
+  for (let i = 0; i < 6; i++) codes.push(await status(ghost, 'wrong-password-1'));
+  assert.deepEqual(codes, [401, 401, 401, 401, 403, 403], 'Unknown e-mails lock out exactly like existing ones');
+  await removeUser(blocked.id);
+});
+
+test('CLIENT_URL may list several origins: CORS uses all, links use the first', () => {
+  const { clientOrigins, configuration } = require('../dist/config/configuration.js');
+  const previous = process.env.CLIENT_URL;
+  try {
+    process.env.CLIENT_URL = 'https://a.example/, https://b.example';
+    assert.deepEqual(clientOrigins(), ['https://a.example', 'https://b.example']);
+    assert.equal(configuration().clientUrl, 'https://a.example');
+    delete process.env.CLIENT_URL;
+    assert.equal(configuration().clientUrl, 'http://localhost:5173');
+  } finally { if (previous === undefined) delete process.env.CLIENT_URL; else process.env.CLIENT_URL = previous; }
 });

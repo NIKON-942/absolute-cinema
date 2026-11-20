@@ -237,6 +237,7 @@ export const uk: Record<string, string> = {
   'auth.validation.passwordMismatch': 'Паролі не співпадають',
   'auth.validation.nameRequired': "Вкажіть ім'я",
   'auth.validation.nameMin': "Ім'я має містити щонайменше 2 символи",
+  'auth.validation.nameMax': "Ім'я має містити не більше 100 символів",
   'auth.validation.tokenMissing': 'Посилання для відновлення недійсне або застаріле',
 
   // ---- перегляд ----

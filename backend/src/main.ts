@@ -1,8 +1,10 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { clientOrigins } from './config/configuration';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
@@ -38,7 +40,7 @@ async function bootstrapTracing(): Promise<void> {
 async function bootstrap(): Promise<void> {
   await bootstrapTracing();
 
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   app.enableShutdownHooks();
   app.setGlobalPrefix('api');
 
@@ -56,9 +58,11 @@ async function bootstrap(): Promise<void> {
     );
   }
 
+  // Behind a reverse proxy (Caddy) req.ip must be the real client for rate limiting.
+  if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
   app.enableCors({
     exposedHeaders: ['Location', 'Upload-Offset', 'Upload-Length', 'Tus-Resumable', 'Tus-Version', 'Tus-Extension', 'Tus-Checksum-Algorithm', 'Tus-Max-Size'],
-    origin: process.env.CLIENT_URL?.split(',') ?? ['http://localhost:5173'],
+    origin: clientOrigins(),
     credentials: true,
   });
   app.useGlobalPipes(
