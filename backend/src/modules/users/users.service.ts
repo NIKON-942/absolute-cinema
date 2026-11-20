@@ -177,18 +177,21 @@ export class UsersService {
     return this.requireWithSubscription(userId);
   }
 
-  async remove(userId: number, actorId: number) {
+  /**
+   * `release` runs after the authorization checks and before any row is
+   * deleted (payments use it to cancel the Stripe subscription and detach the
+   * payment history, which is kept).
+   */
+  async remove(userId: number, actorId: number, release?: (em: EntityManager) => Promise<void>) {
     // Dependent rows must go first — their FKs are ON DELETE NO ACTION, so
-    // deleting a user with ratings/history/orders would otherwise fail.
+    // deleting a user with ratings/history would otherwise fail.
     await this.dataSource.transaction(async (em) => {
       await this.authorizeManagement(em, actorId, userId, false, true);
+      await release?.(em);
       await em.query('DELETE FROM ratings WHERE user_id = $1', [userId]);
       await em.query('DELETE FROM watch_progress WHERE user_id = $1', [userId]);
       await em.query('DELETE FROM user_favorites WHERE users_id = $1', [userId]);
       await em.query('DELETE FROM device_sessions WHERE user_id = $1', [userId]);
-      await em.query('DELETE FROM payment_transactions WHERE user_id = $1', [
-        userId,
-      ]);
       await em.query('DELETE FROM subscriptions WHERE user_id = $1', [userId]);
       const result = await em.delete(UserEntity, userId);
       if (result.affected === 0) throw new NotFoundException('User not found');

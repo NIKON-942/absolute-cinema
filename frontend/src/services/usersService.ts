@@ -36,7 +36,8 @@ export const usersService = {
     return api.patch(`/users/${id}/block`, { isBlocked }).then((r) => r.data);
   },
 
-  remove(id: number): Promise<void> {
-    return api.delete(`/users/${id}`).then(() => undefined);
+  /** `warnings` contains `stripe_cancel_failed` when the Stripe subscription must be cancelled manually. */
+  remove(id: number): Promise<{ warnings: string[] }> {
+    return api.delete(`/users/${id}`).then((r) => ({ warnings: Array.isArray(r.data?.warnings) ? r.data.warnings : [] }));
   },
 };

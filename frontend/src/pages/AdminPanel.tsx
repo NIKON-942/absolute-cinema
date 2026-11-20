@@ -1393,8 +1393,9 @@ function UsersTab() {
       action: async () => {
         setConfirmBusy(true);
         try {
-          await usersService.remove(u.id);
+          const { warnings } = await usersService.remove(u.id);
           success(t('admin.users.deleted'));
+          if (warnings.includes('stripe_cancel_failed')) errorToast(t('admin.users.stripeCancelFailed'));
           setConfirmState(null);
           reload();
         } catch (err) {

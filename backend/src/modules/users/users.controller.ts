@@ -19,6 +19,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { currentUserId } from '../../common/helpers/request-user';
 import { UsersService } from './users.service';
+import { PaymentsService } from '../payments/payments.service';
 import { IsPassword } from '../../common/validators/password';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { discardImage, imageUploadOptions, storeImage } from '../media/image-upload';
@@ -56,7 +57,7 @@ class SetBlockedDto {
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
-  constructor(private usersService: UsersService) {}
+  constructor(private usersService: UsersService, private paymentsService: PaymentsService) {}
 
   @Get('me')
   async me(@Req() req: Request) {
@@ -117,6 +118,8 @@ export class UsersController {
   @Delete(':id')
   @Roles('admin')
   async remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
-    await this.usersService.remove(id, currentUserId(req));
+    const warnings: string[] = [];
+    await this.usersService.remove(id, currentUserId(req), async em => { warnings.push(...await this.paymentsService.detachUser(em, id)); });
+    return { warnings };
   }
 }

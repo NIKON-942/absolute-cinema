@@ -544,6 +544,7 @@ export const uk: Record<string, string> = {
   'admin.users.roleChanged': 'Роль оновлено',
   'admin.users.statusChanged': 'Статус користувача оновлено',
   'admin.users.deleted': 'Користувача видалено',
+  'admin.users.stripeCancelFailed': 'Користувача видалено, але його підписку в Stripe не вдалося скасувати автоматично. Скасуйте її вручну в панелі Stripe.',
   'admin.users.empty': 'Користувачів не знайдено',
   'admin.users.total': 'Користувачів: {count}',
   'admin.users.lastLogin': 'Останній вхід',

@@ -30,8 +30,13 @@ export class PaymentTransactionEntity {
   @Column({ unique: true })
   sessionId: string;
 
-  @Column()
-  userId: number;
+  /** NULL after the account was deleted; the payment record itself is kept. */
+  @Column({ type: 'int', nullable: true })
+  userId: number | null;
+
+  /** ID of the deleted account (pseudonym; no personal data is kept). */
+  @Column({ type: 'int', nullable: true })
+  formerUserId: number | null;
 
   @Column({ type: 'int', nullable: true })
   subscriptionId: number | null;
@@ -52,7 +57,7 @@ export class PaymentTransactionEntity {
   status: TransactionStatusEnum;
 
   @Column({ type: 'varchar', nullable: true })
-  cancellationReason: 'expired' | 'user_cancelled' | 'superseded' | null;
+  cancellationReason: 'expired' | 'user_cancelled' | 'superseded' | 'user_deleted' | null;
 
   /** Each Checkout can have at most one successor in its retry chain. */
   @Column({ type: 'varchar', nullable: true, unique: true })

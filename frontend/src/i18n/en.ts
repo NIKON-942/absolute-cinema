@@ -544,6 +544,7 @@ export const en: Record<string, string> = {
   'admin.users.roleChanged': 'Role updated',
   'admin.users.statusChanged': 'User status updated',
   'admin.users.deleted': 'User deleted',
+  'admin.users.stripeCancelFailed': 'The user was deleted, but their Stripe subscription could not be cancelled automatically. Cancel it manually in the Stripe dashboard.',
   'admin.users.empty': 'No users found',
   'admin.users.total': 'Users: {count}',
   'admin.users.lastLogin': 'Last login',

@@ -148,7 +148,7 @@ Password rules (РГР2 FR-2): at least 8 Unicode code points, at most 72 UTF-8 
 | PATCH | `/users/me` | Bearer | JSON `{ name?, avatarUrl?, password?, currentPassword? }` or multipart with the same fields plus `file?` (avatar image). `currentPassword` required for a password change. | `UserDto` |
 | PATCH | `/users/:id/role` | head_admin | `{ role: 'viewer'\|'admin'\|'head_admin' }` | `UserDto` |
 | PATCH | `/users/:id/block` | admin | `{ isBlocked: boolean }` | `UserDto` |
-| DELETE | `/users/:id` | admin | — | 200 with empty body (current Nest default; no explicit 204 decorator) |
+| DELETE | `/users/:id` | admin | — | `{ warnings: string[] }` — cancels the user's Stripe subscriptions (`warnings` contains `stripe_cancel_failed` if the provider could not be reached; the deletion still completes and the error is logged), cancels open orders (`user_deleted`) and keeps the payment history without the account link; 409 while a paid Checkout awaits confirmation |
 
 Blocked users: login returns 403 `Account is blocked`.
 The head_admin role inherits every admin permission. Only head administrators can assign roles or block/delete administrators; ordinary admins can moderate viewers only. Self-management of role/block/delete is forbidden. Actor and target are re-read under a transaction lock; concurrent operations preserve an active head administrator. JWT authorization reads current roles from the database on every request. Register and Google link use the default POST status 201; login/logout/Google exchange/forgot/reset explicitly return 200. The unknown-email recovery response has the same status/body as the known-email response.

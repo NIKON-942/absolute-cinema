@@ -215,14 +215,15 @@ export class PaymentsService {
 
   async complete(sessionId: string, expectedUserId?: number, external?: Stripe.Subscription): Promise<{ message: string; refund: { amount: number; currency: string } | null }> {
     const owner = await this.txRepo.findOne({ where: { sessionId } });
-    if (!owner || (expectedUserId !== undefined && owner.userId !== expectedUserId)) throw new NotFoundException('Order not found');
+    if (!owner || owner.userId === null || (expectedUserId !== undefined && owner.userId !== expectedUserId)) throw new NotFoundException('Order not found');
+    const ownerId: number = owner.userId;
     const receipt = await this.txRepo.manager.transaction(async em => {
-      await this.lock(em, owner.userId);
+      await this.lock(em, ownerId);
       const tx = await em.findOneByOrFail(PaymentTransactionEntity, { id: owner.id });
       if (tx.status === TransactionStatusEnum.PAID) return null;
       if ((!external && tx.status !== TransactionStatusEnum.PENDING) || !tx.subscriptionId) throw new BadRequestException(`Order is ${tx.status}`);
       if (!external && tx.expiresAt && tx.expiresAt.getTime() <= Date.now()) throw new BadRequestException('Order expired; retry payment');
-      const active = await em.find(SubscriptionEntity, { where: { userId: tx.userId, status: SubscriptionStatusEnum.ACTIVE } });
+      const active = await em.find(SubscriptionEntity, { where: { userId: ownerId, status: SubscriptionStatusEnum.ACTIVE } });
       for (const old of active) {
         if (this.stripe && old.stripeSubscriptionId && old.stripeSubscriptionId !== external?.id) {
           const current = await this.stripe.subscriptions.retrieve(old.stripeSubscriptionId);
@@ -231,18 +232,18 @@ export class PaymentsService {
       }
       const now = new Date();
       // Value the unused part of the replaced period before its subscription is expired.
-      const quote = await this.refundQuote(em, tx.userId, now);
+      const quote = await this.refundQuote(em, ownerId, now);
       const sameStripeSubscription = Boolean(external && quote?.subscription.stripeSubscriptionId === external.id);
       const item = external?.items.data[0];
       if (external && !item) throw new Error('Stripe subscription has no billing period');
       const endsAt = item ? new Date(item.current_period_end * 1000) : billingEnd(now, tx.period);
-      await em.update(SubscriptionEntity, { userId: tx.userId, status: SubscriptionStatusEnum.ACTIVE }, { status: SubscriptionStatusEnum.EXPIRED });
+      await em.update(SubscriptionEntity, { userId: ownerId, status: SubscriptionStatusEnum.ACTIVE }, { status: SubscriptionStatusEnum.EXPIRED });
       await em.update(SubscriptionEntity, tx.subscriptionId, { status: SubscriptionStatusEnum.ACTIVE,
         startsAt: item ? new Date(item.current_period_start * 1000) : now, endsAt,
         stripeSubscriptionId: external?.id ?? null, cancelAtPeriodEnd: external?.cancel_at_period_end ?? false });
       const refund = quote && !sameStripeSubscription ? await this.issueRefund(em, quote, tx.sessionId) : null;
       await em.update(PaymentTransactionEntity, tx.id, { status: TransactionStatusEnum.PAID, cancellationReason: null });
-      const user = await em.findOneBy(UserEntity, { id: tx.userId });
+      const user = await em.findOneBy(UserEntity, { id: ownerId });
       return user ? { email: user.email, tx, endsAt, refund } : null;
     });
     if (receipt) this.mail.sendReceipt(receipt.email, { tier: receipt.tx.tier, period: receipt.tx.period,
@@ -257,9 +258,10 @@ export class PaymentsService {
   private async closeOrder(sessionId: string, status: TransactionStatusEnum.FAILED | TransactionStatusEnum.CANCELLED,
     cancellationReason: PaymentTransactionEntity['cancellationReason'] = null, expectedUserId?: number) {
     const owner = await this.txRepo.findOne({ where: { sessionId } });
-    if (!owner || (expectedUserId !== undefined && owner.userId !== expectedUserId)) throw new NotFoundException('Order not found');
+    if (!owner || owner.userId === null || (expectedUserId !== undefined && owner.userId !== expectedUserId)) throw new NotFoundException('Order not found');
+    const ownerId: number = owner.userId;
     const completed = await this.txRepo.manager.transaction(async em => {
-      await this.lock(em, owner.userId);
+      await this.lock(em, ownerId);
       const tx = await em.findOneByOrFail(PaymentTransactionEntity, { id: owner.id });
       if (tx.status !== TransactionStatusEnum.PENDING) return;
       const session = await this.expireCheckout(tx);
@@ -287,6 +289,40 @@ export class PaymentsService {
         !await this.txRepo.existsBy({ retryOf: sessionId }) };
   }
 
+  /**
+   * Called while an administrator deletes an account (inside the deletion
+   * transaction): closes open orders, cancels the Stripe subscriptions and
+   * detaches the payment history from the account. Returns warnings for
+   * problems that must not block the deletion.
+   */
+  async detachUser(em: EntityManager, userId: number): Promise<string[]> {
+    const warnings: string[] = [];
+    await this.lock(em, userId);
+    const pending = await em.find(PaymentTransactionEntity, { where: { userId, status: TransactionStatusEnum.PENDING } });
+    for (const order of pending) {
+      // A paid but unconfirmed Checkout must be settled first, or the money would be orphaned.
+      if (await this.expireCheckout(order)) throw new ConflictException('A payment is being confirmed; try deleting this user again shortly');
+    }
+    await em.update(PaymentTransactionEntity, { userId, status: TransactionStatusEnum.PENDING }, { status: TransactionStatusEnum.CANCELLED, cancellationReason: 'user_deleted' });
+    if (this.stripe) {
+      const subscriptions = await em.find(SubscriptionEntity, { where: { userId } });
+      const ids = [...new Set(subscriptions.map(sub => sub.stripeSubscriptionId).filter((id): id is string => Boolean(id)))];
+      for (const id of ids) {
+        try {
+          const current = await this.stripe.subscriptions.retrieve(id);
+          if (current.status !== 'canceled') await this.stripe.subscriptions.cancel(id);
+        } catch (error) {
+          if ((error as { code?: string }).code === 'resource_missing') continue; // already gone at the provider
+          warnings.push('stripe_cancel_failed');
+          this.logger.error(`Could not cancel Stripe subscription ${id} of deleted user #${userId}; cancel it manually: ${String(error)}`);
+        }
+      }
+    }
+    // Keep the financial records, drop the link to the person.
+    await em.query('UPDATE payment_transactions SET former_user_id = user_id, user_id = NULL, subscription_id = NULL WHERE user_id = $1', [userId]);
+    return warnings;
+  }
+
   async cancelSubscription(userId: number): Promise<{ message: string }> {
     await this.subsRepo.manager.transaction(async em => {
       await this.lock(em, userId);
@@ -312,6 +348,7 @@ export class PaymentsService {
     if (!sessionId || !subscriptionId) throw new BadRequestException('Checkout has no local order or subscription');
     const tx = await this.txRepo.findOneBy({ sessionId });
     if (!tx || tx.stripeCheckoutId !== session.id) throw new BadRequestException('Checkout does not match the order');
+    if (tx.userId === null) { this.logger.warn(`Ignoring payment for order ${sessionId}: the account was deleted`); return; }
     await this.complete(sessionId, undefined, await this.stripe.subscriptions.retrieve(subscriptionId));
   }
 
@@ -324,6 +361,7 @@ export class PaymentsService {
     const sessionId = external.metadata.sessionId;
     if (sessionId) {
       const initial = await this.txRepo.findOneBy({ sessionId });
+      if (initial && initial.userId === null) return; // account deleted; its payment history is kept
       if (initial?.stripeCheckoutId && initial.status !== TransactionStatusEnum.PAID) {
         await this.completedCheckout(await this.stripe.checkout.sessions.retrieve(initial.stripeCheckoutId));
       }
@@ -365,7 +403,7 @@ export class PaymentsService {
         const session = event.data.object as Stripe.Checkout.Session;
         const sessionId = session.metadata?.sessionId ?? session.client_reference_id;
         const tx = sessionId ? await this.txRepo.findOneBy({ sessionId }) : null;
-        if (tx && tx.stripeCheckoutId === session.id) {
+        if (tx && tx.userId !== null && tx.stripeCheckoutId === session.id) {
           if (event.type === 'checkout.session.expired') await this.closeOrder(tx.sessionId, TransactionStatusEnum.CANCELLED, 'expired');
           else await this.failOrder(tx.sessionId);
         }

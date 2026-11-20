@@ -33,7 +33,7 @@ const repo = entity => db.getRepository(entity);
 const config = { get: key => key === 'stripe' ? { enabled: false } : 'http://localhost' };
 const mail = { sendWelcome() {}, sendPasswordReset() {}, sendReceipt() {} };
 let auth, users, payments, media, testHead;
-const removeUser = id => users.remove(id, testHead.id);
+const removeUser = id => users.remove(id, testHead.id, em => payments.detachUser(em, id));
 
 test('head administrator bootstrap, explicit promotion and migration rollback preserve existing accounts', async () => {
   const { spawnSync } = require('node:child_process');
@@ -877,6 +877,64 @@ test('Stripe plan switch refunds the old invoice payment once; a provider refusa
         assert.equal(refunds[0].options.idempotencyKey, `refund-tx-${old.id}`);
         assert.equal(old.refundStatus, 'refunded'); assert.equal(old.stripeRefundId, 're_1');
       }
+    } finally { payments.stripe = null; }
+  }
+});
+
+test('deleting a user keeps the payment history, closes open orders and tolerates Stripe failures', async () => {
+  // Mock mode: paid history survives without the account; the open order is cancelled.
+  const user = await newUser();
+  const paidOrder = (await payments.createCheckout(user.id, 'basic', 'monthly')).checkoutUrl.split('/').at(-1);
+  await payments.complete(paidOrder, user.id);
+  const openOrder = (await payments.createCheckout(user.id, 'basic', 'yearly')).checkoutUrl.split('/').at(-1);
+  assert.deepEqual(await users.remove(user.id, testHead.id, em => payments.detachUser(em, user.id)), undefined);
+  assert.equal(await repo(UserEntity).countBy({ id: user.id }), 0);
+  const kept = await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: paidOrder });
+  assert.equal(kept.status, 'paid'); assert.equal(kept.userId, null); assert.equal(kept.formerUserId, user.id); assert.equal(kept.subscriptionId, null);
+  const open = await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId: openOrder });
+  assert.equal(open.status, 'cancelled'); assert.equal(open.cancellationReason, 'user_deleted'); assert.equal(open.formerUserId, user.id);
+  assert.equal(await repo(SubscriptionEntity).countBy({ userId: user.id }), 0);
+  await assert.rejects(payments.complete(openOrder, user.id), /Order not found/);
+
+  // Stripe mode: subscriptions are cancelled; provider errors only produce warnings.
+  for (const scenario of ['ok', 'already-canceled', 'missing', 'outage']) {
+    const person = await newUser();
+    const order = (await (async () => {
+      payments.stripe = { checkout: { sessions: { create: async () => ({ id: `cs_${randomUUID()}`, url: 'https://checkout.stripe.test/x' }) } } };
+      return payments.createCheckout(person.id, 'basic', 'monthly');
+    })()).checkoutUrl;
+    const sessionId = (await repo(PaymentTransactionEntity).findOneByOrFail({ userId: person.id, status: 'pending' })).sessionId;
+    const start = Math.floor(Date.now() / 1000);
+    const external = { id: `sub_${randomUUID()}`, status: 'active', metadata: { sessionId }, cancel_at_period_end: false,
+      items: { data: [{ current_period_start: start, current_period_end: start + 30 * 86400 }] } };
+    const cancelled = [];
+    const stripeError = code => Object.assign(new Error(code), { code });
+    payments.stripe = {
+      subscriptions: {
+        retrieve: async id => {
+          if (scenario === 'missing') throw stripeError('resource_missing');
+          if (scenario === 'outage') throw stripeError('api_connection_error');
+          return { id, status: scenario === 'already-canceled' ? 'canceled' : 'active' };
+        },
+        cancel: async id => { cancelled.push(id); },
+      },
+      webhooks: { constructEvent: payload => JSON.parse(payload) },
+    };
+    try {
+      await payments.complete(sessionId, undefined, external);
+      const warnings = [];
+      await users.remove(person.id, testHead.id, async em => { warnings.push(...await payments.detachUser(em, person.id)); });
+      assert.equal(await repo(UserEntity).countBy({ id: person.id }), 0);
+      assert.deepEqual(cancelled, scenario === 'ok' ? [external.id] : []);
+      assert.deepEqual(warnings, scenario === 'outage' ? ['stripe_cancel_failed'] : []);
+      const history = await repo(PaymentTransactionEntity).findOneByOrFail({ sessionId });
+      assert.equal(history.status, 'paid'); assert.equal(history.userId, null); assert.equal(history.formerUserId, person.id);
+      // A late invoice for the deleted account must be acknowledged, not retried forever.
+      const invoice = { id: `in_${randomUUID()}`, parent: { subscription_details: { subscription: external.id } },
+        billing_reason: 'subscription_cycle', amount_paid: 499, currency: 'usd', lines: { data: [] } };
+      payments.stripe.subscriptions.retrieve = async () => external;
+      assert.deepEqual(await payments.handleWebhook(Buffer.from(JSON.stringify({ type: 'invoice.paid', data: { object: invoice } })), ''), { received: true });
+      assert.equal(await repo(PaymentTransactionEntity).countBy({ sessionId: `invoice:${invoice.id}` }), 0);
     } finally { payments.stripe = null; }
   }
 });
