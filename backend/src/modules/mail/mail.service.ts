@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as nodemailer from "nodemailer";
 import { AppConfig } from "../../config/configuration";
+import { escapeHtml as esc, safeHttpUrl } from "../../common/helpers/escape-html";
 
 type Lang = "en" | "uk";
 
@@ -33,13 +34,13 @@ export class MailService {
       lang === "uk"
         ? {
             subject: "Ласкаво просимо до AbsoluteCinema",
-            title: `Вітаємо, ${name}!`,
+            title: `Вітаємо, ${esc(name)}!`,
             body: "Ваш обліковий запис створено. Тисячі фільмів вже чекають на вас.",
             cta: "Почати перегляд",
           }
         : {
             subject: "Welcome to AbsoluteCinema",
-            title: `Welcome, ${name}!`,
+            title: `Welcome, ${esc(name)}!`,
             body: "Your account has been created. Thousands of movies are waiting for you.",
             cta: "Start watching",
           };
@@ -81,13 +82,13 @@ export class MailService {
         ? {
             subject: "Квитанція про оплату AbsoluteCinema",
             title: "Платіж отримано",
-            body: `Підписку <b>${details.tier}</b> (${details.period === "monthly" ? "щомісячна" : "річна"}) активовано до ${details.endsAt.toLocaleDateString("uk-UA")}.${details.refund ? ` Повернення ${details.refund.amount.toFixed(2)} ${details.refund.currency.toUpperCase()} за невикористану частину попередньої підписки надіслано на спосіб оплати, яким ви користувалися.` : ""}`,
+            body: `Підписку <b>${esc(details.tier)}</b> (${details.period === "monthly" ? "щомісячна" : "річна"}) активовано до ${details.endsAt.toLocaleDateString("uk-UA")}.${details.refund ? ` Повернення ${details.refund.amount.toFixed(2)} ${esc(details.refund.currency.toUpperCase())} за невикористану частину попередньої підписки надіслано на спосіб оплати, яким ви користувалися.` : ""}`,
             cta: "Дивитися зараз",
           }
         : {
             subject: "AbsoluteCinema payment receipt",
             title: "Payment received",
-            body: `Your <b>${details.tier}</b> subscription (${details.period}) is active until ${details.endsAt.toISOString().slice(0, 10)}. Charged: $${details.amount.toFixed(2)}.${details.refund ? ` A refund of ${details.refund.amount.toFixed(2)} ${details.refund.currency.toUpperCase()} for the unused part of your previous subscription has been issued to your original payment method.` : ""}`,
+            body: `Your <b>${esc(details.tier)}</b> subscription (${esc(details.period)}) is active until ${details.endsAt.toISOString().slice(0, 10)}. Charged: $${details.amount.toFixed(2)}.${details.refund ? ` A refund of ${details.refund.amount.toFixed(2)} ${esc(details.refund.currency.toUpperCase())} for the unused part of your previous subscription has been issued to your original payment method.` : ""}`,
             cta: "Watch now",
           };
     this.send(to, t.subject, this.layout(t.title, t.body, t.cta));
@@ -105,10 +106,10 @@ export class MailService {
     ).href;
     return `<!doctype html><html><body style="margin:0;background:#0b0c10;font-family:Arial,sans-serif;color:#e5e7eb;">
   <div style="max-width:520px;margin:32px auto;background:#14161c;border-radius:12px;padding:32px;">
-    <div style="font-size:20px;font-weight:bold;color:#f59e0b;margin-bottom:16px;"><img src="${brandIconUrl}" alt="" width="28" height="28" style="vertical-align:middle;margin-right:8px;">AbsoluteCinema</div>
+    <div style="font-size:20px;font-weight:bold;color:#f59e0b;margin-bottom:16px;"><img src="${esc(brandIconUrl)}" alt="" width="28" height="28" style="vertical-align:middle;margin-right:8px;">AbsoluteCinema</div>
     <h2 style="margin:0 0 12px;color:#fff;">${title}</h2>
     <p style="line-height:1.6;margin:0 0 24px;">${body}</p>
-    ${href ? `<a href="${href}" style="display:inline-block;background:#f59e0b;color:#0b0c10;padding:12px 24px;border-radius:8px;font-weight:bold;text-decoration:none;">${cta}</a>` : ""}
+    ${href ? `<a href="${esc(safeHttpUrl(href))}" style="display:inline-block;background:#f59e0b;color:#0b0c10;padding:12px 24px;border-radius:8px;font-weight:bold;text-decoration:none;">${cta}</a>` : ""}
   </div>
 </body></html>`;
   }

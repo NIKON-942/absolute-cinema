@@ -938,3 +938,28 @@ test('deleting a user keeps the payment history, closes open orders and tolerate
     } finally { payments.stripe = null; }
   }
 });
+
+test('user-controlled values are escaped in every HTML email', async () => {
+  const { MailService } = require('../dist/modules/mail/mail.service.js');
+  const settings = { host: 'localhost', port: 1025, user: '', pass: '', from: 'Test <no-reply@example.com>' };
+  const sent = [];
+  const service = new MailService({ get: key => key === 'smtp' ? settings : 'http://localhost:5173' });
+  service.transporter = { sendMail: async message => { sent.push(message); } };
+  const attack = `<img src=x onerror="alert(1)"><a href="http://evil.example">click</a>'\`&`;
+  for (const lang of ['en', 'uk']) {
+    service.sendWelcome('user@example.com', attack, lang);
+    service.sendReceipt('user@example.com', { tier: attack, period: attack, amount: 4.99, currency: 'usd', endsAt: new Date(), refund: { amount: 1, currency: attack } }, lang);
+  }
+  service.sendPasswordReset('user@example.com', 'javascript:alert(1)');
+  service.sendPasswordReset('user@example.com', 'http://localhost:5173/reset-password?token=abc&x="onmouseover="alert(1)');
+  assert.equal(sent.length, 6);
+  for (const { html } of sent) {
+    assert.doesNotMatch(html, /<img src=x/i); assert.doesNotMatch(html, /<a href="http:\/\/evil/i);
+    assert.doesNotMatch(html, /onerror="|onmouseover="|href="javascript:/i);
+  }
+  assert.match(sent[0].html, /Welcome, &lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
+  assert.match(sent[4].html, /href="#"/);
+  assert.match(sent[5].html, /href="http:\/\/localhost:5173\/reset-password\?token=abc&amp;x=%22onmouseover/);
+  // Legitimate markup of the templates stays intact.
+  assert.match(sent[1].html, /<b>&lt;img/);
+});
