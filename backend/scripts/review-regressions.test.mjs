@@ -1033,14 +1033,26 @@ test('similar movies keep their full genre list; login does not reveal whether a
 
 test('CLIENT_URL may list several origins: CORS uses all, links use the first', () => {
   const { clientOrigins, configuration } = require('../dist/config/configuration.js');
-  const previous = process.env.CLIENT_URL;
+  const keys = ['CLIENT_URL', 'NODE_ENV', 'JWT_SECRET', 'DB_PASSWORD'];
+  const previous = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   try {
+    // Значення за замовчуванням перевіряємо поза production, бо там CLIENT_URL обов'язковий
+    process.env.NODE_ENV = 'development';
     process.env.CLIENT_URL = 'https://a.example/, https://b.example';
     assert.deepEqual(clientOrigins(), ['https://a.example', 'https://b.example']);
     assert.equal(configuration().clientUrl, 'https://a.example');
     delete process.env.CLIENT_URL;
     assert.equal(configuration().clientUrl, 'http://localhost:5173');
-  } finally { if (previous === undefined) delete process.env.CLIENT_URL; else process.env.CLIENT_URL = previous; }
+    // У production без CLIENT_URL конфігурація має відхилятися, зі списком посилання бере перший origin
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = 'x'.repeat(40);
+    process.env.DB_PASSWORD = 'not-the-demo-password';
+    assert.throws(() => configuration(), /CLIENT_URL/);
+    process.env.CLIENT_URL = 'https://a.example/, https://b.example';
+    assert.equal(configuration().clientUrl, 'https://a.example');
+  } finally {
+    for (const k of keys) { if (previous[k] === undefined) delete process.env[k]; else process.env[k] = previous[k]; }
+  }
 });
 
 test('#12 search treats % and _ literally; #13 catalog DTOs are built from grouped queries', async () => {
