@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY, UserRole } from '../decorators/roles.decorator';
 
+/** Checks that the user has the role from @Roles (head_admin is also allowed where admin is). */
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}

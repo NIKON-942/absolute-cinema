@@ -3,6 +3,7 @@ import { open, rm } from 'node:fs/promises';
 import { extname } from 'node:path';
 import type { MediaProbe } from './media-processing';
 
+// posters are up to 5 MB
 export const POSTER_MAX_BYTES = 5 * 1024 * 1024;
 export const POSTER_TYPES: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
@@ -26,6 +27,7 @@ export async function validatePoster(file?: Express.Multer.File): Promise<void> 
   }
 }
 
+// checks that the codecs fit the file format (mp4 or webm)
 export function validateUploadedVideo(meta: MediaProbe, filename: string): void {
   const ext = extname(filename).toLowerCase();
   const formats = meta.format?.split(',') ?? [];

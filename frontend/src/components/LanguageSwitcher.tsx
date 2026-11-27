@@ -1,5 +1,6 @@
 import { useLanguage } from '@/context/LanguageContext';
 
+/** Button to switch between Ukrainian and English. */
 export function LanguageSwitcher() {
   const { lang, setLang, t } = useLanguage();
   const nextLang = lang === 'uk' ? 'en' : 'uk';

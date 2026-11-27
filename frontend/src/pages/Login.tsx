@@ -10,6 +10,7 @@ import { AuthShell, GoogleButton, FieldError, authInputClass, authLabelClass, au
 import { Spinner } from '@/components/Spinner';
 import { isValidEmail } from '@/utils/validation';
 
+/** Login page (e-mail + password, or Google). */
 export default function Login() {
   const { t } = useLanguage();
   const { login } = useAuth();
@@ -27,6 +28,7 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [blocked, setBlocked] = useState(false);
 
+  // checks the fields before sending
   const validate = (): boolean => {
     const next: typeof errors = {};
     if (!email.trim()) next.email = t('auth.validation.emailRequired');
@@ -36,6 +38,7 @@ export default function Login() {
     return Object.keys(next).length === 0;
   };
 
+  // logs in and goes back to the page the user wanted
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBlocked(false);

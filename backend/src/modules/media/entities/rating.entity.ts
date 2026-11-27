@@ -9,6 +9,7 @@ import {
 import { MovieEntity } from './movie.entity';
 import { UserEntity } from '../../users/user.entity';
 
+/** Table ratings: one user's rating of one movie. */
 @Entity('ratings')
 @Index('uq_rating_user_movie', ['userId', 'movieId'], { unique: true })
 export class RatingEntity {

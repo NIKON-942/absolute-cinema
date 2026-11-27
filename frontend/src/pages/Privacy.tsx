@@ -4,6 +4,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import policy from '@/content/privacy.json';
 import terms from '@/content/terms.json';
 
+/** Privacy policy or terms of use, depends on the prop. */
 export default function Privacy({ document = 'privacy' }: { document?: 'privacy' | 'terms' }) {
   const { lang } = useLanguage();
   const content = (document === 'privacy' ? policy : terms)[lang];

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { en } from '@/i18n/en';
 import { uk } from '@/i18n/uk';
 
+// supported languages
 export type Lang = 'en' | 'uk';
 export type TFunction = (key: string, params?: Record<string, string | number>) => string;
 
@@ -17,6 +18,7 @@ interface LanguageContextValue {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
+// language from localStorage or from the browser
 function detectInitialLang(): Lang {
   const stored = localStorage.getItem(LANG_KEY);
   if (stored === 'en' || stored === 'uk') return stored;
@@ -24,6 +26,7 @@ function detectInitialLang(): Lang {
   return 'en';
 }
 
+/** Gives the t() function for translations and the current language. */
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(detectInitialLang);
 
@@ -54,6 +57,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
+// hook for translations
 export function useLanguage(): LanguageContextValue {
   const ctx = useContext(LanguageContext);
   if (!ctx) throw new Error('useLanguage must be used within LanguageProvider');

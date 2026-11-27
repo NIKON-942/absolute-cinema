@@ -5,6 +5,7 @@ type Theme = 'light' | 'dark';
 const THEME_KEY = 'ac_theme';
 const ThemeContext = createContext<{ theme: Theme; setTheme: (theme: Theme) => void } | null>(null);
 
+/** Stores the theme (light/dark) and sets it on the page. */
 export function ThemeProvider({ children }: { children: ReactNode }) {
   // index.html applies the initial choice before styles and React load.
   const [theme, updateTheme] = useState<Theme>(() => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
@@ -29,6 +30,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;
 }
 
+// hook to read or change the theme
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (!context) throw new Error('useTheme requires ThemeProvider');

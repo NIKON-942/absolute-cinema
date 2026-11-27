@@ -1,6 +1,7 @@
 import { api } from './api';
 import type { TranscodeJobDto } from '@/types';
 
+// must be the same as on the backend (16 MB)
 export const CHUNK_SIZE = 16 * 1024 * 1024;
 export interface UploadManifest { filename: string; size: number; sha256: string; chunks: string[] }
 export interface UploadSession {
@@ -24,6 +25,7 @@ export const videoUploads = {
   remove: (id: string) => api.delete(`/media/uploads/${id}`, { headers: tus }),
 };
 
+// counts SHA-256 of the file and of every chunk in a web worker
 export function hashVideo(file: File, signal: AbortSignal, progress: (percent: number) => void): Promise<UploadManifest> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../workers/video-hash.worker.ts', import.meta.url), { type: 'module' });

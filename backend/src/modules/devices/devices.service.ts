@@ -36,6 +36,7 @@ export interface HeartbeatResult {
   maxDevices: number;
 }
 
+// error 409 when the plan allows no more devices at the same time
 export class DeviceLimitError extends ConflictException {
   constructor(maxDevices: number, activeDevices: number) {
     super({
@@ -88,6 +89,7 @@ export class DevicesService {
     private planLimits: PlanLimitsService,
   ) {}
 
+  // tier of the active subscription or null
   private async activeTier(userId: number): Promise<SubscriptionTierEnum | null> {
     const active = await this.subsRepo.findOne({
       where: { userId, status: SubscriptionStatusEnum.ACTIVE },

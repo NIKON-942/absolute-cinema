@@ -10,6 +10,7 @@ import { qualityRank } from '@/utils/plans';
 import { Spinner } from '@/components/Spinner';
 import type { Quality } from '@/types';
 
+// available playback speeds
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const VOLUME_KEY = 'ac_volume';
 
@@ -56,6 +57,7 @@ function PlayerSheet({ title, onClose, children, target }: {
   );
 }
 
+// small lock for qualities that the plan doesn't allow
 function LockIcon() {
   return <LockKeyhole size={12} aria-hidden="true" />;
 }
@@ -175,12 +177,14 @@ export function VideoPlayer({
     else v.pause();
   }, []);
 
+  // jump forward/back by some seconds
   const seekBy = useCallback((delta: number) => {
     const v = videoRef.current;
     if (!v || !Number.isFinite(v.duration)) return;
     v.currentTime = Math.max(0, Math.min(v.duration - 0.2, v.currentTime + delta));
   }, []);
 
+  // fullscreen on/off
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => undefined);
@@ -189,6 +193,7 @@ export function VideoPlayer({
     }
   }, []);
 
+  // keyboard: space/K, arrows, M (mute), F (fullscreen)
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Let buttons, sliders and the portalled dialog handle their own keys.
     if (e.target instanceof Element && e.target.closest('button, input, dialog')) return;
@@ -292,6 +297,7 @@ export function VideoPlayer({
     }
   };
 
+  // current time changed: update the bar and tell the parent
   const onTimeUpdate = () => {
     const v = videoRef.current;
     if (!v) return;
@@ -300,6 +306,7 @@ export function VideoPlayer({
     onProgress?.(v.currentTime, v.duration || 0);
   };
 
+  // how much is already loaded
   const onBufferProgress = () => {
     const v = videoRef.current;
     if (!v || !v.duration) return;
@@ -312,6 +319,7 @@ export function VideoPlayer({
     }
   };
 
+  // the video can't be loaded
   const onVideoError = () => {
     setWaiting(false);
     onError?.();
@@ -340,6 +348,7 @@ export function VideoPlayer({
     return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   };
 
+  // jump to the chosen place of the video
   const commitSeek = (ratio: number) => {
     const v = videoRef.current;
     if (v && Number.isFinite(v.duration)) {
@@ -348,6 +357,7 @@ export function VideoPlayer({
     }
   };
 
+  // seek bar: press, move and release work together for dragging
   const onSeekBarPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -372,12 +382,14 @@ export function VideoPlayer({
   const displayTime = dragging && duration ? dragRatio * duration : currentTime;
   const controlsVisible = showControls || !playing;
 
+  // playback speed
   const changeSpeed = (s: number) => {
     setSpeed(s);
     if (videoRef.current) videoRef.current.playbackRate = s;
     setSpeedOpen(false);
   };
 
+  // volume 0..1
   const changeVolume = (v: number) => {
     setVolume(v);
     setMuted(v === 0);

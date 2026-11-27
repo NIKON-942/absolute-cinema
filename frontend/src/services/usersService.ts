@@ -1,6 +1,7 @@
 import { api } from './api';
 import type { Paginated, Role, UserDto } from '@/types';
 
+// requests to /users (profile and user management)
 export const usersService = {
   list(params: { page?: number; limit?: number; search?: string }): Promise<Paginated<UserDto>> {
     return api.get('/users', { params }).then((r) => r.data);

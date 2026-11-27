@@ -9,6 +9,7 @@ import {
 import { MovieEntity } from './movie.entity';
 import { UserEntity } from '../../users/user.entity';
 
+/** Table watch_progress: where the user stopped watching a movie. */
 @Entity('watch_progress')
 @Index('uq_progress_user_movie', ['userId', 'movieId'], { unique: true })
 export class WatchProgressEntity {

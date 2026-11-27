@@ -3,6 +3,7 @@ import { AppDataSource } from './data-source';
 
 AppDataSource.initialize()
   .then(async () => {
+    // runs all migrations that are not applied yet
     const migrations = await AppDataSource.runMigrations();
     console.log(
       `Migrations complete (${migrations.length} applied):`,

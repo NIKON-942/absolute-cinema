@@ -11,6 +11,7 @@ interface ModalProps {
   wide?: boolean;
 }
 
+/** Simple modal window with title, content and footer. Closes on Escape. */
 export function Modal({ open, title, onClose, children, footer, wide }: ModalProps) {
   const { t } = useLanguage();
 

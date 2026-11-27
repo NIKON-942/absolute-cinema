@@ -3,6 +3,7 @@ import type { AnalyticsDto, MovieDto, Paginated } from '@/types';
 
 export type MovieVisibility = 'all' | 'published' | 'hidden';
 
+// requests for the admin: movie table, visibility and analytics
 export const adminService = {
   movies(filters: { search?: string; page?: number; limit?: number; visibility?: MovieVisibility }): Promise<Paginated<MovieDto>> {
     return api.get('/admin/media', { params: filters }).then((r) => r.data);

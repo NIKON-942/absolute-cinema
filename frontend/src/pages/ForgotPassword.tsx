@@ -10,6 +10,7 @@ import { AuthShell, FieldError, authInputClass, authLabelClass, authButtonClass 
 import { Spinner } from '@/components/Spinner';
 import { isValidEmail } from '@/utils/validation';
 
+/** Page where the user enters e-mail to get a reset link. */
 export default function ForgotPassword() {
   const { t } = useLanguage();
   const { error: errorToast } = useToast();

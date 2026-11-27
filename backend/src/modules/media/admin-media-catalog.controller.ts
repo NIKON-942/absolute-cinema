@@ -17,6 +17,7 @@ class MovieVisibilityDto {
 export class AdminMediaCatalogController {
   constructor(private mediaService: MediaService) {}
 
+  /** All movies for the admin table, hidden ones too. */
   @Get()
   list(
     @Query('search') search?: string,
@@ -34,11 +35,13 @@ export class AdminMediaCatalogController {
     }, undefined, visibility);
   }
 
+  /** One movie for the admin (also hidden). */
   @Get(':id')
   detail(@Param('id', ParseIntPipe) id: number) {
     return this.mediaService.getMovie(id, undefined, true);
   }
 
+  /** Hides a movie from the public catalog or shows it again. */
   @Patch(':id/visibility')
   setVisibility(@Param('id', ParseIntPipe) id: number, @Body() body: MovieVisibilityDto) {
     return this.mediaService.setVisibility(id, body.isHidden);

@@ -21,6 +21,7 @@ interface CheckoutState {
 
 type Phase = 'form' | 'paying' | 'success' | 'cancelled';
 
+/** Fake payment page for the demo mode without Stripe. */
 export default function MockCheckout() {
   const { sessionId = '' } = useParams<{ sessionId: string }>();
   const { t } = useLanguage();

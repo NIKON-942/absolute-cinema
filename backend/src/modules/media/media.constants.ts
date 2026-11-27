@@ -1,10 +1,12 @@
 import { join } from 'path';
 
+// folders for files: sources, converted videos and posters
 export const STORAGE_ROOT = join(process.cwd(), 'storage');
 export const MASTERS_DIR = join(STORAGE_ROOT, 'masters');
 export const VIDEOS_DIR = join(STORAGE_ROOT, 'videos');
 export const POSTERS_DIR = join(STORAGE_ROOT, 'posters');
 
+// makes a safe file name from a title
 export function slugify(input: string): string {
   return input
     .toLowerCase()

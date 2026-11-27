@@ -11,12 +11,14 @@ import {
 import { SubscriptionEntity } from '../payments/entities/subscription.entity';
 import { imageReference, removeImageIfUnused } from '../media/image-upload';
 
+// user together with his current subscription
 export interface UserWithSubscription {
   user: UserEntity;
   activeSubscription: SubscriptionEntity | null;
   hasActiveSubscription: boolean;
 }
 
+// user data that is sent to the frontend (no password hash and tokens)
 export interface SerializedUser {
   id: number;
   email: string;
@@ -40,6 +42,7 @@ export interface SerializedUser {
   lastLoginAt: string | null;
 }
 
+/** Work with users: profile, roles, blocking, deleting. */
 @Injectable()
 export class UsersService {
   constructor(
@@ -50,6 +53,7 @@ export class UsersService {
     private dataSource: DataSource,
   ) {}
 
+  /** Finds a user by id and adds the subscription. */
   async findWithSubscription(id: number): Promise<UserWithSubscription | null> {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) return null;
@@ -60,6 +64,7 @@ export class UsersService {
     return this.usersRepo.findOne({ where: { email: email.toLowerCase() } });
   }
 
+  /** Finds the active subscription that has not expired yet. */
   async attachSubscription(user: UserEntity): Promise<UserWithSubscription> {
     const active = await this.subsRepo.findOne({
       where: { userId: user.id, status: SubscriptionStatusEnum.ACTIVE },
@@ -74,6 +79,7 @@ export class UsersService {
     };
   }
 
+  /** Turns a user into a safe object for the API response. */
   serialize({ user, activeSubscription, hasActiveSubscription }: UserWithSubscription): SerializedUser {
     return {
       id: user.id,
@@ -101,6 +107,7 @@ export class UsersService {
     };
   }
 
+  /** Paginated user list for the admin panel, can search by e-mail, name or id. */
   async list(search: string, page: number, limit: number) {
     const qb = this.usersRepo
       .createQueryBuilder('user')
@@ -125,6 +132,7 @@ export class UsersService {
     };
   }
 
+  /** Changes the own profile. A new password needs the current one and logs out other sessions. */
   async updateMe(
     userId: number,
     data: {
@@ -164,6 +172,7 @@ export class UsersService {
     return this.requireWithSubscription(userId);
   }
 
+  /** Changes the role. Only a head admin can do it. */
   async setRole(userId: number, role: 'viewer' | 'admin' | 'head_admin', actorId: number) {
     if (!Object.values(UserRoleEnum).includes(role as UserRoleEnum)) throw new BadRequestException('Invalid role');
     await this.dataSource.transaction(async em => {
@@ -173,6 +182,7 @@ export class UsersService {
     return this.requireWithSubscription(userId);
   }
 
+  /** Blocks or unblocks the user. */
   async setBlocked(userId: number, isBlocked: boolean, actorId: number) {
     await this.dataSource.transaction(async em => {
       const user = await this.authorizeManagement(em, actorId, userId, false, isBlocked);
@@ -202,6 +212,7 @@ export class UsersService {
     });
   }
 
+  // checks that the admin may do this action with this user (not himself, not the last head admin)
   private async authorizeManagement(em: EntityManager, actorId: number, userId: number, changesRole: boolean, removesAccess: boolean): Promise<UserEntity> {
     if (!Number.isSafeInteger(actorId) || actorId <= 0) throw new ForbiddenException('Administrative access required');
     if (!Number.isSafeInteger(userId) || userId <= 0) throw new BadRequestException('Invalid user ID');
@@ -225,6 +236,7 @@ export class UsersService {
     return user;
   }
 
+  /** Same as findWithSubscription, but throws 404 if there is no user. */
   async requireWithSubscription(userId: number): Promise<UserWithSubscription> {
     const found = await this.findWithSubscription(userId);
     if (!found) throw new NotFoundException('User not found');

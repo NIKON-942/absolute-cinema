@@ -1,6 +1,7 @@
 import { useTheme } from '@/context/ThemeContext';
 import { useLanguage } from '@/context/LanguageContext';
 
+/** Button to switch between light and dark theme. */
 export function ThemeSwitcher() {
   const { theme, setTheme } = useTheme();
   const { t } = useLanguage();

@@ -21,8 +21,10 @@ interface AuthContextValue {
   setUser: (user: UserDto | null) => void;
 }
 
+// context with the logged in user and login/logout functions
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Keeps the current user and the token. The token is stored in localStorage and checked with /auth/me on start. */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserDto | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
@@ -146,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// hook to get the auth context, only inside AuthProvider
 export function useAuthContext(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuthContext must be used within AuthProvider');

@@ -20,6 +20,7 @@ export function uploadMeasurements(snapshot: UploadSnapshot, now: number) {
   return { elapsedSeconds, bytesPerSecond, remainingSeconds, transferred, stalled };
 }
 
+// bytes -> KB/MB/GB
 export function formatBytes(bytes: number, locale = 'en'): string {
   const value = Number.isFinite(bytes) ? Math.max(0, bytes) : 0;
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

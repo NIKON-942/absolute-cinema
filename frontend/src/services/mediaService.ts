@@ -14,6 +14,7 @@ import type {
   WatchProgressDto,
 } from '@/types';
 
+// fields of the movie form
 export interface MovieUpsertPayload {
   title?: string;
   originalTitle?: string;
@@ -38,6 +39,7 @@ export interface VideoUploadProgress {
   rate: number | null;
 }
 
+// builds FormData because a poster file can be sent with the fields
 function toForm(payload: MovieUpsertPayload): FormData {
   const form = new FormData();
   if (payload.file) form.append('file', payload.file);
@@ -63,7 +65,9 @@ function toForm(payload: MovieUpsertPayload): FormData {
   return form;
 }
 
+// requests to /media: catalog, dictionaries, favorites, ratings, progress and admin CRUD
 export const mediaService = {
+  // movies with filters and pages
   list(filters: MovieFilters): Promise<Paginated<MovieDto>> {
     return api.get('/media', { params: { ...filters, genreIds: filters.genreIds?.join(',') } }).then((r) => r.data);
   },
@@ -157,6 +161,7 @@ export const mediaService = {
     return api.get('/media/favorites').then((r) => r.data);
   },
 
+  // set rating 1-10
   rate(id: number, value: number): Promise<RatingResultDto> {
     return api.put(`/media/${id}/rating`, { value }).then((r) => r.data);
   },
@@ -179,6 +184,7 @@ export const mediaService = {
     return api.get('/media/progress').then((r) => r.data);
   },
 
+  // recommended movies
   recommendations(): Promise<MovieDto[]> {
     return api.get('/recommendations').then((r) => r.data);
   },

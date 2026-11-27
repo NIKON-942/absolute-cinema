@@ -4,10 +4,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /** РГР2 FR-2: at least eight characters; bcrypt accepts up to 72 UTF-8 bytes. */
 
+// simple e-mail check
 export function isValidEmail(value: string): boolean {
   return EMAIL_RE.test(value.trim());
 }
 
+// password rules: 8+ characters
 export function isValidPassword(value: string): boolean {
   return [...value].length >= 8 && new TextEncoder().encode(value).length <= 72;
 }

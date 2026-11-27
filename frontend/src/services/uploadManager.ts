@@ -4,6 +4,7 @@ import type { UploadManifest, UploadSession } from './videoUploads';
 import type { MovieDto, TranscodeJobDto } from '@/types';
 import { extractServerMessage } from './api';
 
+// steps of an upload
 export type UploadPhase = 'hashing' | 'uploading' | 'retrying' | 'paused' | 'needsFile' | 'verifying' | 'processing' | 'ready' | 'failed';
 export interface UploadTask {
   key: string; uploadId?: string; movieId: number; title: string; filename: string;
@@ -35,6 +36,7 @@ export class UploadManager {
   private initialized = false;
   private dismissed = new Set<string>();
   private polling = false;
+  // subscribe/snapshot are used by React (useSyncExternalStore)
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   snapshot = () => this.tasks;
   private publish() { for (const listener of this.listeners) listener(); }
@@ -46,6 +48,7 @@ export class UploadManager {
     const t = this.task(key);
     if (t?.transferStartedAt) this.update(key, { elapsedMs: t.elapsedMs + Date.now() - t.transferStartedAt, transferStartedAt: undefined, rate: null });
   }
+  // loads unfinished uploads of this admin from the server
   async connect(owner: number | null, signal: AbortSignal) {
     if (!this.initialized || this.owner !== owner) {
       this.initialized = true; this.generation++;
@@ -68,6 +71,7 @@ export class UploadManager {
     }
     this.publish();
   }
+  // starts a new upload
   start(movie: MovieDto, file: File) {
     if (!this.owner) throw new Error('An administrator session is required');
     if (file.size <= 0 || file.size > 8 * 1024 ** 3) throw new Error('Video must be between 1 byte and 8 GiB');
@@ -125,6 +129,7 @@ export class UploadManager {
     }
     this.runtime.delete(key); this.tasks = this.tasks.filter(t => t.key !== key); this.publish();
   }
+  // main upload loop for one file: hash, send chunks, verify
   private async run(key: string) {
     const runtime = this.runtime.get(key); const initial = this.task(key);
     if (!runtime?.file || runtime.running || !initial) return;
@@ -205,6 +210,7 @@ export class UploadManager {
     this.update(key, { offset: session.offset, loaded: session.offset, phase: session.state === 'uploading' ? 'needsFile' : session.state,
       job: session.job, error: session.error, rate: null });
   }
+  // asks the server how conversion is going
   async poll() {
     if (this.polling) return;
     this.polling = true;

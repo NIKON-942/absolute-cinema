@@ -9,11 +9,13 @@ import { Navbar } from '@/components/Navbar';
 import AppRoutes from '@/routes/AppRoutes';
 
 const UploadPanel = lazy(() => import('@/components/UploadPanel').then(module => ({ default: module.UploadPanel })));
+// shows the upload panel only for admins, so uploads keep going on any page
 function BackgroundUploads() {
   const { tasks } = useUploads();
   return tasks.length ? <Suspense fallback={null}><UploadPanel /></Suspense> : null;
 }
 
+// footer with links to privacy policy and terms
 function SiteFooter() {
   const { t } = useLanguage();
   return (
@@ -30,6 +32,7 @@ function SiteFooter() {
   );
 }
 
+/** Root component: providers (theme, language, auth, toasts, uploads), navbar, routes and footer. */
 export default function App() {
   return (
     <ThemeProvider>

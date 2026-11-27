@@ -28,6 +28,7 @@ const inputClass =
   'w-full rounded-lg border border-cinema-border bg-cinema-black/60 px-3.5 py-2.5 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none';
 const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-cinema-muted';
 
+/** Profile: name, avatar, password, Google link, subscription, devices and favorites. */
 export default function Profile() {
   const { t, lang } = useLanguage();
   const { user, setUser, refreshMe, logout } = useAuth();
@@ -47,6 +48,7 @@ export default function Profile() {
   }>({});
   const [saving, setSaving] = useState(false);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
+  // asks the backend for the Google URL and goes there to link the account
   const linkGoogle = async () => {
     setLinkingGoogle(true);
     try { const { url } = await authService.linkGoogle(); window.location.assign(url); }
@@ -63,6 +65,7 @@ export default function Profile() {
   const [busyDevice, setBusyDevice] = useState<string | null>(null);
   const currentDeviceId = getDeviceId();
 
+  // loads devices that are watching now
   const loadDevices = () => {
     devicesService
       .list()
@@ -73,6 +76,7 @@ export default function Profile() {
       .catch(() => setDevices([]));
   };
 
+  // ends the session of one device to free a slot
   const onDisconnectDevice = async (deviceId: string) => {
     setBusyDevice(deviceId);
     try {
@@ -86,6 +90,7 @@ export default function Profile() {
     }
   };
 
+  // turns off auto renewal (access stays until the end of the period)
   const onCancelSubscription = async () => {
     setCancelling(true);
     try {
@@ -116,6 +121,7 @@ export default function Profile() {
 
   const sub = user.activeSubscription;
 
+  // validates the form and saves the profile (name, avatar, new password)
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const next: typeof errors = {};
@@ -153,10 +159,12 @@ export default function Profile() {
     }
   };
 
+  // removes or adds a favorite without reloading the page
   const onToggleFavorite = (movie: MovieDto, isFavorite: boolean) => {
     setFavorites((prev) => (prev ? (isFavorite ? prev.map((m) => (m.id === movie.id ? { ...m, isFavorite } : m)) : prev.filter((m) => m.id !== movie.id)) : prev));
   };
 
+  // unfinished movies for the 'continue watching' block
   const continueWatching = (progress ?? []).filter((p) => p.durationSeconds > 0 && p.positionSeconds < p.durationSeconds - 15);
 
   return (

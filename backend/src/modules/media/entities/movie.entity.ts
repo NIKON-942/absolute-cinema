@@ -18,8 +18,10 @@ import { GenreEntity } from './genre.entity';
 import { RatingEntity } from './rating.entity';
 import { UserEntity } from '../../users/user.entity';
 
+// the three qualities we make
 export type VideoQuality = '480p' | '720p' | '1080p';
 
+// state of the video conversion
 export enum TranscodeStatusEnum {
   NONE = 'none',
   PROCESSING = 'processing',
@@ -27,6 +29,7 @@ export enum TranscodeStatusEnum {
   FAILED = 'failed',
 }
 
+/** Table movies: info about a movie and paths to its converted video files. */
 @Entity('movies')
 export class MovieEntity {
   @PrimaryGeneratedColumn()
@@ -35,6 +38,7 @@ export class MovieEntity {
   @Column()
   title: string;
 
+  // hidden movies are seen only by admins
   @Column({ default: false })
   isHidden: boolean;
 
@@ -95,6 +99,7 @@ export class MovieEntity {
   @Column({ type: 'varchar', nullable: true })
   trailerUrl: string | null;
 
+  // file names of the converted videos, null while not ready
   @Column({ type: 'varchar', nullable: true })
   video480: string | null;
 
@@ -104,6 +109,7 @@ export class MovieEntity {
   @Column({ type: 'varchar', nullable: true })
   video1080: string | null;
 
+  // how many times people started watching
   @Column({ type: 'int', default: 0 })
   viewCount: number;
 

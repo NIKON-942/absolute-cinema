@@ -36,6 +36,7 @@ import type {
   UserDto,
 } from '@/types';
 
+// rows per page in tables
 const PAGE_SIZE = 10;
 const ANALYTICS_INTERVALS = [7, 30, 90, 365];
 
@@ -50,8 +51,10 @@ const dangerBtn =
   'cursor-pointer rounded-lg bg-cinema-danger px-4 py-2 text-sm font-bold text-white transition hover:bg-cinema-danger/90 disabled:cursor-default disabled:opacity-60';
 
 type Tab = 'movies' | 'genres' | 'actors' | 'countries' | 'directors' | 'users' | 'analytics';
+// tabs of the admin panel
 const TABS: Tab[] = ['movies', 'genres', 'actors', 'countries', 'directors', 'users', 'analytics'];
 
+/** Admin panel with tabs: movies, genres, actors, countries, directors, users and analytics. */
 export default function AdminPanel() {
   const { t } = useLanguage();
   const [tab, setTab] = useState<Tab>('movies');
@@ -118,6 +121,7 @@ interface ConfirmState {
   action: () => Promise<void>;
 }
 
+// window 'Are you sure?' for delete actions
 function ConfirmDialog({ state, onClose, busy }: { state: ConfirmState | null; onClose: () => void; busy: boolean }) {
   const { t } = useLanguage();
   return (
@@ -180,6 +184,7 @@ const emptyMovieForm: MovieFormState = {
   file: null,
 };
 
+/** Movies tab: table with search, create/edit form, video upload, hide/show and delete. */
 function MoviesTab() {
   const { t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -988,6 +993,7 @@ interface DictionaryRow {
   name: string;
 }
 
+/** Same CRUD tab for simple lists (countries and directors). */
 function DictionaryTab({
   i18nPrefix,
   load,

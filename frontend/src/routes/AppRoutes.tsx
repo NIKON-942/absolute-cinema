@@ -17,9 +17,11 @@ import MockCheckout from '@/pages/MockCheckout';
 import Profile from '@/pages/Profile';
 import NotFound from '@/pages/NotFound';
 
+// heavy pages are loaded only when they are opened
 const AdminPanel = lazy(() => import('@/pages/AdminPanel'));
 const Privacy = lazy(() => import('@/pages/Privacy'));
 
+/** All pages of the site. Private pages are wrapped in ProtectedRoute, admin pages in AdminRoute. */
 export default function AppRoutes() {
   return (
     <Routes>

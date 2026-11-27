@@ -8,6 +8,7 @@ import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { BrandIcon } from '@/components/BrandIcon';
 import { resolveMediaUrl } from '@/utils/url';
 
+/** Top menu: logo, links, search, language and theme switchers and the user menu. */
 export function Navbar() {
   const { t } = useLanguage();
   const { user, isAdmin, logout } = useAuth();
@@ -18,12 +19,18 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  // прапорець: пошук змінено саме введенням користувача (а не переходом по сайту)
+  const typedRef = useRef(false);
 
   // navigate to catalog as the user types in the navbar search
   useEffect(() => {
+    // без цієї перевірки ефект повертав на каталог після кліку на логотип,
+    // бо введений запит лишався в стані, а шлях уже не /catalog
+    if (!typedRef.current) return;
     const trimmed = debouncedSearch.trim();
     if (trimmed.length < 2) return;
     const params = new URLSearchParams({ search: trimmed });
+    typedRef.current = false;
     if (location.pathname !== '/catalog' || location.search !== `?${params.toString()}`) {
       navigate(`/catalog?${params.toString()}`);
     }
@@ -49,8 +56,15 @@ export function Navbar() {
       isActive ? 'bg-cinema-card text-cinema-accent' : 'text-cinema-soft hover:bg-cinema-card/60 hover:text-cinema-text'
     }`;
 
+  // перехід на головну по логотипу: скидаємо пошуковий запит і блокуємо автопереход
+  const goHome = () => {
+    typedRef.current = false;
+    setSearch('');
+  };
+
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    typedRef.current = false;
     const trimmed = search.trim();
     navigate(trimmed ? `/catalog?search=${encodeURIComponent(trimmed)}` : '/catalog');
   };
@@ -59,7 +73,7 @@ export function Navbar() {
     <header className="sticky top-0 z-40 border-b border-cinema-border bg-cinema-black/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:gap-5">
         {/* logo */}
-        <Link to="/" aria-label="AbsoluteCinema" className="flex shrink-0 items-center gap-2">
+        <Link to="/" onClick={goHome} aria-label="AbsoluteCinema" className="flex shrink-0 items-center gap-2">
           <BrandIcon />
           <span className="hidden text-lg font-extrabold tracking-tight text-cinema-text sm:block">
             Absolute<span className="text-cinema-accent">Cinema</span>
@@ -97,7 +111,7 @@ export function Navbar() {
             <input
               type="search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { typedRef.current = true; setSearch(e.target.value); }}
               placeholder={t('nav.searchPlaceholder')}
               aria-label={t('nav.search')}
               className="w-full rounded-lg border border-cinema-border bg-cinema-panel py-2 pl-9 pr-3 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none"

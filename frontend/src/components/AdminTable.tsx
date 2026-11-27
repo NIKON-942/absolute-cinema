@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 
+// description of one table column
 export interface Column<T> {
   key: string;
   label: string;
@@ -22,6 +23,7 @@ interface AdminTableProps<T> {
   emptyMessage: string;
 }
 
+/** Table for the admin panel with sorting by column and a column for action buttons. */
 export function AdminTable<T>({ columns, rows, rowKey, actions, emptyMessage }: AdminTableProps<T>) {
   const { t } = useLanguage();
   const [sortKey, setSortKey] = useState<string | null>(null);

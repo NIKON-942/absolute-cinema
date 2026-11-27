@@ -18,6 +18,7 @@ function money(amount: number, currency: string, lang: Lang): string {
   }
 }
 
+/** Sends e-mails through SMTP: welcome, password reset and payment receipt. */
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -42,6 +43,7 @@ export class MailService {
     });
   }
 
+  // e-mail after registration
   sendWelcome(to: string, name: string, lang: Lang = "en"): void {
     const t =
       lang === "uk"
@@ -60,6 +62,7 @@ export class MailService {
     this.send(to, t.subject, this.layout(t.title, t.body, t.cta, this.siteUrl()));
   }
 
+  // e-mail with the reset link
   sendPasswordReset(to: string, resetUrl: string, lang: Lang = "en"): void {
     const t =
       lang === "uk"
@@ -78,6 +81,7 @@ export class MailService {
     this.send(to, t.subject, this.layout(t.title, t.body, t.cta, resetUrl));
   }
 
+  // e-mail after a successful payment
   sendReceipt(
     to: string,
     details: {

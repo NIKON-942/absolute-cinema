@@ -14,15 +14,18 @@ import { formatDate, formatPrice } from '@/utils/format';
 import type { PlanDto, SubscriptionPeriod, SubscriptionTier, SwitchPreviewDto } from '@/types';
 
 const TIER_ORDER: SubscriptionTier[] = ['basic', 'plus', 'premium'];
+// billing periods
 const PERIODS: SubscriptionPeriod[] = ['monthly', 'yearly'];
 const FEATURE_COUNT = 4;
 
+/** Plans page: monthly/yearly price, buying, switching and cancel of the subscription. */
 export default function SubscriptionPlans() {
   const { t } = useLanguage();
   const { user, isAuthenticated } = useAuth();
   const { error: errorToast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // order id from ?retry= after a failed or cancelled payment
   const retryId = searchParams.get('retry');
   const [retrying, setRetrying] = useState(false);
   const [returnedOrder, setReturnedOrder] = useState<CancelledCheckoutDto | null>(null);
@@ -37,6 +40,7 @@ export default function SubscriptionPlans() {
     return () => { ignore = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryId, isAuthenticated]);
+  // tries to pay again after a failed payment
   const retry = async () => {
     if (!retryId) return;
     setRetrying(true);
@@ -58,6 +62,7 @@ export default function SubscriptionPlans() {
   const activeSub = user?.activeSubscription ?? null;
   const hasActive = Boolean(user?.hasActiveSubscription && activeSub?.status === 'active');
 
+  // loads the plans
   const load = () => {
     setLoadError(false);
     paymentsService
@@ -72,6 +77,7 @@ export default function SubscriptionPlans() {
   const savingsPercent = (plan: PlanDto): number =>
     Math.max(0, Math.round((1 - plan.yearlyPrice / (plan.monthlyPrice * 12)) * 100));
 
+  // creates an order; in mock mode opens our fake payment page, otherwise goes to Stripe
   const startCheckout = async (tier: SubscriptionTier, chosenPeriod: SubscriptionPeriod = period) => {
     setBusyTier(tier);
     try {

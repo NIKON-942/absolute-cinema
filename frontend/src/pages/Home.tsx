@@ -16,6 +16,7 @@ interface GenreRow {
   movies: MovieDto[];
 }
 
+/** Home page: continue watching, recommendations, popular, new and genre carousels. */
 export default function Home() {
   const { t } = useLanguage();
   const { isAuthenticated, loading: authLoading } = useAuth();
@@ -76,6 +77,7 @@ export default function Home() {
     };
   }, [isAuthenticated]);
 
+  // updates the favorite flag in all carousels
   const onToggleFavorite = (movie: MovieDto, isFavorite: boolean) => {
     const patch = (m: MovieDto): MovieDto => (m.id === movie.id ? { ...m, isFavorite } : m);
     setPopular((prev) => prev?.map(patch) ?? prev);
@@ -97,6 +99,7 @@ export default function Home() {
   }
 
   const hero = popular?.[0];
+  // started but not finished movies
   const continueWatching = (progress ?? [])
     .filter((p) => p.durationSeconds > 0 && p.positionSeconds < p.durationSeconds - 30)
     .slice(0, 10);

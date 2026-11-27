@@ -9,6 +9,7 @@ import {
 import { STATUS_CODES } from 'http';
 import { Response } from 'express';
 
+/** Catches all errors and returns them as JSON with a status code. */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('Exceptions');

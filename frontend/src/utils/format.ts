@@ -1,3 +1,4 @@
+// seconds -> 1:45:10
 export function formatDuration(totalSeconds: number): string {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return '0:00';
   const s = Math.floor(totalSeconds % 60);
@@ -8,10 +9,12 @@ export function formatDuration(totalSeconds: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
 }
 
+// 9.99 -> $9.99
 export function formatPrice(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
+// ISO date -> readable date
 export function formatDate(iso?: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);

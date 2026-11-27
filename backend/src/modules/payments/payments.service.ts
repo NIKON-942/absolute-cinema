@@ -48,6 +48,7 @@ export interface RefundQuote {
   refund: { transaction: PaymentTransactionEntity; amount: number; currency: string; remainingDays: number } | null;
 }
 
+/** Subscriptions and payments. Works with Stripe, or with a fake checkout page when Stripe is turned off (mock mode). */
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -65,6 +66,7 @@ export class PaymentsService {
     }
   }
 
+  /** List of plans with prices and limits for the pricing page. */
   async plans() {
     return (await this.plansRepo.find({ order: { monthlyPrice: 'ASC' } })).map(p => ({
       tier: p.tier, monthlyPrice: Number(p.monthlyPrice), yearlyPrice: Number(p.yearlyPrice),
@@ -72,10 +74,12 @@ export class PaymentsService {
     }));
   }
 
+  // per-user lock, so two payment operations of one user don't run at the same time
   private async lock(em: EntityManager, userId: number) {
     await em.query('SELECT pg_advisory_xact_lock(1701, $1)', [userId]);
   }
 
+  // closes an open Stripe checkout; returns the session if it was already paid
   private async expireCheckout(tx: PaymentTransactionEntity): Promise<Stripe.Checkout.Session | null> {
     if (!this.stripe || !tx.stripeCheckoutId) return null;
     const session = await this.stripe.checkout.sessions.retrieve(tx.stripeCheckoutId);
@@ -161,6 +165,7 @@ export class PaymentsService {
     return failed ? null : { amount: refund.amount, currency: refund.currency };
   }
 
+  /** Starts a purchase: cancels old pending orders, makes a pending subscription and an order, returns the payment page URL. */
   async createCheckout(userId: number, tier: SubscriptionTierEnum, period: SubscriptionPeriodEnum, retryOf?: string) {
     const plan = await this.plansRepo.findOne({ where: { tier } });
     if (!plan) throw new BadRequestException('Unknown subscription tier');
@@ -206,6 +211,7 @@ export class PaymentsService {
     });
   }
 
+  /** Makes a new checkout from a failed or cancelled order (up to 3 attempts). */
   async retry(userId: number, sessionId: string) {
     const tx = await this.txRepo.findOne({ where: { userId, sessionId } });
     if (!tx) throw new NotFoundException('Order not found');
@@ -213,6 +219,7 @@ export class PaymentsService {
     return this.createCheckout(userId, tx.tier, tx.period, sessionId);
   }
 
+  /** Marks the order as paid and activates the subscription. The old subscription is expired and the unused money is refunded. */
   async complete(sessionId: string, expectedUserId?: number, external?: Stripe.Subscription): Promise<{ message: string; refund: { amount: number; currency: string } | null }> {
     const owner = await this.txRepo.findOne({ where: { sessionId } });
     if (!owner || owner.userId === null || (expectedUserId !== undefined && owner.userId !== expectedUserId)) throw new NotFoundException('Order not found');
@@ -251,10 +258,12 @@ export class PaymentsService {
     return { message: receipt ? 'Payment completed — subscription is now active' : 'Payment already processed', refund: receipt?.refund ?? null };
   }
 
+  // order failed on the payment side
   private async failOrder(sessionId: string) {
     await this.closeOrder(sessionId, TransactionStatusEnum.FAILED);
   }
 
+  // closes a pending order as failed or cancelled, unless it turns out to be paid already
   private async closeOrder(sessionId: string, status: TransactionStatusEnum.FAILED | TransactionStatusEnum.CANCELLED,
     cancellationReason: PaymentTransactionEntity['cancellationReason'] = null, expectedUserId?: number) {
     const owner = await this.txRepo.findOne({ where: { sessionId } });
@@ -278,6 +287,7 @@ export class PaymentsService {
     }
   }
 
+  /** User cancels a pending order. Also says if it can be retried. */
   async cancel(sessionId: string, expectedUserId?: number) {
     await this.closeOrder(sessionId, TransactionStatusEnum.CANCELLED, 'user_cancelled', expectedUserId);
     const tx = await this.txRepo.findOneByOrFail({ sessionId });
@@ -323,6 +333,7 @@ export class PaymentsService {
     return warnings;
   }
 
+  /** Turns off auto renewal. The user keeps access until the end of the paid period. */
   async cancelSubscription(userId: number): Promise<{ message: string }> {
     await this.subsRepo.manager.transaction(async em => {
       await this.lock(em, userId);
@@ -341,6 +352,7 @@ export class PaymentsService {
     return { message: 'Automatic renewal cancelled; access remains until the paid period ends' };
   }
 
+  // Stripe says the checkout is paid -> complete the local order
   private async completedCheckout(session: Stripe.Checkout.Session) {
     if (!this.stripe || session.payment_status !== 'paid') return;
     const sessionId = session.metadata?.sessionId ?? session.client_reference_id;
@@ -352,6 +364,7 @@ export class PaymentsService {
     await this.complete(sessionId, undefined, await this.stripe.subscriptions.retrieve(subscriptionId));
   }
 
+  // Stripe invoice paid: this is how monthly/yearly renewals prolong the subscription
   private async paidInvoice(invoice: Stripe.Invoice) {
     if (!this.stripe) return;
     const value = invoice.parent?.subscription_details?.subscription;
@@ -388,6 +401,7 @@ export class PaymentsService {
     });
   }
 
+  /** Handles Stripe webhook events after checking the signature. */
   async handleWebhook(payload: Buffer | undefined, signature: string | undefined): Promise<{ received: boolean }> {
     if (!this.stripe) return { received: true };
     let event: Stripe.Event;
@@ -425,6 +439,7 @@ export class PaymentsService {
     return { received: true };
   }
 
+  /** Every minute: cancels orders that were not paid in time. */
   @Cron(CronExpression.EVERY_MINUTE)
   async expireStalePendingOrders(): Promise<void> {
     const stale = await this.txRepo.find({ where: { status: TransactionStatusEnum.PENDING, expiresAt: LessThan(new Date()) } });
@@ -435,11 +450,13 @@ export class PaymentsService {
     }
   }
 
+  /** Every hour: marks subscriptions with passed end date as expired. */
   @Cron(CronExpression.EVERY_HOUR)
   async expireFinishedSubscriptions(): Promise<void> {
     await this.subsRepo.update({ status: SubscriptionStatusEnum.ACTIVE, endsAt: LessThan(new Date()) }, { status: SubscriptionStatusEnum.EXPIRED });
   }
 
+  /** Mock payment endpoints work only when Stripe is not enabled. */
   assertMockMode() {
     if (this.stripe) throw new NotFoundException('Mock endpoints are disabled when Stripe is enabled');
   }

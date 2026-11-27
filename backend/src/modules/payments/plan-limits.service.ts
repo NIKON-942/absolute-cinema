@@ -35,6 +35,7 @@ export class PlanLimitsService {
     private plansRepo: Repository<SubscriptionPlanEntity>,
   ) {}
 
+  /** Limits of the tier. Taken from the cache for 30 seconds, or from defaults if the DB row is missing. */
   async limitsFor(tier: SubscriptionTierEnum): Promise<PlanLimits> {
     const cached = this.cache.get(tier);
     if (!cached || Date.now() - cached.at > this.ttlMs) {

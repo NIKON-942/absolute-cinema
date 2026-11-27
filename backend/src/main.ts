@@ -8,6 +8,7 @@ import { clientOrigins } from './config/configuration';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
+// optional OpenTelemetry tracing, turned on by an env variable
 async function bootstrapTracing(): Promise<void> {
   const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
   if (!endpoint) return;
@@ -37,6 +38,7 @@ async function bootstrapTracing(): Promise<void> {
   }
 }
 
+// starts the API: global pipes, filters, CORS, Swagger and listening on the port
 async function bootstrap(): Promise<void> {
   await bootstrapTracing();
 

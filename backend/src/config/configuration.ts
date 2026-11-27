@@ -7,6 +7,7 @@ export function clientOrigins(): string[] {
   return list.length ? list : ['http://localhost:5173'];
 }
 
+// all settings that we read from the environment
 export interface AppConfig {
   port: number;
   clientUrl: string;
@@ -23,6 +24,7 @@ export interface AppConfig {
   smtp: { host: string; port: number; user: string; pass: string; from: string };
 }
 
+// reads .env variables and checks the important ones (e.g. JWT secret)
 export const configuration = (): AppConfig => {
   if (process.env.NODE_ENV === 'production') {
     const secret = process.env.JWT_SECRET ?? '';

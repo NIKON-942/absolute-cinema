@@ -23,6 +23,7 @@ function isStreamRoute(req: Request): boolean {
   return STREAM_ROUTE.test((req.originalUrl ?? req.url ?? '').split('?')[0]);
 }
 
+/** Passport strategy: checks the JWT and loads the user from the database on every request. */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
@@ -42,6 +43,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
+  /** Rejects wrong token type, blocked users and tokens revoked by logout. The result becomes req.user. */
   async validate(req: Request, payload: JwtPayload) {
     const viaHeader = !!req.headers?.authorization?.startsWith('Bearer ');
     if (payload.scp === STREAM_SCOPE) {

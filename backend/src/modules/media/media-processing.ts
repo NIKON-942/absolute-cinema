@@ -13,6 +13,7 @@ export interface MediaProbe {
   audio?: { index: number; codec: string; profile?: string; channels: number; sampleRate: number; language?: string; startTime?: number };
 }
 
+/** Reads video info (codec, size, duration) with ffprobe. */
 export async function probeMedia(input: string): Promise<MediaProbe> {
   const { stdout } = await exec('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-show_streams', '-show_format', '-of', 'json', input],
     { encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 60_000, windowsHide: true });
@@ -46,6 +47,7 @@ export function canCopyVideo(meta: MediaProbe, height: number) {
     && !meta.rotation;
 }
 
+// true if the audio can be copied without re-encoding
 export function canCopyAudio(meta: MediaProbe) {
   const a = meta.audio;
   return Boolean(a && a.codec === 'aac' && a.profile === 'LC' && a.channels >= 1 && a.channels <= 2
@@ -63,6 +65,7 @@ export async function prepareWebAudio(input: string, output: string, meta: Media
     '-movflags', '+faststart', output], progress);
 }
 
+// makes an mp4 of the given height
 export async function renderWebVideo(input: string, output: string, height: number, meta: MediaProbe,
   audio: string | undefined, progress?: ProcessingProgress, forceCopy = false) {
   const copy = forceCopy || canCopyVideo(meta, height);

@@ -7,6 +7,7 @@ export interface CancelledCheckoutDto extends MessageDto {
   canRetry: boolean;
 }
 
+// requests to /payments
 export const paymentsService = {
   cancel(sessionId: string): Promise<CancelledCheckoutDto> {
     return api.post(`/payments/cancel/${sessionId}`).then(r => r.data);

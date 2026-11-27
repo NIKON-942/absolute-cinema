@@ -1,5 +1,6 @@
 import { useLanguage } from '@/context/LanguageContext';
 
+// loading spinner
 export function Spinner({ size = 8, className = '' }: { size?: number; className?: string }) {
   const { t } = useLanguage();
   return (
@@ -43,6 +44,7 @@ export function CardSkeletons({ count = 6 }: { count?: number }) {
   );
 }
 
+// placeholder for a loading carousel
 export function RowSkeleton() {
   return (
     <div className="mb-10">

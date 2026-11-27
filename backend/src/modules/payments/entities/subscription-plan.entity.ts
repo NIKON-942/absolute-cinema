@@ -10,6 +10,7 @@ export interface PlanLimits {
   prioritySupport: boolean;
 }
 
+/** Table subscription_plans: prices and limits of each tier. */
 @Entity('subscription_plans')
 export class SubscriptionPlanEntity {
   @PrimaryGeneratedColumn()

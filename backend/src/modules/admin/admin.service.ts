@@ -7,6 +7,7 @@ import { PaymentTransactionEntity } from '../payments/entities/payment-transacti
 import { SubscriptionStatusEnum } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 
+/** Statistics for the admin dashboard. */
 @Injectable()
 export class AdminService {
   constructor(
@@ -19,6 +20,7 @@ export class AdminService {
     private txRepo: Repository<PaymentTransactionEntity>,
   ) {}
 
+  /** Collects totals, top movies, genres and revenue for the last `days` days. */
   async analytics(days = 30) {
     const periodTo = new Date();
     const interval = new Date(periodTo.getTime() - days * 24 * 60 * 60 * 1000);
@@ -47,6 +49,7 @@ export class AdminService {
           COALESCE(r.rating_sum, 0) AS rating_sum, COALESCE(r.rating_count, 0) AS rating_count
         FROM movies m LEFT JOIN views v ON v.movie_id = m.id LEFT JOIN ratings r ON r.movie_id = m.id
       )`;
+    // top 10 movies by views
     const topRows = await this.moviesRepo.query(periodStats + `
       SELECT id, title, views AS "viewCount",
         COALESCE(ROUND(rating_sum::numeric / NULLIF(rating_count, 0), 1), 0) AS "averageRating"
@@ -59,6 +62,7 @@ export class AdminService {
       FROM stats
     `, [interval, periodTo]);
 
+    // money per month (paid minus refunded)
     const revenueRows = await this.txRepo.query(
       `
       SELECT TO_CHAR(DATE_TRUNC('month', updated_at), 'YYYY-MM') AS month,
@@ -71,6 +75,7 @@ export class AdminService {
       [interval, periodTo],
     );
 
+    // views and average rating for each genre
     const genreRows = await this.moviesRepo.query(periodStats + `
       SELECT g.name AS genre, SUM(s.views)::int AS views, COUNT(s.id)::int AS movies,
         COALESCE(ROUND(SUM(s.rating_sum)::numeric / NULLIF(SUM(s.rating_count), 0), 1), 0) AS "averageRating"

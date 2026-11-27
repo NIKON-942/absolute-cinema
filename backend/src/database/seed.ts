@@ -16,6 +16,7 @@ import { WatchProgressEntity } from '../modules/media/entities/watch-progress.en
 import { SubscriptionPlanEntity } from '../modules/payments/entities/subscription-plan.entity';
 import { slugify } from '../modules/media/media.constants';
 
+// demo data for development
 const GENRES = [
   'Action', 'Drama', 'Comedy', 'Sci-Fi', 'Thriller',
   'Animation', 'Horror', 'Romance',
@@ -141,6 +142,7 @@ const MOVIES: SeedMovie[] = [
   },
 ];
 
+// fills the database with plans, demo users, movies and ratings; can be run many times
 async function main() {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Demo seed is disabled in production. Use bootstrap:prod for plans and the first administrator.');

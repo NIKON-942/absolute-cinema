@@ -14,6 +14,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { RecommendationsModule } from './modules/recommendations/recommendations.module';
 import { UsersModule } from './modules/users/users.module';
 
+/** Root module: connects config, database and all feature modules. */
 @Module({
   imports: [
     ScheduleModule.forRoot(),
@@ -26,6 +27,7 @@ import { UsersModule } from './modules/users/users.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService<AppConfig, true>) => {
+        // DB connection settings come from the config
         const db = config.get('database', { infer: true })!;
         return {
           type: 'postgres' as const,

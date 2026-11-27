@@ -15,6 +15,7 @@ const PAGE_SIZE = 20;
 const inputClass =
   'w-full rounded-lg border border-cinema-border bg-cinema-panel px-3 py-2 text-sm text-cinema-text placeholder:text-cinema-muted focus:border-cinema-amber/60 focus:outline-none';
 
+/** Catalog page: search, filters (genre, year, country, age) and sorting. Filters are kept in the URL. */
 export default function Catalog() {
   const { t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -30,6 +31,7 @@ export default function Catalog() {
   const yearTo = searchParams.get('yearTo') ?? '';
   const country = searchParams.get('country') ?? '';
   const ageRating = searchParams.get('ageRating') ?? '';
+  // filters live in the URL query, so a page can be shared
   const sort = (searchParams.get('sort') ?? 'popularity') as MovieSort;
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
 
@@ -98,8 +100,10 @@ export default function Catalog() {
     };
   }, [debouncedSearch, genre, genreIdsParam, year, yearFrom, yearTo, country, ageRating, sort, page]);
 
+  // number of pages from the total count
   const totalPages = useMemo(() => (data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1), [data]);
 
+  // changes one filter and goes to the first page
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams);
     if (value) next.set(key, value);
@@ -109,6 +113,7 @@ export default function Catalog() {
     setSearchParams(next);
   };
 
+  // switches the page and scrolls up
   const goPage = (p: number) => {
     setParam('page', String(p));
     window.scrollTo({ top: 0, behavior: 'smooth' });

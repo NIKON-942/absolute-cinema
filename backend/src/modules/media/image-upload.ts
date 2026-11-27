@@ -30,10 +30,12 @@ export async function storeImage(file: Express.Multer.File | undefined, kind: 'a
   return `/api/media/posters/${file.filename}`;
 }
 
+// deletes a file that was not used (when saving failed)
 export async function discardImage(file?: Express.Multer.File): Promise<void> {
   if (file?.path) await rm(file.path, { force: true });
 }
 
+// normalizes an image link: own file name or http(s) URL
 export function imageReference(value: string | null | undefined): string | null | undefined {
   if (value === undefined) return undefined;
   const trimmed = value?.trim();

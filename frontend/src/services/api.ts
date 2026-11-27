@@ -3,6 +3,7 @@ import { API_BASE } from '@/utils/url';
 
 export const TOKEN_KEY = 'ac_token';
 
+// axios instance with the base URL for all requests
 export const api = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },

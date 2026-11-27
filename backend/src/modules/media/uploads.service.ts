@@ -10,8 +10,10 @@ import { MediaService } from './media.service';
 import { TranscodeService } from './transcode.service';
 import { validateUploadedVideo } from './upload-validation';
 
+// chunk size is 16 MB, max file is 8 GB
 export const UPLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
 export const MAX_UPLOAD_SIZE = 8 * 1024 ** 3;
+// unfinished uploads are removed after 7 days
 const RETENTION = 7 * 24 * 60 * 60 * 1000;
 const HASH = /^[a-f0-9]{64}$/;
 interface Upload {
@@ -64,6 +66,7 @@ export class UploadsService implements OnModuleInit {
     const results = await Promise.all(ids.map(id => this.load(id).catch(() => null)));
     return results.filter((u): u is Upload => u !== null);
   }
+  // on start: put unfinished uploads back to work
   async onModuleInit() {
     await this.cleanup();
     for (const u of await this.all()) {
@@ -88,6 +91,7 @@ export class UploadsService implements OnModuleInit {
       }).catch(error => this.logger.warn(String(error)));
     }
   }
+  /** Starts a new upload for the movie. Chunk hashes come from the client. */
   async create(movieId: number, ownerId: number, input: { filename: string; size: number; sha256: string; chunks: string[] }) {
     return this.locked(`movie-${movieId}`, async () => {
       const movie = await this.media.getMovie(movieId, undefined, true);
@@ -140,6 +144,7 @@ export class UploadsService implements OnModuleInit {
       return this.view(u);
     });
   }
+  /** Writes the next chunk if its offset and checksum are right. */
   async append(id: string, ownerId: number, offset: number, checksum: string, request: Request) {
     return this.locked(id, async () => {
       const u = await this.load(id, ownerId);
@@ -174,6 +179,7 @@ export class UploadsService implements OnModuleInit {
       return u.offset;
     });
   }
+  /** The client says that all chunks are sent, the file is checked in the background. */
   async complete(id: string, ownerId: number) {
     const start = await this.locked(id, async () => {
       const u = await this.load(id, ownerId);
@@ -232,6 +238,7 @@ export class UploadsService implements OnModuleInit {
       }
     }).catch(error => this.logger.error(String(error)));
   }
+  /** Cancels the upload and deletes its files. */
   async remove(id: string, ownerId: number) {
     return this.locked(id, async () => {
       const u = await this.load(id, ownerId);

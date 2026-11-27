@@ -22,10 +22,12 @@ import {
   ResetPasswordDto,
 } from './dto/auth.dto';
 
+// how long a stream token lives (6 hours)
 export const STREAM_TOKEN_TTL_SECONDS = 6 * 60 * 60;
 // bcrypt hash of a random string; compared against for unknown e-mails to equalize timing.
 const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', 10);
 
+/** Registration, login, Google sign-in and password reset. All JWTs are signed here. */
 @Injectable()
 export class AuthService {
   constructor(
@@ -37,6 +39,7 @@ export class AuthService {
     private usersRepo: Repository<UserEntity>,
   ) {}
 
+  /** Creates the normal access token. `tv` is the user's tokenVersion, so a logout invalidates it. */
   private signToken(user: UserEntity): string {
     return this.jwt.sign({
       sub: user.id,
@@ -54,7 +57,9 @@ export class AuthService {
     };
   }
 
+  /** Creates a new account with a hashed password and sends a welcome e-mail. Returns the user and a token. */
   async register(dto: RegisterDto) {
+    // e-mails are always stored in lower case
     const email = dto.email.toLowerCase();
     const existing = await this.usersService.findByEmail(email);
     if (existing) {
@@ -89,6 +94,7 @@ export class AuthService {
     };
   }
 
+  /** Checks e-mail and password. After 5 wrong passwords the account is locked for an hour. */
   async login(dto: LoginDto) {
     // Return failures from the transaction so the counter commits before the
     // HTTP error is thrown. A row lock serializes concurrent login attempts.
@@ -131,8 +137,10 @@ export class AuthService {
     };
   }
 
+  // failed attempts for e-mails that don't exist, so the lockout looks the same for them
   private readonly unknownLoginFailures = new Map<string, { count: number; until: number }>();
 
+  /** Is this unknown e-mail currently locked out? */
   private unknownLoginLocked(email: string): boolean {
     const entry = this.unknownLoginFailures.get(email);
     if (!entry) return false;
@@ -163,6 +171,7 @@ export class AuthService {
     let user: UserEntity;
     try {
       user = await this.usersRepo.manager.transaction(async em => {
+        // lock on the Google id so two parallel callbacks can't create two users
         await em.query('SELECT pg_advisory_xact_lock(1703, hashtext($1))', [profile.googleId]);
         const owner = await em.findOneBy(UserEntity, { googleId: profile.googleId });
         let target: UserEntity;
@@ -199,12 +208,14 @@ export class AuthService {
     return { message: 'Logged out' };
   }
 
+  /** Returns the current user with the active subscription. */
   async me(userId: number) {
     return this.usersService.serialize(
       await this.usersService.requireWithSubscription(userId),
     );
   }
 
+  /** Makes a reset token and e-mails the link. Only the token hash is saved in the database. */
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.usersService.findByEmail(dto.email);
     // Always respond 200 so the endpoint can't be used to enumerate accounts.
@@ -223,6 +234,7 @@ export class AuthService {
     return { message: 'If the account exists, a reset link has been sent' };
   }
 
+  /** Sets a new password by the reset token. The token can be used only once. */
   async resetPassword(dto: ResetPasswordDto) {
     const hash = createHash('sha256').update(dto.token).digest('hex');
     const passwordHash = await bcrypt.hash(dto.newPassword, 10);

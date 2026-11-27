@@ -20,6 +20,7 @@ import {
 } from '../users/user.entity';
 import { PaymentsService } from './payments.service';
 
+// body for starting a purchase
 class CheckoutDto {
   @IsIn(['basic', 'plus', 'premium'])
   tier!: 'basic' | 'plus' | 'premium';
@@ -36,10 +37,12 @@ class SwitchPreviewQuery {
   period!: 'monthly' | 'yearly';
 }
 
+/** Payment endpoints: plans, checkout, cancel, Stripe webhook. */
 @Controller('payments')
 export class PaymentsController {
   constructor(private paymentsService: PaymentsService) {}
 
+  /** Public list of plans. */
   @Get('plans')
   plans() {
     return this.paymentsService.plans();
@@ -56,6 +59,7 @@ export class PaymentsController {
     );
   }
 
+  /** Creates an order and returns the URL where the user pays. */
   @Post('checkout')
   @UseGuards(JwtAuthGuard)
   checkout(@Req() req: Request, @Body() dto: CheckoutDto) {
@@ -66,6 +70,7 @@ export class PaymentsController {
     );
   }
 
+  /** Fake payment success, for demo without Stripe. */
   @Post('mock-complete/:sessionId')
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
@@ -79,6 +84,7 @@ export class PaymentsController {
     );
   }
 
+  /** Fake payment cancel, for demo without Stripe. */
   @Post('mock-cancel/:sessionId')
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
@@ -90,6 +96,7 @@ export class PaymentsController {
     );
   }
 
+  /** Stops auto renewal of the current subscription. */
   @Post('subscription/cancel')
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
@@ -99,6 +106,7 @@ export class PaymentsController {
     );
   }
 
+  /** Try to pay again for a failed order. */
   @Post('retry/:sessionId')
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
@@ -106,6 +114,7 @@ export class PaymentsController {
     return this.paymentsService.retry((req.user as { id: number }).id, sessionId);
   }
 
+  /** Cancel a pending order. */
   @Post('cancel/:sessionId')
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
@@ -113,6 +122,7 @@ export class PaymentsController {
     return this.paymentsService.cancel(sessionId, (req.user as { id: number }).id);
   }
 
+  /** Stripe calls this URL. Raw body is needed to check the signature. */
   @Post('webhook')
   @HttpCode(200)
   webhook(

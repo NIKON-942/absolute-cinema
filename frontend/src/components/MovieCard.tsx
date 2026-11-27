@@ -16,6 +16,7 @@ interface MovieCardProps {
   progressPercent?: number;
 }
 
+/** Movie card with poster, rating and favorite button. Shows a progress bar if the movie was started. */
 export function MovieCard({ movie, onToggleFavorite, progressPercent }: MovieCardProps) {
   const { t } = useLanguage();
   const [posterFailed, setPosterFailed] = useState(false);

@@ -1,5 +1,6 @@
 import { SubscriptionTierEnum } from '../modules/users/user.entity';
 
+// default subscription plans
 export const PLANS: Array<{
   tier: SubscriptionTierEnum;
   monthlyPrice: string;

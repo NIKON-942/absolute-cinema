@@ -19,6 +19,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     });
   }
 
+  // takes the profile from Google, only with a verified e-mail
   validate(
     _accessToken: string,
     _refreshToken: string,

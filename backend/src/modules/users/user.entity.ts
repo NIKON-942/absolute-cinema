@@ -9,23 +9,27 @@ import {
 } from 'typeorm';
 import { MovieEntity } from '../media/entities/movie.entity';
 
+// viewer is a normal user, admin and head_admin manage the site
 export enum UserRoleEnum {
   VIEWER = 'viewer',
   ADMIN = 'admin',
   HEAD_ADMIN = 'head_admin',
 }
 
+// subscription levels
 export enum SubscriptionTierEnum {
   BASIC = 'basic',
   PLUS = 'plus',
   PREMIUM = 'premium',
 }
 
+// billing period
 export enum SubscriptionPeriodEnum {
   MONTHLY = 'monthly',
   YEARLY = 'yearly',
 }
 
+// life cycle of a subscription
 export enum SubscriptionStatusEnum {
   PENDING = 'pending',
   ACTIVE = 'active',
@@ -33,6 +37,7 @@ export enum SubscriptionStatusEnum {
   CANCELLED = 'cancelled',
 }
 
+/** Table users: account data, role and login protection fields. */
 @Entity('users')
 @Index('uq_users_google_id', ['googleId'], { unique: true, where: 'google_id IS NOT NULL' })
 export class UserEntity {
@@ -45,6 +50,7 @@ export class UserEntity {
   @Column()
   name: string;
 
+  // null for accounts that signed in only with Google
   @Column({ type: 'varchar', nullable: true })
   passwordHash: string | null;
 
@@ -67,6 +73,7 @@ export class UserEntity {
   @Column({ type: 'int', default: 0 })
   tokenVersion: number;
 
+  // wrong passwords in a row (lock after 5)
   @Column({ type: 'int', default: 0 })
   failedLoginAttempts: number;
 
@@ -82,6 +89,7 @@ export class UserEntity {
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
+  // favourite movies, stored in the user_favorites table
   @ManyToMany(() => MovieEntity, (movie) => movie.favoritedBy)
   @JoinTable({ name: 'user_favorites' })
   favorites: MovieEntity[];

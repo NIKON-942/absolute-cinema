@@ -14,6 +14,7 @@ import {
 } from '../../users/user.entity';
 import { SubscriptionEntity } from './subscription.entity';
 
+// order states
 export enum TransactionStatusEnum {
   PENDING = 'pending',
   PAID = 'paid',
@@ -21,12 +22,14 @@ export enum TransactionStatusEnum {
   CANCELLED = 'cancelled',
 }
 
+/** Table payment_transactions: one order (checkout attempt) or one renewal payment. */
 @Entity('payment_transactions')
 @Index('idx_transaction_status_created', ['status', 'createdAt'])
 export class PaymentTransactionEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
+  // public id of the order, used in URLs
   @Column({ unique: true })
   sessionId: string;
 
@@ -63,6 +66,7 @@ export class PaymentTransactionEntity {
   @Column({ type: 'varchar', nullable: true, unique: true })
   retryOf: string | null;
 
+  // how many times this order was retried
   @Column({ type: 'int', default: 0 })
   retries: number;
 

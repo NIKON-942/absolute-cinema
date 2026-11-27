@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { UploadManager } from '@/services/uploadManager';
 
 const UploadContext = createContext<UploadManager | null>(null);
+/** Creates one UploadManager for the whole app, so uploads don't stop when the user changes the page. */
 export function UploadProvider({ children }: { children: ReactNode }) {
   const [manager] = useState(() => new UploadManager());
   const { user, isAdmin } = useAuth();
@@ -49,6 +50,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   }, [manager]);
   return <UploadContext.Provider value={manager}>{children}</UploadContext.Provider>;
 }
+// hook to get the upload manager
 export function useUploads() {
   const manager = useContext(UploadContext);
   if (!manager) throw new Error('useUploads requires UploadProvider');

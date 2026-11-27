@@ -61,6 +61,7 @@ export class TranscodeService implements OnModuleInit {
     return { removed };
   }
 
+  // a conversion that was interrupted by a restart is marked as failed
   async onModuleInit(): Promise<void> {
     await this.cleanupOrphans().then((r) => r.removed.length && this.logger.log(`Removed ${r.removed.length} orphaned conversion files`)).catch(() => undefined);
     const interrupted = await this.moviesRepo.find({ where: { transcodeStatus: TranscodeStatusEnum.PROCESSING } });
@@ -71,6 +72,7 @@ export class TranscodeService implements OnModuleInit {
     }
   }
 
+  /** Progress of the movie conversion for the admin panel. */
   jobInfo(movieId: number): TranscodeJobInfo | undefined {
     const info = this.jobs.get(movieId);
     if (info?.startedAt) {
@@ -82,6 +84,7 @@ export class TranscodeService implements OnModuleInit {
     }
     return info;
   }
+  /** Puts the movie in the queue for conversion. */
   async enqueue(movieId: number, masterSource: string): Promise<void> {
     if (this.jobs.get(movieId)?.status === TranscodeStatusEnum.PROCESSING) throw new ConflictException({
       code: 'VIDEO_CONVERSION_IN_PROGRESS', message: 'This movie already has a video conversion in progress',
@@ -94,12 +97,14 @@ export class TranscodeService implements OnModuleInit {
     catch (error) { this.jobs.delete(movieId); throw error; }
     this.queue.push(() => this.run(movieId, masterSource)); void this.drain();
   }
+  // takes jobs from the queue one by one
   private async drain(): Promise<void> {
     if (this.draining) return;
     this.draining = true;
     try { while (this.queue.length) await this.queue.shift()!().catch(error => this.logger.error(`Job failed: ${error.message}`)); }
     finally { this.draining = false; }
   }
+  // converts the movie to all qualities that fit the source and saves paths to the DB
   private async run(movieId: number, masterSource: string): Promise<void> {
     const outputs: string[] = []; const published = new Set<string>(); let scratch: string | undefined;
     let input = join(MASTERS_DIR, masterSource);
@@ -190,6 +195,7 @@ export class TranscodeService implements OnModuleInit {
     }
   }
   async probe(input: string): Promise<MediaProbe> { return probeMedia(input); }
+  // converts one quality with ffmpeg
   private async render(input: string, output: string, height: number, progress?: ProcessingProgress, prepared?: { meta: MediaProbe; audio?: string }) {
     if (prepared) return renderWebVideo(input, output, height, prepared.meta, prepared.audio, progress);
     const meta = await this.probe(input); let scratch: string | undefined;

@@ -8,6 +8,7 @@ import { formatBytes } from '@/utils/upload';
 import { formatDuration } from '@/utils/format';
 import type { UploadTask } from '@/services/uploadManager';
 
+// one row of the upload panel: file name, progress and buttons (pause, cancel)
 function UploadItem({ task, now }: { task: UploadTask; now: number }) {
   const { manager } = useUploads(); const { t, lang } = useLanguage();
   const [confirm, setConfirm] = useState(false); const [busy, setBusy] = useState(false);
@@ -60,6 +61,7 @@ function UploadItem({ task, now }: { task: UploadTask; now: number }) {
   );
 }
 
+/** Floating panel with all video uploads that are running now. */
 export function UploadPanel() {
   const { tasks } = useUploads(); const { t } = useLanguage();
   const [collapsed, setCollapsed] = useState(false); const [now, setNow] = useState(Date.now());

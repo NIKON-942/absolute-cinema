@@ -14,6 +14,7 @@ import {
   UserEntity,
 } from '../../users/user.entity';
 
+/** Table subscriptions: what plan a user bought and until when. */
 @Entity('subscriptions')
 @Index('idx_subscription_user_status', ['userId', 'status'])
 export class SubscriptionEntity {
@@ -41,6 +42,7 @@ export class SubscriptionEntity {
   @Column({ type: 'varchar', nullable: true, unique: true })
   stripeSubscriptionId: string | null;
 
+  // true when auto renewal is off
   @Column({ default: false })
   cancelAtPeriodEnd: boolean;
 

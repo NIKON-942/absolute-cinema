@@ -76,6 +76,7 @@ export class RecommendationsService {
     private moviesRepo: Repository<MovieEntity>,
   ) {}
 
+  /** Recommendations for the user. Without a user, or if the query fails, the fallback list is returned. */
   async forUser(userId?: number) {
     if (userId) {
       try {

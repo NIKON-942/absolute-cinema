@@ -25,6 +25,7 @@ import { IsPassword } from '../../common/validators/password';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { discardImage, imageUploadOptions, storeImage } from '../media/image-upload';
 
+// body of PATCH /users/me
 class UpdateMeDto {
   @IsOptional()
   @IsPersonName()
@@ -55,11 +56,13 @@ class SetBlockedDto {
   isBlocked!: boolean;
 }
 
+/** Profile endpoints for the user and user management for admins. */
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
   constructor(private usersService: UsersService, private paymentsService: PaymentsService) {}
 
+  /** Own profile. */
   @Get('me')
   async me(@Req() req: Request) {
     // req.user is the flat JWT payload shape — serialize() needs the full
@@ -69,6 +72,7 @@ export class UsersController {
     );
   }
 
+  /** Changes name, password or avatar (the avatar comes as a file). */
   @Patch('me')
   @UseInterceptors(FileInterceptor('file', imageUploadOptions))
   async updateMe(@Req() req: Request, @Body() dto: UpdateMeDto, @UploadedFile() file?: Express.Multer.File) {
@@ -82,6 +86,7 @@ export class UsersController {
     return this.usersService.serialize(updated);
   }
 
+  /** User list for the admin panel with search and pages (max 100 per page). */
   @Get()
   @Roles('admin')
   list(
@@ -96,6 +101,7 @@ export class UsersController {
     );
   }
 
+  /** Change role, head admin only. */
   @Patch(':id/role')
   @Roles('head_admin')
   async setRole(@Param('id', ParseIntPipe) id: number, @Body() dto: SetRoleDto, @Req() req: Request) {
@@ -104,6 +110,7 @@ export class UsersController {
     );
   }
 
+  /** Block or unblock a user. */
   @Patch(':id/block')
   @Roles('admin')
   async setBlocked(
@@ -116,6 +123,7 @@ export class UsersController {
     );
   }
 
+  /** Delete a user. Payments are detached first, warnings are returned. */
   @Delete(':id')
   @Roles('admin')
   async remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {

@@ -43,6 +43,7 @@ function posterUrl(path: string | null): string {
     ? path : `/api/media/posters/${path}`;
 }
 
+// movie as it is sent to the frontend
 export interface MovieDto {
   id: number;
   title: string;
@@ -71,6 +72,7 @@ export interface MovieDto {
   createdAt: string;
 }
 
+/** Main service of the catalog: movies, dictionaries, ratings, favorites, progress and streaming. */
 @Injectable()
 export class MediaService {
   constructor(
@@ -93,6 +95,7 @@ export class MediaService {
 
   // ---------- catalog ----------
 
+  /** Search, filter and sort movies. Hidden ones are not included. */
   async listMovies(filters: {
     search?: string;
     genre?: string;
@@ -179,6 +182,7 @@ export class MediaService {
     };
   }
 
+  /** One movie with rating and the user's own data. */
   async getMovie(id: number, userId?: number, includeHidden = false): Promise<MovieDto> {
     const movie = await this.moviesRepo.findOne({
       where: { id, ...(includeHidden ? {} : { isHidden: false }) },
@@ -188,6 +192,7 @@ export class MediaService {
     return this.toDto(movie, userId);
   }
 
+  // movie from the DB or 404
   async getMovieEntity(id: number): Promise<MovieEntity> {
     const movie = await this.moviesRepo.findOne({ where: { id } });
     if (!movie) throw new NotFoundException('Movie not found');
@@ -201,12 +206,14 @@ export class MediaService {
     return movie;
   }
 
+  // hide or show a movie
   async setVisibility(id: number, isHidden: boolean): Promise<MovieDto> {
     const result = await this.moviesRepo.update(id, { isHidden });
     if (!result.affected) throw new NotFoundException('Movie not found');
     return this.getMovie(id, undefined, true);
   }
 
+  // dictionaries, sorted by name
   async genres(): Promise<GenreEntity[]> {
     return this.genresRepo.find({ order: { name: 'ASC' } });
   }
@@ -267,6 +274,7 @@ export class MediaService {
 
   // ---------- favorites / ratings / progress ----------
 
+  /** Adds the movie to favorites, or removes it if it is there. */
   async toggleFavorite(movieId: number, userId: number) {
     await this.getPublishedMovieEntity(movieId);
     // Single-statement writes on the join table — the previous
@@ -291,6 +299,7 @@ export class MediaService {
     return { isFavorite: !has };
   }
 
+  /** Favorites of the user. */
   async favorites(userId: number) {
     const movies = await this.moviesRepo
       .createQueryBuilder('movie')
@@ -305,6 +314,7 @@ export class MediaService {
     return this.toDtos(movies, userId);
   }
 
+  /** Saves the rating (one per user and movie). */
   async setRating(movieId: number, userId: number, value: number) {
     await this.getPublishedMovieEntity(movieId);
     integer(value, 'rating', 1, 10);
@@ -319,6 +329,7 @@ export class MediaService {
     };
   }
 
+  /** Deletes the user's rating. */
   async deleteRating(movieId: number, userId: number) {
     await this.getPublishedMovieEntity(movieId);
     await this.moviesRepo.manager.transaction(async em => {
@@ -333,6 +344,7 @@ export class MediaService {
     };
   }
 
+  /** Saves the watch position of the movie. */
   async saveProgress(
     movieId: number,
     userId: number,
@@ -348,6 +360,7 @@ export class MediaService {
     return { message: 'Progress saved' };
   }
 
+  /** Continue-watching list: unfinished movies, newest first. */
   async listProgress(userId: number) {
     const rows = await this.progressRepo.find({
       where: { userId, movie: { isHidden: false } },
@@ -540,6 +553,7 @@ export class MediaService {
     return { message: 'Playback recorded' };
   }
 
+  // average of all ratings of the movie
   async averageRating(movieId: number): Promise<number> {
     const row = await this.ratingsRepo
       .createQueryBuilder('r')
@@ -549,6 +563,7 @@ export class MediaService {
     return Math.round(Number(row?.avg ?? 0) * 10) / 10;
   }
 
+  // one movie -> DTO
   async toDto(movie: MovieEntity, userId?: number): Promise<MovieDto> {
     return (await this.toDtos([movie], userId))[0];
   }
@@ -583,6 +598,7 @@ export class MediaService {
     );
   }
 
+  // puts all movie fields to the DTO object
   private buildDto(movie: MovieEntity, averageRating: number, userRating: number | null, isFavorite: boolean): MovieDto {
     return {
       id: movie.id,
@@ -623,6 +639,7 @@ export class MediaService {
 
   // ---------- admin CRUD ----------
 
+  // finds genres, actors, country and director by ids
   private async references(input: MovieInput, em: EntityManager): Promise<Partial<MovieEntity>> {
     const patch: Partial<MovieEntity> = {};
     for (const [field, entity] of [['country', CountryEntity], ['director', DirectorEntity]] as const) {
@@ -660,6 +677,7 @@ export class MediaService {
     return await this.moviesRepo.countBy({ posterPath: filename }) > 0;
   }
 
+  /** Creates a movie from the form data. */
   async createMovie(body: Record<string, unknown>, posterPath?: string | null) {
     const input = movieInput(body, true);
     const saved = await this.moviesRepo.manager.transaction(async em => {
@@ -695,6 +713,7 @@ export class MediaService {
     return this.getMovie(id, undefined, true);
   }
 
+  // state of the conversion job of the movie
   async transcodeJob(movieId: number) {
     const movie = await this.getMovieEntity(movieId);
     const job = this.transcodeService.jobInfo(movieId);
@@ -710,6 +729,7 @@ export class MediaService {
     };
   }
 
+  /** Updates the movie fields. Only fields that were sent are changed. */
   async updateMovie(
     id: number,
     body: Record<string, unknown>,
@@ -730,6 +750,7 @@ export class MediaService {
     return this.getMovie(id, undefined, true);
   }
 
+  /** Deletes the movie, its files and links to genres and actors. */
   async removeMovie(id: number) {
     const movie = await this.moviesRepo.manager.transaction(async em => {
       const movie = await em.findOne(MovieEntity, { where: { id }, lock: { mode: 'pessimistic_write' }, loadEagerRelations: false });
@@ -753,6 +774,7 @@ export class MediaService {
 
   // ---------- genres / actors ----------
 
+  // creates or renames a genre, country, director or actor
   private async saveDictionary<T extends GenreEntity>(repo: Repository<T>, name: string, id?: number, extra: Record<string, unknown> = {}) {
     const cleaned = text(name, 'name', 255, true).replace(/\s+/g, ' ');
     const duplicate = repo.createQueryBuilder('entry')
@@ -772,6 +794,7 @@ export class MediaService {
     }
   }
 
+  // deletes a dictionary item if no movie uses it
   private async deleteDictionary(entity: typeof GenreEntity | typeof ActorEntity | typeof CountryEntity | typeof DirectorEntity, id: number, join?: { table: string; column: string }) {
     try {
       await this.moviesRepo.manager.transaction(async em => {
@@ -793,6 +816,7 @@ export class MediaService {
   updateGenre(id: number, name: string) { return this.saveDictionary(this.genresRepo, name, id); }
   deleteGenre(id: number) { return this.deleteDictionary(GenreEntity, id, { table: 'movie_genres', column: 'genres_id' }); }
   createActor(name: string, photoUrl?: string) { return this.saveDictionary(this.actorsRepo, name, undefined, { photoUrl: imageReference(photoUrl) ?? null }); }
+  // changes the name and photo of an actor
   async updateActor(id: number, name: string, photoUrl?: string) {
     const previous = (await this.actorsRepo.findOneBy({ id }))?.photoUrl;
     const actor = await this.saveDictionary(this.actorsRepo, name, id, photoUrl !== undefined ? { photoUrl: imageReference(photoUrl) } : {});

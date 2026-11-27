@@ -7,11 +7,13 @@ export interface RegisterPayload {
   name: string;
 }
 
+// requests to /auth
 export const authService = {
   register(payload: RegisterPayload): Promise<AuthResponseDto> {
     return api.post('/auth/register', payload).then((r) => r.data);
   },
 
+  // returns the user and the token
   login(email: string, password: string): Promise<AuthResponseDto> {
     return api.post('/auth/login', { email, password }).then((r) => r.data);
   },
@@ -35,6 +37,7 @@ export const authService = {
     }).then((r) => r.data);
   },
 
+  // ask for a reset link by e-mail
   forgotPassword(email: string): Promise<MessageDto> {
     return api.post('/auth/forgot-password', { email }).then((r) => r.data);
   },

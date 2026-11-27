@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { AppDataSource } from './data-source';
 import { UserEntity, UserRoleEnum } from '../modules/users/user.entity';
 
+// script: gives the head_admin role to a user by e-mail
 async function main() {
   const args = process.argv.slice(2);
   if (args.length !== 2 || args[0] !== '--email' || !args[1].trim()) {

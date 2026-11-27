@@ -6,11 +6,13 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { currentUserId } from '../../common/helpers/request-user';
 import { MAX_UPLOAD_SIZE, UploadsService } from './uploads.service';
 
+/** Resumable upload of big video files (tus protocol): the file is sent in chunks. */
 @Controller('media/uploads')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 export class UploadsController {
   constructor(private uploads: UploadsService) {}
+  // adds tus headers to the response
   private tus(res: Response) {
     res.setHeader('Tus-Resumable', '1.0.0');
     res.setHeader('Cache-Control', 'no-store');
@@ -49,6 +51,7 @@ export class UploadsController {
   }
   @Get(':id')
   status(@Param('id') id: string, @Req() req: Request) { return this.uploads.status(id, currentUserId(req)); }
+  /** Receives one chunk of the file. */
   @Patch(':id')
   @HttpCode(204)
   async append(@Param('id') id: string, @Req() req: Request, @Headers('tus-resumable') version: string,
@@ -58,6 +61,7 @@ export class UploadsController {
     if (!/^\d+$/.test(offset) || req.headers['content-type'] !== 'application/offset+octet-stream') throw new HttpException('Invalid tus PATCH headers', 400);
     res.setHeader('Upload-Offset', await this.uploads.append(id, currentUserId(req), Number(offset), checksum, req));
   }
+  /** Finishes the upload: checks the whole file and starts conversion. */
   @Post(':id/complete')
   @HttpCode(202)
   complete(@Param('id') id: string, @Req() req: Request) { return this.uploads.complete(id, currentUserId(req)); }

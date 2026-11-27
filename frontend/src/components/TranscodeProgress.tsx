@@ -2,6 +2,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import type { MovieDto, TranscodeJobDto } from '@/types';
 import { formatDuration } from '@/utils/format';
 
+// per-quality state of the conversion (480p/720p/1080p)
 export function TranscodeDetails({ job }: { job: TranscodeJobDto }) {
   const { t } = useLanguage();
   return (
@@ -18,6 +19,7 @@ export function TranscodeDetails({ job }: { job: TranscodeJobDto }) {
   );
 }
 
+// simple progress bar, null means unknown progress
 export function ProgressBar({ label, progress }: { label: string; progress: number | null }) {
   return (
     <div className="space-y-1.5">
@@ -34,6 +36,7 @@ export function ProgressBar({ label, progress }: { label: string; progress: numb
   );
 }
 
+/** Shows how far the video conversion of a movie is. */
 export function TranscodeProgress({ movie, job, compact = false }: {
   movie: MovieDto; job?: TranscodeJobDto; compact?: boolean;
 }) {

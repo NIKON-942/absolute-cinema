@@ -2,6 +2,7 @@ import { Clapperboard } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 
+/** Page 404. */
 export default function NotFound() {
   const { t } = useLanguage();
   return (

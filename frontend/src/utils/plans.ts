@@ -3,6 +3,7 @@ import type { Quality, SubscriptionTier } from '@/types';
 /** Quality ladder, low → high. */
 export const QUALITY_ORDER: Quality[] = ['480p', '720p', '1080p'];
 
+// position of the quality in the list, to compare qualities
 export function qualityRank(q: Quality): number {
   return QUALITY_ORDER.indexOf(q);
 }

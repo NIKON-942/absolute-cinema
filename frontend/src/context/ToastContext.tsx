@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 import type { ReactNode } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 
+// kinds of notifications
 export type ToastType = 'success' | 'error' | 'info';
 
 interface ToastItem {
@@ -28,6 +29,7 @@ const STYLES: Record<ToastType, string> = {
 
 const ICONS: Record<ToastType, ReactNode> = { success: <CircleCheck size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" />, error: <CircleX size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" />, info: <Info size={20} aria-hidden="true" className="inline-block shrink-0 align-middle" /> };
 
+/** Small notifications in the corner that disappear after a few seconds. */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextId = useRef(1);
@@ -83,6 +85,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// hook to show a notification
 export function useToast(): ToastContextValue {
   const ctx = useContext(ToastContext);
   if (!ctx) throw new Error('useToast must be used within ToastProvider');

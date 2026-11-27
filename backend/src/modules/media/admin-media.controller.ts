@@ -50,11 +50,13 @@ const videoFilter = (_req: any, file: Express.Multer.File, cb: any) => {
   else cb(new BadRequestException('Only MP4 and WebM videos are allowed'), false);
 };
 
+/** Admin endpoints to create and edit movies, upload video and manage genres, actors, countries and directors. */
 @Controller('media')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AdminMediaController {
   constructor(private mediaService: MediaService) {}
 
+  // saves the poster file or a poster URL and validates it
   private async savePoster(file: Express.Multer.File | undefined, body: Record<string, unknown>, id?: number) {
     movieInput(body, id === undefined);
     await storeImage(file, 'poster');
@@ -68,6 +70,7 @@ export class AdminMediaController {
     }
   }
 
+  /** Creates a movie. */
   @Post()
   @Roles('admin')
   @UseInterceptors(FileInterceptor('file', imageUploadOptions))
@@ -75,6 +78,7 @@ export class AdminMediaController {
     return this.savePoster(file, body);
   }
 
+  /** Edits a movie. */
   @Patch(':id')
   @Roles('admin')
   @UseInterceptors(FileInterceptor('file', imageUploadOptions))
@@ -129,6 +133,7 @@ export class AdminMediaController {
     return this.mediaService.transcodeJob(id);
   }
 
+  /** Deletes a movie with its files. */
   @Delete(':id')
   @Roles('admin')
   async remove(@Param('id', ParseIntPipe) id: number) {

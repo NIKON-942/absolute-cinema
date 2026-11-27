@@ -8,6 +8,7 @@ interface EmptyStateProps {
   action?: ReactNode;
 }
 
+/** Message with an icon when there is nothing to show (empty list). */
 export function EmptyState({ icon, title, subtitle, action }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-cinema-border bg-cinema-panel/50 px-6 py-16 text-center">

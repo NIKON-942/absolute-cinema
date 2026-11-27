@@ -19,12 +19,14 @@ blocked.addSubnet('2001::', 23, 'ipv6');
 blocked.addSubnet('2001:db8::', 32, 'ipv6');
 blocked.addSubnet('2002::', 16, 'ipv6');
 
+// false for local and private IPs, so the server can't be used to reach the inner network
 export function isPublicAddress(address: string): boolean {
   const version = isIP(address);
   if (version === 4) return !blocked.check(address, 'ipv4');
   return version === 6 && publicV6.check(address, 'ipv6') && !blocked.check(address, 'ipv6');
 }
 
+// checks the URL of a remote video
 export function remoteUrl(value: string): URL {
   const url = new URL(value);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password

@@ -17,6 +17,7 @@ interface FormErrors {
   confirm?: string;
 }
 
+/** Registration page with form validation. */
 export default function Register() {
   const { t } = useLanguage();
   const { register } = useAuth();
@@ -32,6 +33,7 @@ export default function Register() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
 
+  // checks name, e-mail, password and the repeated password
   const validate = (): boolean => {
     const next: FormErrors = {};
     if (!name.trim()) next.name = t('auth.validation.nameRequired');
@@ -47,6 +49,7 @@ export default function Register() {
     return Object.keys(next).length === 0;
   };
 
+  // sends the registration request
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;

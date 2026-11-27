@@ -8,6 +8,7 @@ export type Quality = '480p' | '720p' | '1080p';
 export type MovieSort = 'popularity' | 'rating' | 'newest';
 export type TranscodeStatus = 'none' | 'processing' | 'ready' | 'failed';
 
+// objects below describe responses of the backend API
 export interface UserDto {
   id: number;
   email: string;

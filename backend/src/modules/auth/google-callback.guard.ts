@@ -2,6 +2,7 @@ import { ExecutionContext, Injectable } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { GoogleFlowService, GoogleRequest } from './google-flow.service';
+/** Guard for the Google callback: first checks the saved flow (state), then runs the Google strategy. */
 @Injectable()
 export class GoogleCallbackGuard extends AuthGuard('google') {
   constructor(private flow: GoogleFlowService) { super(); }

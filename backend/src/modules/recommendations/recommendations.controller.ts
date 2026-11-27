@@ -4,6 +4,7 @@ import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt.guard';
 import { currentUser } from '../../common/helpers/request-user';
 import { RecommendationsService } from './recommendations.service';
 
+/** Personal movie recommendations. */
 @Controller('recommendations')
 export class RecommendationsController {
   constructor(private recommendationsService: RecommendationsService) {}

@@ -1,9 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { imageReference } from './image-upload';
 
+// allowed age ratings
 export const AGE_RATINGS = ['0+', '6+', '12+', '16+', '18+', '21+'];
 const fail = (field: string, rule: string): never => { throw new BadRequestException(`${field}: ${rule}`); };
 
+// checks that the value is a string and trims it
 export function text(value: unknown, field: string, max = 255, required = false): string {
   if (typeof value !== 'string') return fail(field, 'must be text');
   const result = value.trim();
@@ -11,6 +13,7 @@ export function text(value: unknown, field: string, max = 255, required = false)
   return result;
 }
 
+// checks that the value is an integer in the range
 export function integer(value: unknown, field: string, min: number, max: number): number {
   if (!(typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(value)))) return fail(field, 'must be an integer');
   const result = Number(value);
@@ -31,6 +34,7 @@ export function idList(value: unknown, field: string): number[] {
   return [...new Set(list.map(id => integer(id, field, 1, 2147483647)))];
 }
 
+// accepts only http/https links
 export function httpUrl(value: unknown, field: string): string {
   const result = text(value, field, 2048);
   if (!result) return '';
@@ -41,6 +45,7 @@ export function httpUrl(value: unknown, field: string): string {
   return fail(field, 'must be an http(s) URL without credentials');
 }
 
+// checked data of a movie from the form
 export interface MovieInput {
   title?: string; originalTitle?: string; description?: string; year?: number;
   countryId?: number | null; directorId?: number | null; country?: string; director?: string;

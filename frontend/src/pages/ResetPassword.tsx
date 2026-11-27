@@ -10,6 +10,7 @@ import { AuthShell, FieldError, authInputClass, authLabelClass, authButtonClass 
 import { Spinner } from '@/components/Spinner';
 import { isValidPassword } from '@/utils/validation';
 
+/** Page for the new password. The token is taken from the link. */
 export default function ResetPassword() {
   const { t } = useLanguage();
   const { error: errorToast } = useToast();

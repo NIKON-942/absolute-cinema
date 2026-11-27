@@ -35,6 +35,7 @@ import { VideoQuality } from './entities/movie.entity';
 /** A film cannot be longer than a day; anything else is a client bug or abuse. */
 const MAX_SECONDS = 24 * 60 * 60;
 
+// body for saving the watch position
 export class SaveProgressDto {
   @IsNumber({ allowNaN: false, allowInfinity: false })
   @Min(0)
@@ -47,6 +48,7 @@ export class SaveProgressDto {
   durationSeconds!: number;
 }
 
+/** Public catalog endpoints: movie list, details, favorites, ratings, progress and video streaming. */
 @Controller('media')
 export class MediaController {
   constructor(
@@ -55,6 +57,7 @@ export class MediaController {
     private planLimits: PlanLimitsService,
   ) {}
 
+  /** Movie list with search, filters, sorting and pages. Guests can use it too. */
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
   list(
@@ -86,6 +89,7 @@ export class MediaController {
     }, currentUser(req)?.id);
   }
 
+  /** Dictionaries for the filters. */
   @Get('genres')
   genres() {
     return this.mediaService.genres();
@@ -106,18 +110,21 @@ export class MediaController {
     return this.mediaService.directors();
   }
 
+  /** Favorite movies of the user. */
   @Get('favorites')
   @UseGuards(JwtAuthGuard)
   favorites(@Req() req: Request) {
     return this.mediaService.favorites(currentUserId(req));
   }
 
+  /** Continue watching list. */
   @Get('progress')
   @UseGuards(JwtAuthGuard)
   progress(@Req() req: Request) {
     return this.mediaService.listProgress(currentUserId(req));
   }
 
+  /** Gives a poster file from the storage folder. */
   @Get('posters/:filename')
   poster(@Param('filename') filename: string, @Res() res: Response) {
     const safe = basename(filename); // prevent path traversal
@@ -133,6 +140,7 @@ export class MediaController {
     res.sendFile(safe, { root: POSTERS_DIR });
   }
 
+  /** Add to favorites or remove if it is already there. */
   @Post(':id/favorites')
   @UseGuards(JwtAuthGuard)
   toggleFavorite(
@@ -142,6 +150,7 @@ export class MediaController {
     return this.mediaService.toggleFavorite(id, currentUserId(req));
   }
 
+  /** Sets the user's rating of the movie (1-10). */
   @Put(':id/rating')
   @UseGuards(JwtAuthGuard)
   rate(
@@ -156,18 +165,21 @@ export class MediaController {
     return this.mediaService.setRating(id, currentUserId(req), v);
   }
 
+  /** Removes the user's rating. */
   @Delete(':id/rating')
   @UseGuards(JwtAuthGuard)
   unrate(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
     return this.mediaService.deleteRating(id, currentUserId(req));
   }
 
+  /** The player calls this when playback really starts, it increases the view counter. */
   @Post(':id/playback')
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
   playback(@Param('id', ParseIntPipe) id: number, @Req() req: Request, @Body() body: { playbackId: string }) {
     return this.mediaService.recordPlayback(id, currentUserId(req), body?.playbackId);
   }
 
+  /** Saves where the user stopped watching. */
   @Put(':id/progress')
   @UseGuards(JwtAuthGuard)
   saveProgress(
@@ -180,6 +192,7 @@ export class MediaController {
     return this.mediaService.saveProgress(id, currentUserId(req), position, body.durationSeconds);
   }
 
+  /** Streams the video. Needs a subscription; plan limits for quality and number of devices are checked first. */
   @Get(':id/stream')
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
   async stream(
@@ -263,12 +276,14 @@ export class MediaController {
     return limits.maxQuality;
   }
 
+  /** Movies similar to this one. */
   @Get(':id/similar')
   @UseGuards(OptionalJwtAuthGuard)
   similar(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
     return this.mediaService.similar(id, currentUser(req)?.id ?? undefined);
   }
 
+  /** Movie details. Must be the last @Get because of the :id parameter. */
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   detail(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {

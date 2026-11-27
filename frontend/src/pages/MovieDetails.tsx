@@ -14,6 +14,7 @@ import { posterGradient } from '@/utils/format';
 import { resolveMediaUrl } from '@/utils/url';
 import type { MovieDto } from '@/types';
 
+/** Movie page: info, player, rating, favorites and similar movies. */
 export default function MovieDetails() {
   const { id } = useParams<{ id: string }>();
   const movieId = Number(id);
@@ -78,6 +79,7 @@ export default function MovieDetails() {
     );
   }
 
+  // guests are sent to login, others save the rating
   const handleRate = async (value: number) => {
     if (!isAuthenticated) {
       navigate('/login', { state: { from: `/movie/${movie.id}` } });
@@ -92,6 +94,7 @@ export default function MovieDetails() {
     }
   };
 
+  // removes my rating
   const handleClearRating = async () => {
     try {
       const res = await mediaService.removeRating(movie.id);
@@ -102,6 +105,7 @@ export default function MovieDetails() {
     }
   };
 
+  // add or remove the movie from favorites
   const handleFavorite = async () => {
     if (!isAuthenticated) {
       navigate('/login', { state: { from: `/movie/${movie.id}` } });
@@ -116,6 +120,7 @@ export default function MovieDetails() {
     }
   };
 
+  // copies the link of the movie to the clipboard
   const handleShare = async () => {
     try {
       await navigator.clipboard.writeText(new URL(`/movie/${movie.id}`, window.location.origin).href);

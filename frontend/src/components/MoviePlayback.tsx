@@ -20,6 +20,7 @@ export function MoviePlayback({ initialMovie, autoPlay = false }: { initialMovie
   const movieId = initialMovie.id;
   const { t } = useLanguage();
   const { user, isAuthenticated } = useAuth();
+  // ---- state of the player block ----
   const [movie, setMovie] = useState(initialMovie);
   const [started, setStarted] = useState(() => autoPlay && Boolean(user?.hasActiveSubscription));
   const [streamForbidden, setStreamForbidden] = useState(false);
@@ -30,6 +31,7 @@ export function MoviePlayback({ initialMovie, autoPlay = false }: { initialMovie
 
   const { maxQuality } = limitsForTier(user?.activeSubscription?.tier);
   const qualities = movie?.availableQualities ?? [];
+  // qualities that the movie has, sorted from low to high
   const allowedQualities = useMemo(
     () =>
       // Sort along the quality ladder — the movie's own order is arbitrary
@@ -77,6 +79,7 @@ export function MoviePlayback({ initialMovie, autoPlay = false }: { initialMovie
   const playbackId = useRef(`play-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
   const playbackRecorded = useRef(false);
 
+  // stops sending the device heartbeat
   const stopHeartbeat = useCallback(() => {
     if (!started) return;
     devicesService.end(deviceId);
